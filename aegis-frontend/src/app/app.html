@@ -1,0 +1,33 @@
+<div class="container" style="display: flex; height: 100vh; font-family: sans-serif;">
+  
+  <div style="flex: 1; padding: 20px; background: #1e1e1e; border-right: 2px solid #333;">
+    <h2 style="color: #61dafb;">🛡️ Aegis-AI: 智能审计台</h2>
+    
+    <textarea [(ngModel)]="code" style="width: 100%; height: 60vh; background: #2d2d2d; color: #61dafb; font-family: monospace; font-size: 16px; padding: 15px; border: none; border-radius: 5px; outline: none;" placeholder="在这里输入带漏洞的代码..."></textarea>
+    
+    <button (click)="scanCode()" [disabled]="loading" 
+            style="margin-top: 20px; width: 100%; padding: 15px; background: #4caf50; color: white; border: none; font-size: 18px; font-weight: bold; cursor: pointer; border-radius: 5px;">
+      {{ loading ? '🚀 AI 正在深度审计中...' : '⚡️ 发起安全扫描' }}
+    </button>
+  </div>
+
+  <div style="flex: 1; padding: 30px; background: #f0f2f5; overflow-y: auto;">
+    <h2 style="color: #333;">📊 安全审计报告</h2>
+    
+    <div *ngIf="results.length === 0 && !loading" style="color: #666; font-style: italic;">
+      请在左侧输入代码并点击扫描...
+    </div>
+    
+    <div *ngFor="let vuln of results" style="background: white; padding: 20px; margin-bottom: 20px; border-left: 5px solid #d32f2f; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+      <h3 style="color: #d32f2f; margin-top: 0;">🚨 {{ vuln.vuln_name }} ({{ vuln.cwe_id }})</h3>
+      <p style="margin: 5px 0;"><strong>危害等级：</strong><span style="color: #d32f2f; font-weight: bold;">{{ vuln.severity }}</span></p>
+      <p style="line-height: 1.6; color: #444;">{{ vuln.description }}</p>
+      
+      <div style="margin-top: 15px;">
+        <strong style="color: #2e7d32;">✅ 安全修复建议:</strong>
+        <pre style="background: #272822; color: #a6e22e; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 14px;">{{ vuln.fix_code }}</pre>
+      </div>
+    </div>
+  </div>
+
+</div>
