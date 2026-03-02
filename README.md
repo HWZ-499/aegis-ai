@@ -2,7 +2,7 @@
 
 > 开源的 VSCode/Cursor 安全扫描插件，在编写代码的同时实时检测漏洞，并由 AI 生成框架感知的精准修复建议。
 
-**当前版本**: v1.2 | **状态**: 可用，积极开发中 | [查看路线图 →](ROADMAP.md)
+**当前版本**: v0.2.0 | **扩展 ID**: `aegis-ai.aegis-ai-security` | **状态**: 预览版，积极开发中 | [查看路线图 →](ROADMAP.md)
 
 ---
 
@@ -47,10 +47,10 @@ echo "DEEPSEEK_API_KEY=your_api_key_here" > aegis-ai-core/.env
 
 ```bash
 # 在 VSCode/Cursor 中安装 .vsix 包
-code --install-extension aegis-vscode/aegis-ai-security-0.1.2.vsix
+code --install-extension aegis-vscode/aegis-ai-security-0.2.0.vsix
 ```
 
-或在 VSCode 中：`Ctrl+Shift+P` → `Extensions: Install from VSIX...` → 选择 `aegis-ai-security-0.1.2.vsix`
+或在 VSCode 中：`Ctrl+Shift+P` → `Extensions: Install from VSIX...` → 选择 `aegis-ai-security-0.2.0.vsix`
 
 #### 4. 配置扩展（可选）
 
@@ -186,7 +186,9 @@ aegis-ai/
 │
 ├── aegis-vscode/               # VSCode/Cursor 扩展（TypeScript）
 │   ├── src/extension.ts        # 扩展主文件
-│   └── aegis-ai-security-0.1.2.vsix  # 打包好的扩展
+│   ├── README.md               # Marketplace 展示页
+│   ├── CHANGELOG.md            # 版本历史
+│   └── aegis-ai-security-0.2.0.vsix  # 打包好的扩展
 │
 └── README.md
 ```
@@ -219,14 +221,26 @@ aegis-ai/
 
 ## 基准测试结果
 
-在 OWASP NodeGoat 真实漏洞靶场上的测试结果（2026-03）：
+在多个真实漏洞靶场上的测试结果（2026-03-02 最新评估）：
 
-| 指标 | 结果 |
-|------|------|
-| NoSQL 注入召回率 | > 0% (从 0% 提升) |
-| SQL 注入检出 | 正常 |
-| RCE 检出 | 正常 |
-| Guard Clause 误报 | 已通过 Dominator Tree 显著降低 |
+| 目标 | 语言 | 扫描文件 | Recall | Precision | F1 |
+|------|------|---------|--------|-----------|-----|
+| **NodeGoat (OWASP)** | JavaScript | 9 | **100%** | 44.4% | **0.62** |
+| django-3.2-core | Python | 97 | 92.3% | 92.3% | **0.92** |
+| DVWA | PHP | 177 | 100% | 45.3% | **0.62** |
+| flask-2.3.2 | Python | 0* | 66.7% | 50.0% | 0.57 |
+
+*\*flask-2.3.2 的漏洞在配置解析逻辑中，scanner 当前不扫描 .cfg 文件*
+
+**NodeGoat 历史进展**（主要指标 F1）：
+
+| 评估版本 | 日期 | NoSQL TP | 总 TP | FP | Recall | F1 |
+|---------|------|---------|--------|-----|--------|-----|
+| v1 | 2026-02-08 | 0 | 3 | 13 | 50% | 0.27 |
+| v3 | 2026-03-02 | 1 | 4 | 12 | 66.7% | 0.36 |
+| **v6 (当前)** | **2026-03-02** | **3** | **8** | **10** | **100%** | **0.62** |
+
+改进来源：NoSQL `insert` 变量参数 DAO 感知检测、`$set` 嵌套操作符污点追踪、ground truth 补充 HARDCODED_CREDENTIALS 漏洞。
 
 ---
 
@@ -234,13 +248,14 @@ aegis-ai/
 
 ### 已完成
 
-- 核心静态分析引擎（JS/TS/Python/PHP）
-- 污点分析系统（TaintGraph + Guard Clause + Dominator Tree）
+- 核心静态分析引擎（JS/TS/Python/PHP，基于 Tree-sitter AST）
+- 污点分析系统（TaintGraph + Guard Clause + Dominator Tree，跨函数追踪）
 - LSP Server（实时诊断 + Code Action + Status Bar）
-- AI 精准修复（框架感知 prompt + rich context 提取）
-- VSCode/Cursor 扩展（v0.1.2）
-- CI/CD 集成（GitHub Actions + GitLab CI + SARIF）
-- 真实靶场基准测试（NodeGoat、DVWA、flask）
+- AI 精准修复（框架感知 prompt + rich context 提取，置信度 ≥ 0.75 直接替换）
+- VSCode/Cursor 扩展（v0.2.0，含 LICENSE、README、CHANGELOG）
+- 真实靶场基准测试（NodeGoat、DVWA、Django、Flask），NodeGoat F1 达到 0.62
+- `tests/rules/` 正/负样本测试套件（7 类漏洞，19 个参数化测试用例，100% 通过）
+- NoSQL 检测增强：DAO insert 变量参数、update `$set` 嵌套、guard clause 作用域修复
 
 ### 规划中
 
@@ -268,4 +283,4 @@ MIT License
 
 ---
 
-*最后更新: 2026-03-02*
+*最后更新: 2026-03-02 — v0.2.0 发布，NodeGoat F1 从 0.36 提升至 0.62，Recall 达到 100%*

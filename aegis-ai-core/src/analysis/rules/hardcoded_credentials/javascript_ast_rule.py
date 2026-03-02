@@ -216,18 +216,57 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
     @staticmethod
     def _is_placeholder(value: str) -> bool:
         """
-        检查值是否为占位符。
+        检查值是否为占位符或纯演示字符串，避免对无害的示例凭证误报。
 
         Tree-sitter 提取的字符串节点文本包含引号（如 ``"'abc'"`` / ``'""'``），
         所以需要先剥离外层引号再判断。
+
+        判断逻辑（满足任一即视为占位符）：
+        1. 精确匹配已知占位符词
+        2. 以 ``_here`` / ``_here"`` 结尾（如 ``session_cookie_secret_key_here``）
+        3. 以 ``<``/``>`` 包围（如 ``<your_key>``）
+        4. 含 ``your_`` / ``change_`` / ``replace_`` / ``changeme`` / ``change me`` 前缀
+        5. 仅由字母数字和下划线组成且全大写（如 ``YOUR_SECRET_KEY``）
         """
-        # 剥离外层引号
         stripped = value.strip()
         if (stripped.startswith("'") and stripped.endswith("'")) or \
            (stripped.startswith('"') and stripped.endswith('"')):
             stripped = stripped[1:-1]
-        placeholders = ["", "your_key", "your_password", "placeholder", "xxx", "***"]
-        return stripped.lower() in placeholders
+        s_lower = stripped.lower()
+
+        # 精确匹配
+        placeholders = frozenset({
+            "", "your_key", "your_password", "placeholder", "xxx", "***",
+            "changeme", "change_me", "change_this", "replace_me", "replace_this",
+            "secret", "mysecret", "mypassword", "mykey", "topsecret",
+        })
+        if s_lower in placeholders:
+            return True
+
+        # _here 结尾（如 session_cookie_secret_key_here、a_secure_key_for_crypto_here）
+        if s_lower.endswith("_here"):
+            return True
+
+        # <...> 占位符包装（如 <your_api_key>）
+        if stripped.startswith("<") and stripped.endswith(">"):
+            return True
+
+        # 含提示性前缀
+        placeholder_prefixes = ("your_", "change_", "replace_", "put_your_", "insert_your_", "enter_your_")
+        if any(s_lower.startswith(pfx) for pfx in placeholder_prefixes):
+            return True
+
+        # 全大写下划线格式（如 YOUR_SECRET_KEY、MY_API_KEY_HERE）
+        import re
+        if re.match(r"^[A-Z][A-Z0-9_]*$", stripped) and len(stripped) >= 6:
+            return True
+
+        # 低熵检测：纯小写字母、短于 8 字符、不含数字 → 极可能是测试/演示字符串
+        # 例如 "admin"、"test"、"login" 等（这些不算真实密钥）
+        if len(stripped) < 8 and re.match(r"^[a-z]+$", stripped):
+            return True
+
+        return False
 
     @staticmethod
     def _get_node_text(node: Node) -> str | None:
