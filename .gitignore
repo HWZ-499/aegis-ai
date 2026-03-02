@@ -38,6 +38,28 @@ DVWA/
 # 基准测试报告（本地生成，体积较大）
 aegis-ai-core/reports/
 
+# 私人文档（不进版本控制）
+docs/interview/
+CRITICAL_REVIEW_AND_ROADMAP.md
+docs/planning/PROJECT_REVIEW.md
+
 # 运行时缓存
 aegis-ai-core/.cache/
 *.cache
+
+# ChromaDB 向量数据库（本地生成，体积大）
+aegis-ai-core/aegis_db/
+aegis-ai-core/data/
+
+# 日志文件
+*.log
+aegis-ai-core/cve_crawler.log
+
+# 调试脚本输出
+aegis-ai-core/debug-*.log
+
+# 真实世界测试靶场（嵌套 git 仓库，不作为 submodule）
+aegis-ai-core/real_world_targets/
+
+# VSCode 扩展旧版本（只保留最新）
+aegis-vscode/aegis-ai-security-0.1.0.vsix
