@@ -1,0 +1,131 @@
+[
+  {
+    "file": "cache/backends/db.py",
+    "line": 120,
+    "type": "SQL_INJECTION",
+    "cve": null,
+    "severity": "High",
+    "is_true_positive": false,
+    "false_positive_reason": "表名来自 Django 内部配置（settings.CACHES['LOCATION']），非用户输入。Django ORM 内部构造，表名在启动时确定，运行期不可被外部控制。",
+    "comment": "误报：正则规则无法区分受控配置值与用户输入，需要上下文感知（框架配置 vs HTTP 请求上下文）。"
+  },
+  {
+    "file": "cache/backends/db.py",
+    "line": 261,
+    "type": "SQL_INJECTION",
+    "cve": null,
+    "severity": "High",
+    "is_true_positive": false,
+    "false_positive_reason": "同 L120：表名来自内部配置，非用户可控输入。_cull() 方法中表名由 settings 决定。",
+    "comment": "误报：框架内部受控 SQL 构造。"
+  },
+  {
+    "file": "cache/backends/db.py",
+    "line": 263,
+    "type": "SQL_INJECTION",
+    "cve": null,
+    "severity": "High",
+    "is_true_positive": false,
+    "false_positive_reason": "同 L120，_cull() 内部计数查询，表名来自配置。",
+    "comment": "误报：内部受控操作。"
+  },
+  {
+    "file": "cache/backends/db.py",
+    "line": 282,
+    "type": "SQL_INJECTION",
+    "cve": null,
+    "severity": "High",
+    "is_true_positive": false,
+    "false_positive_reason": "清除缓存表操作，表名来自 Django settings，非 HTTP 请求参数。",
+    "comment": "误报：clear() 方法内部操作，完全受框架控制。"
+  },
+  {
+    "file": "checks/security/base.py",
+    "line": 12,
+    "type": "HARDCODED_CREDENTIALS",
+    "cve": null,
+    "severity": "High",
+    "is_true_positive": false,
+    "false_positive_reason": "SECRET_KEY_INSECURE_PREFIX = 'django-insecure-' 是 Django 安全检查模块中的常量前缀字符串，用于检测开发者是否使用了默认不安全的 SECRET_KEY。这是安全工具自身代码，不是凭据泄露。",
+    "comment": "误报：安全检查工具代码中的常量字符串被误判为硬编码凭据。引擎需要识别'安全工具上下文'。"
+  },
+  {
+    "file": "files/uploadhandler.py",
+    "line": 150,
+    "type": "XSS_RISK",
+    "cve": null,
+    "severity": "High",
+    "is_true_positive": false,
+    "false_positive_reason": "self.file.write(raw_data) 是文件写操作（写入临时上传文件），非 HTTP 响应写入。XSS 规则错误地将文件 IO write() 误判为 response.write()。",
+    "comment": "误报：规则混淆了文件 IO write() 与 HTTP response write()，需要区分写入目标（文件对象 vs 响应对象）。"
+  },
+  {
+    "file": "files/uploadhandler.py",
+    "line": 190,
+    "type": "XSS_RISK",
+    "cve": null,
+    "severity": "High",
+    "is_true_positive": false,
+    "false_positive_reason": "同 L150：MemoryFileUploadHandler.receive_data_chunk() 中的文件写操作。",
+    "comment": "误报：文件 IO 被误判为 XSS 输出点。"
+  },
+  {
+    "file": "handlers/exception.py",
+    "line": 134,
+    "type": "XSS_RISK",
+    "cve": null,
+    "severity": "High",
+    "is_true_positive": false,
+    "false_positive_reason": "signals.got_request_exception.send() 是 Django 信号分发调用，非 HTTP 响应写入或 DOM 操作。XSS 规则错误匹配了 .send() 方法。",
+    "comment": "误报：信号框架 API .send() 被误判为 XSS 输出。需要 type-aware 分析区分信号对象与响应对象。"
+  },
+  {
+    "file": "handlers/exception.py",
+    "line": 113,
+    "type": "XSS_RISK",
+    "cve": null,
+    "severity": "High",
+    "is_true_positive": false,
+    "false_positive_reason": "同 L134：signals.got_request_exception.send() 信号分发调用。",
+    "comment": "误报：信号调用被误判为 XSS 输出点。"
+  },
+  {
+    "file": "management/commands/shell.py",
+    "line": 87,
+    "type": "RCE_COMMAND_EXEC",
+    "cve": null,
+    "severity": "Low",
+    "is_true_positive": false,
+    "false_positive_reason": "Django management command shell 通过 exec(options['command']) 执行 --command 参数。该参数由系统管理员从命令行传入（需要服务器访问权限），非 HTTP 请求可控。已正确降级为 Low。",
+    "comment": "可接受的 Low 误报：工具命令行 exec，引擎已正确识别为管理脚本上下文并降级。严重性分类正确。"
+  },
+  {
+    "file": "management/commands/shell.py",
+    "line": 93,
+    "type": "RCE_COMMAND_EXEC",
+    "cve": null,
+    "severity": "Low",
+    "is_true_positive": false,
+    "false_positive_reason": "exec(sys.stdin.read()) 从标准输入读取并执行，需要服务器级别访问权限，非 HTTP 请求路径。已正确降级为 Low。",
+    "comment": "可接受的 Low 误报：CLI 工具设计模式，引擎正确识别并降级。"
+  },
+  {
+    "file": "management/commands/shell.py",
+    "line": 78,
+    "type": "RCE_COMMAND_EXEC",
+    "cve": null,
+    "severity": "Low",
+    "is_true_positive": false,
+    "false_positive_reason": "exec(compile(pythonrc_code, pythonrc, 'exec')) 执行 PYTHONSTARTUP 环境变量指向的本地脚本，受信任的管理员配置。已正确降级为 Low。",
+    "comment": "可接受的 Low 误报：环境变量驱动的可信脚本执行，引擎已识别环境变量来源并降级。"
+  },
+  {
+    "file": "files/storage.py",
+    "line": 1,
+    "type": "PATH_TRAVERSAL",
+    "cve": "CVE-2021-31542",
+    "severity": "High",
+    "is_true_positive": true,
+    "comment": "CVE-2021-31542: Django FileField 文件名处理不当导致路径遍历。攻击者可上传文件名含 ../ 的文件绕过目录限制。修复版本：3.2.4。当前引擎无 PATH_TRAVERSAL 规则，属检测覆盖空白（漏报）。"
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "file": "lib/router/index.js",
+    "line": 284,
+    "type": "OPEN_REDIRECT",
+    "cve": "CVE-2024-29041",
+    "severity": "Medium",
+    "is_true_positive": true,
+    "comment": "CVE-2024-29041: Express 4.x Host header 未充分验证，攻击者可构造 X-Forwarded-Host 导致 res.redirect() 跳转到任意域。修复在 5.x 版本。当前引擎无 OPEN_REDIRECT 规则，属检测覆盖空白（漏报）。"
+  },
+  {
+    "file": "lib/utils.js",
+    "line": 1,
+    "type": "PROTOTYPE_POLLUTION",
+    "cve": "CVE-2022-24999",
+    "severity": "High",
+    "is_true_positive": true,
+    "comment": "CVE-2022-24999: Express 通过 qs 库解析查询字符串存在原型链污染。漏洞实际在依赖 qs 库中，Express lib/ 目录内无直接可触发代码，属于依赖链漏洞（间接漏报）。"
+  }
+]

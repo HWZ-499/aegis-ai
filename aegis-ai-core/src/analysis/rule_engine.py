@@ -1,0 +1,216 @@
+"""
+rule_engine.py - 规则引擎统一入口
+
+设计目标：
+- 提供统一的规则注册表（Rule Registry）；
+- 为不同语言返回默认规则集合；
+- 暴露 analyze_python / analyze_javascript / analyze_php 便捷函数，
+  供 ProjectScanner、LSP Server、FastAPI 服务层统一调用。
+
+已注册规则（共 16 条 + PHP TaintGraph 4 条）：
+- Python: RCE、SQL 注入、XSS、路径遍历、硬编码凭证、反序列化（含通用正则）
+- JavaScript/TypeScript: RCE、SQL 注入、XSS、路径遍历、硬编码凭证、反序列化、NoSQL 注入
+- PHP: SQL 注入、RCE、XSS、开放重定向（TaintGraph 精确层 + Regex 补充层）
+"""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Dict, List
+
+from .analyzers.javascript_analyzer import JavaScriptAnalyzer
+from .analyzers.python_analyzer import PythonAnalyzer
+from .base import SecurityRule
+from .rules import (
+    PythonRCEAstRule,
+    SQLInjectionRegexRule,
+    PythonSQLInjectionAstRule,
+    JavaScriptSQLInjectionAstRule,
+    PythonXSSAstRule,
+    JavaScriptXSSAstRule,
+    PythonPathTraversalAstRule,
+    JavaScriptPathTraversalAstRule,
+    PythonHardcodedCredentialsAstRule,
+    JavaScriptHardcodedCredentialsAstRule,
+    PythonDeserializationAstRule,
+    JavaScriptDeserializationAstRule,
+    JavaScriptRCEAstRule,
+    JavaScriptNoSQLInjectionAstRule,
+    # PHP TaintGraph 规则（analyze_php 内部延迟导入，此处仅供类型提示）
+    PhpSQLInjectionRule,
+    PhpRCERule,
+    PhpXSSRule,
+    PhpOpenRedirectRule,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def get_default_rules_for_language(language: str) -> List[SecurityRule]:
+    """
+    根据语言返回默认规则集合。
+
+    Args:
+        language: 语言标识符（"python"、"javascript"、"typescript"、"php"）。
+
+    Returns:
+        对应语言的 SecurityRule 实例列表。PHP 规则通过 analyze_php() 调用，
+        此处返回实例以便外部查询已注册规则。
+    """
+    language = language.lower()
+
+    if language == "python":
+        return [
+            PythonRCEAstRule(),
+            SQLInjectionRegexRule(),
+            PythonSQLInjectionAstRule(),
+            PythonXSSAstRule(),
+            PythonPathTraversalAstRule(),
+            PythonHardcodedCredentialsAstRule(),
+            PythonDeserializationAstRule(),
+        ]
+
+    if language in ("javascript", "typescript"):
+        # 污点图由 JavaScriptAnalyzer 内 TaintAnalyzer.analyze_tree 独家构建，规则通过 context.taint_graph 查询
+        return [
+            JavaScriptRCEAstRule(),
+            JavaScriptSQLInjectionAstRule(),
+            JavaScriptXSSAstRule(),
+            JavaScriptPathTraversalAstRule(),
+            JavaScriptHardcodedCredentialsAstRule(),
+            JavaScriptDeserializationAstRule(),
+            JavaScriptNoSQLInjectionAstRule(),
+        ]
+
+    if language == "php":
+        from .rules.php import (
+            PhpSQLInjectionRule,
+            PhpRCERule,
+            PhpXSSRule,
+            PhpOpenRedirectRule,
+        )
+        return [
+            PhpSQLInjectionRule(),
+            PhpRCERule(),
+            PhpXSSRule(),
+            PhpOpenRedirectRule(),
+        ]
+
+    return []
+
+
+def analyze_python(code: str, file_path: Path | str) -> List[Dict]:
+    """
+    使用新规则引擎分析单个 Python 文件。
+    TDD 10.1：解析或分析过程异常时返回空列表，不崩溃。
+    """
+    path = Path(file_path)
+    rules = get_default_rules_for_language("python")
+    analyzer = PythonAnalyzer(rules)
+    try:
+        return analyzer.analyze(code, path)
+    except Exception:
+        logger.exception("analyze_python failed for %s", path)
+        return []
+
+
+def analyze_javascript(code: str, file_path: Path | str, language: str = "javascript") -> List[Dict]:
+    """
+    使用新规则引擎分析单个 JavaScript/TypeScript 文件。
+    TDD 10.1：解析或分析过程异常时返回空列表，不崩溃。
+    """
+    path = Path(file_path)
+    rules = get_default_rules_for_language(language)
+    analyzer = JavaScriptAnalyzer(rules)
+    try:
+        return analyzer.analyze(code, path, language=language)
+    except Exception:
+        logger.exception("analyze_javascript failed for %s", path)
+        return []
+
+
+def analyze_php(code: str, file_path: Path | str) -> List[Dict]:
+    """
+    分析单个 PHP 文件。
+
+    双引擎策略：
+    1. **TaintGraph 精确层**（PhpSQLInjectionRule / PhpRCERule / PhpXSSRule /
+       PhpOpenRedirectRule）：基于行级赋值链追踪，产出带 taint_source_line /
+       related_locations 的高置信度 finding。
+    2. **Regex 补充层**（scan_code_locally）：宽泛正则，兜底覆盖 TaintGraph
+       尚未追踪到的场景。
+
+    去重规则：若 TaintGraph 在某行已报某类型，则丢弃 Regex 在同行同类型的报告，
+    避免重复诊断展示给用户。
+
+    返回格式与 analyze_python / analyze_javascript 统一。
+    """
+    from .security_rules import scan_code_locally
+    from .rules.php import (
+        PhpSQLInjectionRule,
+        PhpRCERule,
+        PhpXSSRule,
+        PhpOpenRedirectRule,
+    )
+
+    path = Path(file_path)
+    results: List[Dict] = []
+
+    # ── 1. TaintGraph 精确层 ──
+    taint_rules = [
+        PhpSQLInjectionRule(),
+        PhpRCERule(),
+        PhpXSSRule(),
+        PhpOpenRedirectRule(),
+    ]
+    taint_covered: set[tuple[int, str]] = set()  # (line, vuln_type)
+
+    for rule in taint_rules:
+        try:
+            for f in rule.analyze(code, path):
+                results.append(f)
+                taint_covered.add((f["line"], f["type"]))
+        except Exception:
+            logger.exception("PHP TaintGraph rule %s failed for %s", type(rule).__name__, path)
+
+    # ── 2. Regex 补充层 ──
+    try:
+        raw_findings = scan_code_locally(code, file_path=str(path))
+    except Exception:
+        logger.exception("analyze_php (regex) failed for %s", path)
+        raw_findings = []
+
+    for f in raw_findings:
+        line = f.get("line", 1)
+        vuln_type = f.get("type", "UNKNOWN")
+        # 若 TaintGraph 已覆盖此（line, type），跳过正则重复报告
+        if (line, vuln_type) in taint_covered:
+            continue
+        results.append({
+            "type":            vuln_type,
+            "severity":        f.get("severity", "Medium"),
+            "line":            line,
+            "start_line":      line,
+            "end_line":        line,
+            "start_character": 0,
+            "end_character":   999,
+            "details":         f.get("content", ""),
+            "confidence":      f.get("confidence", "medium"),
+            "source":          "PHP-Regex",
+        })
+
+    return results
+
+
+__all__ = [
+    "get_default_rules_for_language",
+    "analyze_python",
+    "analyze_javascript",
+    "analyze_php",
+    "PhpSQLInjectionRule",
+    "PhpRCERule",
+    "PhpXSSRule",
+    "PhpOpenRedirectRule",
+]
+

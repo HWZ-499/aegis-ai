@@ -1,0 +1,210 @@
+[
+  {
+    "file": "login.php",
+    "line": 39,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA login 页面 SQL 注入，$user 变量直接拼接到查询"
+  },
+  {
+    "file": "vulnerabilities/brute/source/low.php",
+    "line": 12,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA Brute Force 低安全级别 SQL 注入"
+  },
+  {
+    "file": "vulnerabilities/brute/source/medium.php",
+    "line": 14,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA Brute Force 中等安全级别 SQL 注入"
+  },
+  {
+    "file": "vulnerabilities/brute/source/high.php",
+    "line": 19,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA Brute Force 高安全级别仍存在 SQL 注入"
+  },
+  {
+    "file": "vulnerabilities/sqli/source/low.php",
+    "line": 10,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA SQL Injection 低安全级别：$id 直接拼接"
+  },
+  {
+    "file": "vulnerabilities/sqli/source/low.php",
+    "line": 34,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA SQL Injection 低安全级别输出点"
+  },
+  {
+    "file": "vulnerabilities/sqli/source/medium.php",
+    "line": 30,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA SQL Injection 中等安全级别"
+  },
+  {
+    "file": "vulnerabilities/sqli/source/high.php",
+    "line": 31,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA SQL Injection 高安全级别（通过 # 注释绕过）"
+  },
+  {
+    "file": "vulnerabilities/sqli_blind/source/low.php",
+    "line": 11,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA Blind SQL Injection 低安全级别"
+  },
+  {
+    "file": "vulnerabilities/sqli_blind/source/medium.php",
+    "line": 36,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA Blind SQL Injection 中等安全级别"
+  },
+  {
+    "file": "vulnerabilities/sqli_blind/source/high.php",
+    "line": 35,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA Blind SQL Injection 高安全级别"
+  },
+  {
+    "file": "vulnerabilities/exec/source/low.php",
+    "line": 10,
+    "type": "RCE_COMMAND_EXEC",
+    "severity": "Critical",
+    "is_true_positive": true,
+    "description": "DVWA Command Injection 低安全级别：$target 直接传入 shell_exec"
+  },
+  {
+    "file": "vulnerabilities/exec/source/medium.php",
+    "line": 19,
+    "type": "RCE_COMMAND_EXEC",
+    "severity": "Critical",
+    "is_true_positive": true,
+    "description": "DVWA Command Injection 中等安全级别：部分过滤，仍可注入"
+  },
+  {
+    "file": "vulnerabilities/exec/source/high.php",
+    "line": 26,
+    "type": "RCE_COMMAND_EXEC",
+    "severity": "Critical",
+    "is_true_positive": true,
+    "description": "DVWA Command Injection 高安全级别：正则过滤不完整"
+  },
+  {
+    "file": "vulnerabilities/exec/source/impossible.php",
+    "line": 22,
+    "type": "RCE_COMMAND_EXEC",
+    "severity": "Critical",
+    "is_true_positive": false,
+    "description": "DVWA impossible 级别已修复：使用 intval() 确保纯整数输入，exec 仍被规则触发但属 FP"
+  },
+  {
+    "file": "vulnerabilities/api/index.php",
+    "line": 33,
+    "type": "RCE_COMMAND_EXEC",
+    "severity": "Critical",
+    "is_true_positive": true,
+    "description": "DVWA API 端点中 shell_exec 执行用户可控命令"
+  },
+  {
+    "file": "vulnerabilities/api/src/HealthController.php",
+    "line": 88,
+    "type": "RCE_COMMAND_EXEC",
+    "severity": "Critical",
+    "is_true_positive": true,
+    "description": "DVWA API HealthController exec 命令注入"
+  },
+  {
+    "file": "setup.php",
+    "line": 51,
+    "type": "RCE_COMMAND_EXEC",
+    "severity": "Low",
+    "is_true_positive": false,
+    "description": "setup.php 中的 exec 用于初始化安装，不接受外部用户输入，属于 FP"
+  },
+  {
+    "file": "vulnerabilities/xss_r/source/low.php",
+    "line": 8,
+    "type": "XSS_RISK",
+    "severity": "Medium",
+    "is_true_positive": true,
+    "description": "DVWA XSS Reflected 低安全级别：$_GET['name'] 直接 echo 输出"
+  },
+  {
+    "file": "vulnerabilities/xss_d/index.php",
+    "line": 53,
+    "type": "XSS_RISK",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA XSS DOM 注入"
+  },
+  {
+    "file": "vulnerabilities/sqli/source/low.php",
+    "line": 32,
+    "type": "XSS_RISK",
+    "severity": "Medium",
+    "is_true_positive": true,
+    "description": "DVWA SQL Injection 页面直接输出用户可控数据，存在反射型 XSS"
+  },
+  {
+    "file": "vulnerabilities/open_redirect/source/low.php",
+    "line": 4,
+    "type": "OPEN_REDIRECT",
+    "severity": "Medium",
+    "is_true_positive": true,
+    "description": "DVWA Open Redirect 低安全级别：$_GET['url'] 直接 header(Location)"
+  },
+  {
+    "file": "vulnerabilities/open_redirect/source/medium.php",
+    "line": 11,
+    "type": "OPEN_REDIRECT",
+    "severity": "Medium",
+    "is_true_positive": true,
+    "description": "DVWA Open Redirect 中等安全级别：部分过滤仍可绕过"
+  },
+  {
+    "file": "vulnerabilities/open_redirect/source/high.php",
+    "line": 5,
+    "type": "OPEN_REDIRECT",
+    "severity": "Medium",
+    "is_true_positive": true,
+    "description": "DVWA Open Redirect 高安全级别：使用白名单但实现有漏洞"
+  },
+  {
+    "file": "vulnerabilities/bac/source/medium.php",
+    "line": 28,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA Broken Access Control SQL 注入"
+  },
+  {
+    "file": "vulnerabilities/csrf/test_credentials.php",
+    "line": 21,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA CSRF 测试页面 SQL 注入"
+  }
+]

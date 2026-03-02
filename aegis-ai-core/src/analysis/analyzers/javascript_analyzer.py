@@ -1,0 +1,138 @@
+"""
+javascript_analyzer.py - JavaScript/TypeScript 分析器（新规则架构）
+
+说明：
+- 与 PythonAnalyzer 风格一致：
+  - 构建 AnalysisContext；
+  - 解析 Tree-sitter AST；
+  - 统一遍历 AST 节点并把节点交给各个 SecurityRule；
+  - 在遍历前后调用规则的 before_file/after_file。
+- 具体规则（如 RCE / SQLi / XSS 等）逐步从旧实现迁移到 `analysis.rules.*` 子包中。
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Iterable, List
+
+from ..base import AnalysisContext, SecurityRule
+
+# Tree-sitter 导入
+try:
+    from tree_sitter import Parser, Node
+    from tree_sitter_languages import get_language
+    TREE_SITTER_AVAILABLE = True
+except ImportError:
+    TREE_SITTER_AVAILABLE = False
+    Parser = None
+    Node = None
+    get_language = None
+
+
+class JavaScriptAnalyzer:
+    """
+    JavaScript / TypeScript 代码分析入口。
+    """
+
+    def __init__(self, rules: Iterable[SecurityRule]) -> None:
+        """
+        Args:
+            rules: SecurityRule 规则集合
+        """
+        # 只保留支持 javascript/typescript 的规则
+        self.rules: List[SecurityRule] = [
+            r for r in rules
+            if r.supports("javascript") or r.supports("typescript") or not r.languages
+        ]
+
+        # 初始化 Tree-sitter parser（如果可用）
+        self._parser: Parser | None = None
+        if TREE_SITTER_AVAILABLE:
+            try:
+                js_lang = get_language("javascript")
+                self._parser = Parser()
+                self._parser.set_language(js_lang)
+            except Exception:
+                # Tree-sitter 不可用时，规则仍然可以工作（例如行级规则）
+                self._parser = None
+
+    def analyze(self, code: str, file_path: Path, language: str = "javascript") -> List[dict]:
+        """
+        对单个 JS/TS 文件执行分析。
+
+        Args:
+            code: 源代码字符串
+            file_path: 文件路径
+            language: 'javascript' 或 'typescript'
+        """
+        lang = language.lower()
+        if lang not in ("javascript", "typescript"):
+            raise ValueError(f"JavaScriptAnalyzer 只支持 javascript/typescript，收到: {language}")
+
+        # 1. 构建上下文
+        context = AnalysisContext(
+            file_path=file_path,
+            language=lang,
+        )
+        # 将源码放入 extras，方便行级/混合规则使用
+        context.extras["source"] = code
+
+        # 2. before_file 钩子
+        for rule in self.rules:
+            rule.before_file(context)
+
+        # 3. 解析 Tree-sitter AST（如果可用）
+        if self._parser:
+            try:
+                tree = self._parser.parse(bytes(code, "utf8"))
+                root = tree.root_node
+
+                # 3.1 先运行 TaintAnalyzer 构建污点图（2.1 统一污点系统），规则层通过 context.taint_graph 查询
+                try:
+                    from ..taint import TaintAnalyzer
+                    taint_analyzer = TaintAnalyzer(language=lang)
+                    taint_analyzer.analyze_tree(root, str(file_path), code)
+                    context.taint_graph = taint_analyzer.get_graph()
+                    # 阶段二污点统一：JS/TS 仅用 taint_graph，不回退到 DataFlowTracker
+                    context.dataflow_tracker = None
+                except Exception:
+                    context.taint_graph = None
+
+                # 4. 统一遍历 AST 节点
+                self._traverse_tree(root, context)
+            except Exception:
+                # AST 解析失败时，规则仍然可以工作（例如行级规则）
+                pass
+
+        # 5. after_file 钩子（适合行级规则或需要全局视角的规则）
+        for rule in self.rules:
+            rule.after_file(context)
+
+        return context.findings
+
+    def _traverse_tree(self, node: Node, context: AnalysisContext) -> None:
+        """
+        递归遍历 Tree-sitter AST 节点，调用各个规则的 visit。
+
+        Args:
+            node: Tree-sitter Node
+            context: AnalysisContext
+        """
+        # 跳过函数定义（规则内部会处理函数调用）
+        if node.type == "function_declaration":
+            # 只递归遍历子节点
+            for child in node.children:
+                self._traverse_tree(child, context)
+            return
+
+        # 对当前节点调用所有规则的 visit
+        for rule in self.rules:
+            rule.visit(node, context)
+
+        # 递归遍历子节点
+        for child in node.children:
+            self._traverse_tree(child, context)
+
+
+__all__ = ["JavaScriptAnalyzer"]
+

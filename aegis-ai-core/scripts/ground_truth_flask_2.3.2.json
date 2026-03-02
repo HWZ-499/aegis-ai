@@ -1,0 +1,29 @@
+[
+  {
+    "file": "sessions.py",
+    "line": 134,
+    "type": "HARDCODED_SECRET",
+    "cve": "CVE-2023-30861",
+    "severity": "High",
+    "is_true_positive": true,
+    "comment": "CVE-2023-30861: Flask 2.3.2 在 SECRET_KEY 未设置时 session cookie 以明文传输，攻击者可伪造 session。修复版本 2.3.3 强制要求 SECRET_KEY。本工具检测能力为 HARDCODED_SECRET（直接硬编码密钥），与该 CVE 的未设置密钥场景不同，属于覆盖空白。"
+  },
+  {
+    "file": "cli.py",
+    "line": 963,
+    "type": "RCE_COMMAND_EXEC",
+    "severity": "Critical",
+    "is_true_positive": false,
+    "false_positive_reason": "Flask Shell REPL 加载 PYTHONSTARTUP 环境变量指向的受信任脚本，非用户可控输入。eval() 的参数来自本地文件系统文件，不存在远程代码注入风险。",
+    "comment": "误报：框架内部受控 eval 调用，输入来源为本地受信任文件而非网络请求。"
+  },
+  {
+    "file": "config.py",
+    "line": 187,
+    "type": "RCE_COMMAND_EXEC",
+    "severity": "Critical",
+    "is_true_positive": false,
+    "false_positive_reason": "Flask from_pyfile() 动态加载配置文件。exec() 的参数来自开发者控制的配置文件路径，filename 由调用方传入且不来自 HTTP 请求上下文。",
+    "comment": "误报：框架设计上的合法 exec 用法，需要上下文感知（source tracking）才能区分。这正是污点分析 Source→Sink 追踪能力的改进方向。"
+  }
+]
