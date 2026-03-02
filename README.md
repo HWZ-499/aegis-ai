@@ -103,37 +103,65 @@ for f in findings:
 
 ---
 
-## 工作原理
+## 整体架构
 
+```mermaid
+graph TD
+    subgraph ide [IDE 层 - TypeScript]
+        A["VSCode/Cursor 扩展\nextension.ts"]
+        B["Status Bar\n$(shield) 就绪 / $(error) N个问题"]
+        C["Code Action\n灯泡修复按钮"]
+    end
+
+    subgraph engine [核心引擎层 - Python]
+        D["LSP Server\nserver.py / pygls"]
+        E["Rule Engine\nrule_engine.py"]
+        F["TaintAnalyzer\n污点分析 + Dominator Tree"]
+        G["AST Rules\nSQL/XSS/RCE/NoSQL/PHP 等"]
+        H["AI Analyzer\nai_analyzer.py"]
+    end
+
+    subgraph ai [AI 修复层]
+        I["rich context 提取\n函数签名 + import + 框架 + 变量"]
+        J["框架感知 Prompt\nmysql2 / mongoose / sqlalchemy 等"]
+        K["DeepSeek API"]
+    end
+
+    A -- "LSP stdio" --> D
+    D --> E
+    E --> F
+    E --> G
+    F --> G
+    G -- "Diagnostics" --> D
+    D -- "波浪线诊断" --> A
+    D --> B
+    C -- "codeAction 请求" --> D
+    D --> H
+    H --> I
+    I --> J
+    J --> K
+    K -- "fixed_code + confidence" --> D
 ```
-IDE 打开/保存文件
-        │
-        ▼
-VSCode 扩展 (extension.ts)
-  LSP LanguageClient
-        │  stdio
-        ▼
-Python LSP Server (server.py)
-  scan_document()
-        │
-        ▼
-Rule Engine (rule_engine.py)
-  TaintAnalyzer + AST Rules
-        │
-        ▼
-发布 Diagnostics → IDE 显示波浪线
 
-用户点击灯泡 → Code Action
-        │
-        ▼
-AI Analyzer (ai_analyzer.py)
-  _extract_rich_context()   ← 提取 import / 函数签名 / 框架 / 变量
-  _build_analysis_prompt()  ← 框架感知 prompt
-  DeepSeek API
-        │
-        ▼
-confidence >= 0.75 → replaceRange（直接替换漏洞行）
-confidence < 0.75  → 插入注释（修复参考）
+## 扫描工作流
+
+```mermaid
+flowchart LR
+    Save["保存文件"] --> LSP["LSP Server\nscan_document()"]
+    LSP --> Parse["Tree-sitter\nAST 解析"]
+    Parse --> Taint["TaintAnalyzer\n污点追踪 + Guard Clause 净化"]
+    Taint --> Rules["漏洞规则匹配\nSQL / NoSQL / XSS / RCE..."]
+    Rules --> Diag["发布 Diagnostics\nIDE 波浪线 + Status Bar 更新"]
+
+    Diag --> UserAction["用户点击灯泡"]
+    UserAction --> CA["Code Action 请求"]
+    CA --> RichCtx["_extract_rich_context()\n提取函数签名 / import / 框架 / 近域变量"]
+    RichCtx --> Prompt["_build_analysis_prompt()\n框架感知 Prompt 构建"]
+    Prompt --> LLM["DeepSeek API 调用"]
+
+    LLM --> Conf{"confidence >= 0.75?"}
+    Conf -- "是" --> Replace["WorkspaceEdit\nreplaceRange 直接替换漏洞行"]
+    Conf -- "否" --> Comment["插入注释块\n修复建议参考"]
 ```
 
 ---
