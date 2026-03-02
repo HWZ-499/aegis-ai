@@ -27,10 +27,11 @@ aegis-ai-core/src/.aegis-cache/
 .DS_Store
 Thumbs.db
 
-# IDE
+# IDE / Cursor 本地配置（不进版本控制）
 .idea/
 *.swp
 .cursor/
+.cursorrules
 
 # 测试靶场（本地副本，不进版本控制）
 DVWA/
