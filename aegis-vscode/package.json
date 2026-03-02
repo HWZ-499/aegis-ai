@@ -1,29 +1,45 @@
 {
   "name": "aegis-ai-security",
   "displayName": "Aegis AI Security Scanner",
-  "description": "Real-time SAST security scanning powered by Aegis AI — highlights vulnerabilities as you code.",
-  "version": "0.1.2",
+  "description": "Real-time SAST security scanner — detects SQL injection, NoSQL injection, XSS, RCE, path traversal and more as you type. Powered by Tree-sitter AST analysis + DeepSeek AI auto-fix.",
+  "version": "0.2.0",
   "publisher": "aegis-ai",
   "license": "MIT",
+  "preview": true,
   "repository": {
     "type": "git",
     "url": "https://github.com/aegis-ai/aegis-ai.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aegis-ai/aegis-ai/issues"
+  },
+  "homepage": "https://github.com/aegis-ai/aegis-ai#readme",
+  "galleryBanner": {
+    "color": "#1e1e2e",
+    "theme": "dark"
   },
   "engines": {
     "vscode": "^1.75.0"
   },
   "categories": [
     "Linters",
-    "Programming Languages"
+    "Programming Languages",
+    "Other"
   ],
   "keywords": [
     "security",
     "SAST",
     "vulnerability",
+    "static analysis",
     "javascript",
     "typescript",
     "python",
-    "php"
+    "php",
+    "nosql injection",
+    "sql injection",
+    "xss",
+    "rce",
+    "owasp"
   ],
   "activationEvents": [
     "*",

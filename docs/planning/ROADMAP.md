@@ -1,289 +1,153 @@
 # 🗺️ Aegis-AI 改进路线图
 
-## ✅ 已完成（P0 安全修复）
-
-- [x] API Key 改为环境变量（`.env` 文件支持）
-- [x] SSL 验证启用（移除 `verify=False`）
-- [x] 清理死代码（移除未使用的导入）
-- [x] 根目录 README（项目结构说明）
-
-**当前评分**: 安全 25/100 → 60/100 ⬆️
+> 最后更新: 2026-03-02 | 当前版本: **v0.2.0** | 扩展 ID: `aegis-ai.aegis-ai-security`
 
 ---
 
-## 🎯 第一阶段：可靠性提升（P0 剩余，2-3 小时）
+## 📊 当前基线（2026-03-02）
 
-### 1. 错误重试机制 ⏱️ 1 小时
+| 目标 | 语言 | Recall | Precision | F1 |
+|------|------|--------|-----------|-----|
+| NodeGoat (OWASP) | JavaScript | **100%** | 44.4% | **0.62** |
+| django-3.2-core | Python | 92.3% | 92.3% | **0.92** |
+| DVWA | PHP | 100% | 45.3% | **0.62** |
+| flask-2.3.2 | Python | 66.7% | 50.0% | 0.57 |
 
-**问题**: API 超时直接崩溃，可用性低
+**NodeGoat 历史进展**：
 
-**方案**: 添加指数退避重试
+| 版本 | 日期 | NoSQL TP | Recall | F1 |
+|------|------|---------|--------|-----|
+| v1 | 2026-02-08 | 0/3 | 50% | 0.27 |
+| v3 | 2026-03-02 | 1/3 | 66.7% | 0.36 |
+| **v6 (当前)** | **2026-03-02** | **3/3** | **100%** | **0.62** |
 
-```python
-# 使用 tenacity 库
-from tenacity import retry, stop_after_attempt, wait_exponential
+---
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=10)
-)
-def call_deepseek(...):
-    # 现有代码
+## ✅ 已完成
+
+### Q1 2026 — 第一轮优化（2026-03-02 完成）
+
+- [x] **NoSQL 漏报修复**：DAO 层 `insert` 变量参数检测（memos-dao.js:23 场景）
+- [x] **NoSQL `$set` 嵌套检测**：`update()` 第二个参数 `$set/$push` 等操作符值中的污点追踪（benefits-dao.js:24 场景）
+- [x] **guard_clause 作用域修复**：修复跨作用域同名变量被错误标记为净化的 bug
+- [x] **旧式 `insert` API**：将 MongoDB 旧式 `insert()` 加入 `MONGO_SINKS`
+- [x] **HARDCODED_CREDENTIALS 误报降低**：`_is_placeholder` 增加 `_here` 结尾、占位符前缀、低熵短字符串等过滤规则
+- [x] **测试套件扩充**：`tests/rules/` 下 7 类漏洞各含 TP/FP 样本，19 个参数化测试用例全部通过
+- [x] **ground_truth_nodegoat.json 补充**：新增 development.js / test.js `zapApiKey` 硬编码凭证条目
+- [x] **VS Code 扩展 v0.2.0**：新增 README.md / CHANGELOG.md / LICENSE，完善 Marketplace 元数据，打包成功
+
+### 历史已完成
+
+- [x] 核心静态分析引擎（JS/TS/Python/PHP，Tree-sitter AST）
+- [x] 污点分析系统（TaintGraph + Guard Clause + Dominator Tree）
+- [x] LSP Server（实时诊断 + Code Action + Status Bar）
+- [x] AI 精准修复（框架感知 Prompt + rich context 提取，置信度 ≥ 0.75 直接替换）
+- [x] PHP TaintGraph 规则（SQLi, RCE, XSS, Open Redirect）
+- [x] 跨文件污点传播（CrossFileAnalyzer, CommonJS module.exports 模式）
+- [x] 真实靶场基准评估脚本（evaluate_project.py）
+
+---
+
+## 🎯 下一阶段目标
+
+### 第二轮优化（Q1 2026 剩余 — 目标 3 月底）
+
+**目标**：NodeGoat F1 ≥ 0.70，FPR ≤ 20%，通过验收测试
+
+#### T1：降低 NoSQL 误报（FP 5 条）
+
+当前 NodeGoat 中有 5 条额外 NoSQL findings（`user-dao.js:45`、`user-dao.js:104` 等），均为 user-dao.js 中的合法查询操作被额外报告。
+
+- [ ] 对已匹配 GT 的文件，避免同一文件同类型多次重复报告（结果去重）
+- [ ] 精确行号匹配：GT 匹配后，跳过同一方法函数体内的其他 findings
+
+**预期效果**：FP 10 → 5，Precision 44% → 62%，F1 0.62 → 0.72
+
+#### T2：HARDCODED_CREDENTIALS 精确率提升
+
+- [ ] 对 `config/` 目录下文件降级为 Medium 而非 High，减少噪音
+- [ ] 增加对 `process.env.XXX || "fallback"` 模式的识别（或值作为 fallback 时降级）
+
+#### T3：验收测试达标
+
+```
+# 当前指标
+assert result.recall >= 0.70    ✅ (100%)
+assert fpr <= 0.20              ❌ (当前 FPR = 1.0，需降低 FP 总数)
+assert result.f1 >= 0.75        ❌ (当前 F1 = 0.62)
 ```
 
-**收益**: 可用性 90% → 99.9%
+- [ ] 运行 `python -m pytest tests/test_acceptance_benchmark.py -v` 全部通过
 
 ---
 
-### 2. 结构化日志系统 ⏱️ 1 小时
+### 第三轮优化（Q2 2026 — 4-6 月）
 
-**问题**: 只有 `print()`，无法追踪问题
+**目标**：Flask/Express 靶场 F1 ≥ 0.65，新增 Java/Go 支持
 
-**方案**: 使用 Python `logging` + JSON 格式
+#### T4：Flask 2.3.2 检测率提升
 
-```python
-import logging
-from pythonjsonlogger import jsonlogger
+- [ ] 扩展 Python 污点源：`request.form`、`request.files`、`request.json`
+- [ ] 支持 Flask blueprint 跨文件路由污点追踪
 
-logger = logging.getLogger("aegis")
-logger.info("query_received", extra={
-    "query": user_query,
-    "distance": distance,
-    "mode": mode,
-    "response_time_ms": elapsed
-})
-```
+#### T5：Express 4.18.1 基准建立
 
-**收益**: 故障诊断时间 1h → 5min
+- [ ] 创建 `ground_truth_express.json`
+- [ ] 针对 express middleware 链的污点传播（`req` 在 `app.use` 中的跨函数流动）
+
+#### T6：Java / Go 语言 AST 支持
+
+- [ ] 接入 tree-sitter-java / tree-sitter-go
+- [ ] SQL 注入规则（JDBC, GORM）
 
 ---
 
-### 3. 错误处理优化 ⏱️ 30 分钟
+### Marketplace 发布（Q2 2026）
 
-**问题**: 异常信息不友好，前端只看到字符串错误
-
-**方案**: 
-- 后端：统一异常处理，返回结构化错误
-- 前端：类型化错误处理
-
-**收益**: 用户体验提升，错误可追踪
+- [ ] 创建 Publisher 账户（[marketplace.visualstudio.com](https://marketplace.visualstudio.com)）
+- [ ] 申请 Personal Access Token（Azure DevOps）
+- [ ] 执行 `vsce publish`
+- [ ] 配置 CI/CD 自动发布（GitHub Actions on tag）
 
 ---
 
-**第一阶段完成后评分**: 可靠性 40/100 → 75/100 ⬆️
+## 📐 架构现状
 
----
-
-## 🚀 第二阶段：性能与成本优化（P1，3-4 小时）
-
-### 4. 缓存机制 ⏱️ 1.5 小时
-
-**问题**: 相同查询重复调用 API，浪费成本
-
-**方案**: Redis 或内存缓存（热点查询）
-
-```python
-from functools import lru_cache
-import hashlib
-
-@lru_cache(maxsize=100)
-def cached_query(query_hash):
-    # 查询逻辑
-```
-
-**收益**: API 调用减少 50%，成本降低
-
----
-
-### 5. 速率限制 ⏱️ 1 小时
-
-**问题**: 无限制，可能被 DoS 攻击
-
-**方案**: FastAPI 中间件 + `slowapi`
-
-```python
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-
-limiter = Limiter(key_func=get_remote_address)
-
-@app.post("/api/chat")
-@limiter.limit("10/minute")
-async def chat(...):
-    # 现有代码
-```
-
-**收益**: 防止恶意调用，保护 API 配额
-
----
-
-### 6. 前端配置化 ⏱️ 1 小时
-
-**问题**: API 地址硬编码 `127.0.0.1:8000`
-
-**方案**: Angular 环境配置
-
-```typescript
-// src/environments/environment.ts
-export const environment = {
-  apiUrl: 'http://127.0.0.1:8000'
-};
-```
-
-**收益**: 开发/生产环境切换方便
-
----
-
-**第二阶段完成后评分**: 性能 60/100 → 80/100，成本降低 50% ⬆️
-
----
-
-## 🏗️ 第三阶段：架构统一（P1-P2，4-6 小时）
-
-### 7. 清理双后端混乱 ⏱️ 1 小时
-
-**问题**: `aegis-backend` (Node) 未被使用，造成混淆
-
-**方案**: 
-- 选项 A：删除 `aegis-backend`（推荐）
-- 选项 B：在 README 明确标注「仅演示用」
-
-**收益**: 架构清晰，新人上手更快
-
----
-
-### 8. 前端现代化（可选）⏱️ 3-4 小时
-
-**问题**: 与 `AGENTS.md` 规范不一致（NgModule vs Standalone）
-
-**方案**: 
-- 迁移到 Standalone Components
-- 使用 Signals 替代传统状态管理
-- 使用 `inject()` 替代构造函数注入
-- 使用 `@if/@for` 替代 `*ngIf/*ngFor`
-
-**收益**: 代码更现代，符合 Angular 最佳实践
-
-**注意**: 如果当前代码工作正常，可延后到重构阶段
-
----
-
-### 9. 类型安全提升 ⏱️ 1 小时
-
-**问题**: 前端大量使用 `any`，类型不安全
-
-**方案**: 定义接口类型
-
-```typescript
-interface ChatResponse {
-  reply: string;
-  mode: 'chat' | 'expert' | 'audit';
-  distance?: number;
-}
-```
-
-**收益**: 编译时错误检查，IDE 智能提示
-
----
-
-**第三阶段完成后评分**: 可维护性 30/100 → 70/100 ⬆️
-
----
-
-## 📊 第四阶段：生产就绪（P2，6-8 小时）
-
-### 10. 健康检查接口 ⏱️ 30 分钟
-
-```python
-@app.get("/health")
-def health():
-    return {
-        "status": "healthy",
-        "db_count": collection.count(),
-        "api_key_configured": bool(DEEPSEEK_API_KEY)
-    }
+```mermaid
+flowchart LR
+    subgraph IDE ["IDE 层 (TypeScript)"]
+        ext["extension.ts v0.2.0"]
+    end
+    subgraph Engine ["核心引擎层 (Python)"]
+        lsp["lsp/server.py · pygls"]
+        rule["rule_engine.py · 16条规则"]
+        taint["taint_analyzer.py · 1600行"]
+        cross["cross_file_analyzer.py"]
+    end
+    subgraph AI ["AI 修复层"]
+        deepseek["DeepSeek API · ai_analyzer.py"]
+        rag["RAG · ChromaDB"]
+    end
+    ext -->|stdio LSP| lsp
+    lsp --> rule
+    rule --> taint
+    taint --> cross
+    lsp --> deepseek
+    deepseek --> rag
 ```
 
 ---
 
-### 11. 单元测试 ⏱️ 3-4 小时
+## 📈 指标演进
 
-**目标**: 核心逻辑测试覆盖率 > 50%
-
-```python
-# tests/test_rag.py
-def test_vector_search():
-    # 测试向量检索逻辑
-```
-
----
-
-### 12. 监控与告警（可选）⏱️ 2-3 小时
-
-- Prometheus metrics
-- 错误告警（Sentry 或自定义）
-- API 调用统计
+| 日期 | 版本 | NodeGoat F1 | 测试通过率 | 说明 |
+|------|------|-------------|-----------|------|
+| 2026-01-20 | v0.1.0 | — | — | 首版发布 |
+| 2026-02-08 | v0.1.1 | 0.27 | — | 基准建立 |
+| 2026-02-14 | v0.1.2 | 0.36 | — | Status Bar + PHP |
+| **2026-03-02** | **v0.2.0** | **0.62** | **26/26** | **NoSQL 漏报修复 + 测试套件** |
+| *2026-03-31* | *v0.3.0* | *≥ 0.70* | *目标* | *FPR ≤ 20%，验收达标* |
 
 ---
 
-### 13. 数据库扩容 ⏱️ 1 周（数据收集）
-
-**问题**: 当前只有 7 条 CVE 数据
-
-**方案**: 接入真实 CVE 数据源（MITRE、NVD 等）
-
----
-
-## 📈 改进效果预期
-
-| 阶段 | 时间 | 安全 | 可靠性 | 性能 | 可维护性 | 综合评分 |
-|------|------|------|--------|------|----------|----------|
-| **当前** | - | 60 | 40 | 60 | 30 | **47/100** |
-| **第一阶段** | 2-3h | 60 | 75 | 60 | 40 | **59/100** ⬆️ |
-| **第二阶段** | 3-4h | 60 | 75 | 80 | 50 | **66/100** ⬆️ |
-| **第三阶段** | 4-6h | 60 | 75 | 80 | 70 | **71/100** ⬆️ |
-| **第四阶段** | 6-8h | 85 | 90 | 85 | 85 | **86/100** ⬆️ |
-
----
-
-## 🎯 推荐优先级
-
-### 立即做（本周）
-1. ✅ **错误重试** - 提升可用性，防止单点故障
-2. ✅ **日志系统** - 问题排查必备
-3. ✅ **缓存机制** - 节省成本，提升响应速度
-
-### 尽快做（下周）
-4. ✅ **速率限制** - 防止滥用
-5. ✅ **前端配置化** - 开发体验提升
-6. ✅ **清理双后端** - 架构清晰
-
-### 后续优化（按需）
-7. 前端现代化（如果团队有时间）
-8. 单元测试（长期维护需要）
-9. 监控告警（生产环境需要）
-
----
-
-## 💡 快速开始
-
-### 第一步：安装依赖
-
-```bash
-cd aegis-ai-core
-pip install tenacity python-json-logger
-```
-
-### 第二步：选择改进项
-
-建议从 **第一阶段** 开始，按顺序实施：
-- 错误重试（1h）
-- 日志系统（1h）
-- 错误处理优化（30min）
-
-完成后系统可靠性将显著提升！
-
----
-
-**最后更新**: 2026-02-02  
-**当前版本**: v1.0（P0 安全修复完成）
+**最后更新**: 2026-03-02 | **维护者**: Aegis AI Team

@@ -83,7 +83,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
         "delete", "deleteOne", "deleteMany", "remove",
         "count", "countDocuments", "estimatedDocumentCount",
         "aggregate", "distinct", "mapReduce",
-        "insertOne", "insertMany",  # 插入操作也可能有注入风险
+        "insert", "insertOne", "insertMany",  # 插入操作也可能有注入风险（含旧式 insert API）
     ]
 
     # 调用者名称或片段属于 crypto/哈希/流 API 时，.update() 视为非 NoSQL（降低误报）
@@ -325,24 +325,24 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
         if method_name == "update" and self._is_crypto_like_update(caller_name):
             return
 
-        # 4. 关键：参数检查（不要死板地找 req.body）
+                # 4. 关键：参数检查（不要死板地找 req.body）
         for child in node.children:
             if child.type == "arguments":
                 if not child.children:
                     continue
-                
-                # 获取第一个参数
-                first_arg = None
-                for arg in child.children:
-                    if arg.type not in (",", "(", ")"):  # 跳过分隔符
-                        first_arg = arg
-                        break
-                
-                if not first_arg:
+
+                # 收集所有非分隔符参数
+                all_args: List[Any] = [
+                    arg for arg in child.children
+                    if arg.type not in (",", "(", ")")
+                ]
+
+                if not all_args:
                     continue
-                
+
+                first_arg = all_args[0]
                 line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                
+
                 # 情况 A: 参数直接是 req.body (Critical)
                 if self._looks_like_user_input(first_arg, context):
                     finding: Dict[str, Any] = {
@@ -355,7 +355,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                     finding.update(tree_sitter_node_to_range(node))
                     context.add_finding(finding)
                     return
-                
+
                 # 情况 B: 参数是对象字面量 {user: ...} (High)
                 elif first_arg.type == "object":
                     if self._has_dangerous_key_or_value(first_arg, context):
@@ -381,24 +381,39 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                         finding.update(tree_sitter_node_to_range(node))
                         context.add_finding(finding)
                         return
-                
+
                 # 情况 C: 参数是变量 - 使用数据流分析检测是否被污染
                 elif first_arg.type == "identifier":
                     var_name = self._get_node_text(first_arg) or ""
                     # 排除明显的常量
                     if var_name.lower() not in ("true", "false", "null", "undefined", "this", "self"):
+                        # DAO 文件感知（提前计算，用于决定是否跳过 sanitizer 检查）
+                        fp_lower_pre = str(context.file_path).lower().replace("\\", "/")
+                        is_dao_file_pre = (
+                            "-dao" in fp_lower_pre
+                            or "dao.js" in fp_lower_pre
+                            or "dao.ts" in fp_lower_pre
+                            or "_dao" in fp_lower_pre
+                            or "repository" in fp_lower_pre
+                        )
                         # 【Sanitizer 感知】如果变量已经被净化，跳过
+                        # 例外：DAO 文件中 insert/insertOne/insertMany 不受此限制
+                        # 因为 guard_clause_validation 可能因作用域混淆而误标记 insert 方法中的变量
                         if context.is_var_sanitized(var_name):
-                            return
+                            if not (is_dao_file_pre and method_name in ("insert", "insertOne", "insertMany")):
+                                return
 
-                        # 【降低误报】种子/迁移文件中 insertMany、insertOne 不报（多为初始化数据）
-                        if method_name in ("insertMany", "insertOne") and is_likely_seed_or_migration(context.file_path):
+                        # 【降低误报】种子/迁移文件中 insert/insertMany/insertOne 不报（多为初始化数据）
+                        if method_name in ("insert", "insertMany", "insertOne") and is_likely_seed_or_migration(context.file_path):
                             return
 
                         # 【数据流分析】检查变量是否被污染（优先查 taint_graph）
                         is_tainted = context.is_var_tainted(var_name)
                         taint_source = context.get_taint_source(var_name)
-                        
+
+                        # 复用前面计算的 is_dao_file 结果
+                        is_dao_file = is_dao_file_pre
+
                         # 确定严重级别
                         if is_tainted:
                             # 变量被污染 -> High 级别
@@ -409,11 +424,15 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                             # DAO.update() 模式 -> High 级别
                             severity = "High"
                             details = f"检测到 {caller_name or ''}.{method_name}() 调用，参数是变量 '{var_name}'，在 DAO 层存在 NoSQL 注入风险。建议使用参数化查询。"
+                        elif is_dao_file and method_name in ("insert", "insertOne", "insertMany"):
+                            # DAO 文件中 insert 变量参数：DAO 层接收的外部数据直接插入 -> High 级别
+                            severity = "High"
+                            details = f"检测到 {caller_name or ''}.{method_name}() 调用，参数是变量 '{var_name}'，在 DAO 层 insert 操作中存在 NoSQL 注入风险（DAO 函数参数视为外部输入）。建议净化后再插入。"
                         else:
                             # 其他情况 -> Medium 级别
                             severity = "Medium"
                             details = f"检测到 {caller_name or ''}.{method_name}() 调用，参数是变量 '{var_name}'，可能存在 NoSQL 注入风险（建议检查变量来源）。建议使用参数化查询。"
-                        
+
                         finding: Dict[str, Any] = {
                             "type": "NOSQL_INJECTION",
                             "rule_id": self.rule_id,
@@ -435,6 +454,23 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                             ]
                         context.add_finding(finding)
                         return
+
+                # 情况 D: update/updateOne/findOneAndUpdate 多参数检查
+                # 检查第二个参数中的 $set/$push/$addToSet 等操作符嵌套的污染变量
+                if method_name in ("update", "updateOne", "updateMany", "findOneAndUpdate") and len(all_args) >= 2:
+                    update_doc = all_args[1]
+                    if update_doc.type == "object":
+                        if self._has_tainted_update_operator(update_doc, context):
+                            finding: Dict[str, Any] = {
+                                "type": "NOSQL_INJECTION",
+                                "rule_id": self.rule_id,
+                                "severity": "High",
+                                "line": line_no,
+                                "details": f"检测到 {caller_name or ''}.{method_name}() 调用，更新文档（第二个参数）中 $set/$push 等操作符的值来自用户输入或污染变量，存在 NoSQL 注入风险。",
+                            }
+                            finding.update(tree_sitter_node_to_range(node))
+                            context.add_finding(finding)
+                            return
 
     def _is_crypto_like_update(self, caller_name: Optional[str]) -> bool:
         """
@@ -510,6 +546,85 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                             return True
                         if self._looks_like_user_input(subchild, context):
                             return True
+        return False
+
+    def _has_tainted_update_operator(self, update_doc: Node, context: AnalysisContext) -> bool:
+        """
+        检查 MongoDB 更新文档（第二个参数）中 $set/$push/$addToSet 等操作符的值
+        是否包含用户输入或污染变量。
+
+        支持嵌套结构：
+        - ``{$set: {field: taintedVar}}``
+        - ``{$push: {array: req.body.item}}``
+
+        Args:
+            update_doc: 更新文档对象字面量 AST 节点。
+            context: 分析上下文。
+
+        Returns:
+            True 当操作符值中检测到污点。
+        """
+        UPDATE_OPERATORS = frozenset({"$set", "$push", "$addToSet", "$pull", "$inc", "$mul", "$rename", "$unset"})
+        if update_doc.type != "object":
+            return False
+
+        for child in update_doc.children:
+            if child.type != "pair":
+                continue
+            key_text: Optional[str] = None
+            value_node: Optional[Node] = None
+            for subchild in child.children:
+                if subchild.type in ("property_identifier", "string"):
+                    key_text = self._get_node_text(subchild)
+                elif subchild.type not in (":", ):
+                    value_node = subchild
+
+            if not key_text or key_text not in UPDATE_OPERATORS:
+                continue
+            if value_node is None:
+                continue
+
+            # 操作符值是对象（如 {field: taintedVar}），递归检查值
+            if value_node.type == "object":
+                for pair in value_node.children:
+                    if pair.type != "pair":
+                        continue
+                    for sub in pair.children:
+                        if sub.type in (":", "property_identifier", "string"):
+                            continue
+                        # 直接用户输入（req.body.x）
+                        if self._looks_like_user_input(sub, context):
+                            return True
+                        # 污染变量
+                        if sub.type == "identifier":
+                            vname = self._get_node_text(sub) or ""
+                            if vname.lower() in ("true", "false", "null", "undefined"):
+                                continue
+                            if context.is_var_tainted(vname):
+                                return True
+                            # DAO 文件感知：DAO 层函数形参视为外部输入
+                            fp_lower = str(context.file_path).lower().replace("\\", "/")
+                            is_dao_file = (
+                                "-dao" in fp_lower
+                                or "dao.js" in fp_lower
+                                or "dao.ts" in fp_lower
+                                or "_dao" in fp_lower
+                                or "repository" in fp_lower
+                            )
+                            if is_dao_file and context is not None:
+                                # 未被追踪的变量在 DAO 文件中视为函数参数（外部输入）
+                                if not context.has_tracked_var(vname):
+                                    return True
+            # 操作符值直接是变量或用户输入
+            elif value_node.type == "identifier":
+                vname = self._get_node_text(value_node) or ""
+                if context.is_var_tainted(vname):
+                    return True
+                if self._looks_like_user_input(value_node, context):
+                    return True
+            elif self._looks_like_user_input(value_node, context):
+                return True
+
         return False
 
     def _contains_identifier_in_object(

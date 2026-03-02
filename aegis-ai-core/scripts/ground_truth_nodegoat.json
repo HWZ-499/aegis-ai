@@ -40,5 +40,19 @@
     "type": "NOSQL_INJECTION",
     "is_true_positive": true,
     "comment": "A1 NoSQL: app/data/benefits-dao.js L24 usersCol.update({_id: parseInt(userId)}, {$set: {benefitStartDate: startDate}})，startDate 直接来自 req.body.benefitStartDate，可被操纵。原 GT 错误指向路由层 benefits.js L39（那是 DAO 调用点）。"
+  },
+  {
+    "file": "development.js",
+    "line": 6,
+    "type": "HARDCODED_CREDENTIALS",
+    "is_true_positive": true,
+    "comment": "A6 Sensitive Data: config/env/development.js L6 zapApiKey 硬编码为真实 API Key 'v9dn0balpqas1pcc281tn5ood1'，应使用环境变量。"
+  },
+  {
+    "file": "test.js",
+    "line": 6,
+    "type": "HARDCODED_CREDENTIALS",
+    "is_true_positive": true,
+    "comment": "A6 Sensitive Data: config/env/test.js L6 zapApiKey 硬编码（同 development.js），测试环境同样不应硬编码凭证。"
   }
 ]
