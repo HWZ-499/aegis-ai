@@ -1,0 +1,111 @@
+# GitHub Actions 工作流：安全扫描
+name: Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # 每天凌晨 2 点运行一次
+    - cron: '0 2 * * *'
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # 需要完整历史记录用于增量扫描
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          cd aegis-ai-core
+          pip install -r requirements.txt
+      
+      # M3：检测质量门禁（Recall ≥ 70%、FPR ≤ 20%、F1 ≥ 0.75）
+      - name: M3 基准验收
+        run: |
+          cd aegis-ai-core
+          python -m pytest tests/test_acceptance_benchmark.py -v
+      
+      # M3：生成基准报告并上传，便于趋势对比
+      - name: 生成基准报告
+        run: |
+          cd aegis-ai-core
+          python scripts/run_benchmark_report.py
+      
+      - name: 上传基准报告 (JSON)
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-report
+          path: aegis-ai-core/reports/benchmark_report_*.json
+          retention-days: 90
+      
+      - name: Run Aegis Security Scan
+        id: scan
+        run: |
+          cd aegis-ai-core
+          python -m src.scanner.cli . --format sarif --output results.sarif --verbose
+        continue-on-error: true  # 即使发现问题也继续执行
+      
+      - name: Upload SARIF results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: aegis-ai-core/results.sarif
+      
+      - name: Generate HTML Report
+        if: always()
+        run: |
+          cd aegis-ai-core
+          python -m src.scanner.cli . --format html --output scan-report.html
+      
+      - name: Upload HTML Report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-scan-report
+          path: aegis-ai-core/scan-report.html
+          retention-days: 30
+      
+      - name: Comment PR with scan results
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            // 读取扫描结果
+            const reportPath = path.join('aegis-ai-core', 'results.sarif');
+            if (fs.existsSync(reportPath)) {
+              const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+              const results = report.runs[0]?.results || [];
+              
+              const critical = results.filter(r => r.level === 'error').length;
+              const warning = results.filter(r => r.level === 'warning').length;
+              
+              const comment = `## 🔍 安全扫描结果
+              
+              - 🔴 Critical: ${critical}
+              - 🟠 Warning: ${warning}
+              - 📊 总计: ${results.length} 个问题
+              
+              📄 [查看详细报告](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+              `;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            }

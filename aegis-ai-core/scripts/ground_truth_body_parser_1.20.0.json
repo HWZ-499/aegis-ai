@@ -1,0 +1,20 @@
+[
+  {
+    "file": "lib/types/json.js",
+    "line": 1,
+    "type": "DOS_RISK",
+    "cve": "CVE-2022-24434",
+    "severity": "High",
+    "is_true_positive": true,
+    "comment": "CVE-2022-24434: body-parser 1.20.0 multipart Content-Type 解析缺陷，畸形 boundary 导致 DoS。漏洞位于 multipart 解析逻辑（依赖 dicer 库），非 lib/types/ 直接代码。当前引擎无 DoS 检测规则，属检测覆盖空白（漏报）。"
+  },
+  {
+    "file": "lib/read.js",
+    "line": 1,
+    "type": "UNVALIDATED_INPUT",
+    "cve": "CVE-2014-6394",
+    "severity": "Medium",
+    "is_true_positive": true,
+    "comment": "CVE-2014-6394（历史漏洞，已修复）: 请求体长度未校验导致内存耗尽。当前 1.20.0 版本已修复。列入 ground_truth 作为漏报基准（引擎覆盖不足中间件层数据流）。"
+  }
+]

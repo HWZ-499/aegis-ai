@@ -1,0 +1,4 @@
+[
+  { "file": "*.js", "line": 1, "type": "NOSQL_INJECTION", "comment": "示例：任意 js 第 1 行 NoSQL" },
+  { "file": "login.js", "line": 15, "type": "SQL_INJECTION", "comment": "示例：login.js 第 15 行 SQL" }
+]

@@ -1,9 +1,43 @@
-# 忽略巨大的依赖包
+# 依赖和构建产物
 node_modules/
 dist/
+build/
 
-# ⚠️ 绝对不能上传的密钥文件
+# 环境变量（不得提交）
 .env
+.env.*
+!.env.example
 
-# 忽略系统生成的垃圾文件
+# Python 虚拟环境
+.venv/
+venv/
+env/
+
+# Python 字节码
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Aegis 运行时缓存（扫描 AST 缓存，不进版本控制）
+aegis-ai-core/src/.aegis-cache/
+.aegis-cache/
+
+# 系统文件
 .DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+.cursor/
+
+# 测试靶场（本地副本，不进版本控制）
+DVWA/
+
+# 基准测试报告（本地生成，体积较大）
+aegis-ai-core/reports/
+
+# 运行时缓存
+aegis-ai-core/.cache/
+*.cache

@@ -1,0 +1,44 @@
+[
+  {
+    "file": "user-dao.js",
+    "line": 91,
+    "type": "NOSQL_INJECTION",
+    "is_true_positive": true,
+    "comment": "A1 NoSQL: validateLogin 中 app/data/user-dao.js L91 findOne({ userName: userName })，userName 来自外部参数，可注入 $gt/$ne 绕过认证。注意：L98 是安全的 parseInt(userId) 查询，原 GT 行号有误。"
+  },
+  {
+    "file": "contributions.js",
+    "line": 32,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": true,
+    "comment": "A1 SSJS: app/routes/contributions.js L32 eval(req.body.preTax)，用户输入直接执行。原 GT 行号 35 有误（实际为 32）。"
+  },
+  {
+    "file": "contributions.js",
+    "line": 33,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": true,
+    "comment": "同上，eval(req.body.afterTax)，实际行 33（原 GT 写 36）。"
+  },
+  {
+    "file": "contributions.js",
+    "line": 34,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": true,
+    "comment": "同上，eval(req.body.roth)，实际行 34（原 GT 写 37）。"
+  },
+  {
+    "file": "memos-dao.js",
+    "line": 23,
+    "type": "NOSQL_INJECTION",
+    "is_true_positive": true,
+    "comment": "A1 NoSQL: app/data/memos-dao.js L23 memosCol.insert(memos)，其中 memo 字段直接来自 req.body.memo，未净化。原 GT 错误指向路由层 memos.js L16（那是 DAO 调用点，不是 MongoDB 操作）。"
+  },
+  {
+    "file": "benefits-dao.js",
+    "line": 24,
+    "type": "NOSQL_INJECTION",
+    "is_true_positive": true,
+    "comment": "A1 NoSQL: app/data/benefits-dao.js L24 usersCol.update({_id: parseInt(userId)}, {$set: {benefitStartDate: startDate}})，startDate 直接来自 req.body.benefitStartDate，可被操纵。原 GT 错误指向路由层 benefits.js L39（那是 DAO 调用点）。"
+  }
+]

@@ -1,0 +1,479 @@
+[
+  {
+    "_comment": "=== python_sqli.py ===",
+    "file": "python_sqli.py",
+    "line": 17,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "TP-1: 直接字符串拼接 execute"
+  },
+  {
+    "file": "python_sqli.py",
+    "line": 24,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "TP-2: % 格式化注入"
+  },
+  {
+    "file": "python_sqli.py",
+    "line": 31,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "TP-3: f-string 注入"
+  },
+  {
+    "file": "python_sqli.py",
+    "line": 40,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "TP-4: 多级变量传播"
+  },
+  {
+    "file": "python_sqli.py",
+    "line": 46,
+    "type": "SQL_INJECTION",
+    "is_true_positive": false,
+    "description": "TN-1: 参数化查询，不应检出"
+  },
+  {
+    "file": "python_sqli.py",
+    "line": 52,
+    "type": "SQL_INJECTION",
+    "is_true_positive": false,
+    "description": "TN-2: int() 净化，不应检出"
+  },
+  {
+    "file": "python_sqli.py",
+    "line": 67,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "PROP-1: 跨变量污点传播"
+  },
+  {
+    "file": "python_sqli.py",
+    "line": 76,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "PROP-2: 函数返回值传播"
+  },
+  {
+    "_comment": "=== python_xss.py ===",
+    "file": "python_xss.py",
+    "line": 14,
+    "type": "XSS_RISK",
+    "is_true_positive": true,
+    "description": "TP-1: HttpResponse 直接输出"
+  },
+  {
+    "file": "python_xss.py",
+    "line": 20,
+    "type": "XSS_RISK",
+    "is_true_positive": true,
+    "description": "TP-2: response.write 拼接"
+  },
+  {
+    "file": "python_xss.py",
+    "line": 27,
+    "type": "XSS_RISK",
+    "is_true_positive": true,
+    "description": "TP-3: f-string 输出"
+  },
+  {
+    "file": "python_xss.py",
+    "line": 33,
+    "type": "XSS_RISK",
+    "is_true_positive": false,
+    "description": "TN-1: html.escape 净化"
+  },
+  {
+    "file": "python_xss.py",
+    "line": 40,
+    "type": "XSS_RISK",
+    "is_true_positive": false,
+    "description": "TN-2: markupsafe escape 净化"
+  },
+  {
+    "file": "python_xss.py",
+    "line": 54,
+    "type": "XSS_RISK",
+    "is_true_positive": true,
+    "description": "PROP-1: 赋值传播后输出"
+  },
+  {
+    "file": "python_xss.py",
+    "line": 62,
+    "type": "XSS_RISK",
+    "is_true_positive": true,
+    "description": "PROP-2: 字典传播后输出"
+  },
+  {
+    "_comment": "=== python_rce.py ===",
+    "file": "python_rce.py",
+    "line": 13,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": true,
+    "description": "TP-1: os.system 直接注入"
+  },
+  {
+    "file": "python_rce.py",
+    "line": 20,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": true,
+    "description": "TP-2: subprocess.call shell=True"
+  },
+  {
+    "file": "python_rce.py",
+    "line": 27,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": true,
+    "description": "TP-3: eval() 用户输入"
+  },
+  {
+    "file": "python_rce.py",
+    "line": 33,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": false,
+    "description": "TN-1: shlex.quote 净化"
+  },
+  {
+    "file": "python_rce.py",
+    "line": 40,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": false,
+    "description": "TN-2: subprocess 列表模式无 shell"
+  },
+  {
+    "file": "python_rce.py",
+    "line": 57,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": true,
+    "description": "PROP-1: 变量传播后 os.system"
+  },
+  {
+    "file": "python_rce.py",
+    "line": 65,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": true,
+    "description": "PROP-2: exec(compile(...)) 传播"
+  },
+  {
+    "_comment": "=== python_path_traversal.py ===",
+    "file": "python_path_traversal.py",
+    "line": 14,
+    "type": "PATH_TRAVERSAL",
+    "is_true_positive": true,
+    "description": "TP-1: open() 路径拼接"
+  },
+  {
+    "file": "python_path_traversal.py",
+    "line": 21,
+    "type": "PATH_TRAVERSAL",
+    "is_true_positive": true,
+    "description": "TP-2: send_file() 用户路径"
+  },
+  {
+    "file": "python_path_traversal.py",
+    "line": 28,
+    "type": "PATH_TRAVERSAL",
+    "is_true_positive": true,
+    "description": "TP-3: os.path.join + open"
+  },
+  {
+    "file": "python_path_traversal.py",
+    "line": 36,
+    "type": "PATH_TRAVERSAL",
+    "is_true_positive": true,
+    "description": "TP-4: f-string send_file"
+  },
+  {
+    "file": "python_path_traversal.py",
+    "line": 42,
+    "type": "PATH_TRAVERSAL",
+    "is_true_positive": false,
+    "description": "TN-1: os.path.basename 净化"
+  },
+  {
+    "file": "python_path_traversal.py",
+    "line": 50,
+    "type": "PATH_TRAVERSAL",
+    "is_true_positive": false,
+    "description": "TN-2: Path.name 净化"
+  },
+  {
+    "file": "python_path_traversal.py",
+    "line": 66,
+    "type": "PATH_TRAVERSAL",
+    "is_true_positive": true,
+    "description": "PROP-1: 变量传播后 send_file"
+  },
+  {
+    "file": "python_path_traversal.py",
+    "line": 74,
+    "type": "PATH_TRAVERSAL",
+    "is_true_positive": true,
+    "description": "PROP-2: 赋值链传播后 open"
+  },
+  {
+    "_comment": "=== php_sqli.php ===",
+    "file": "php_sqli.php",
+    "line": 11,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "TP-1: mysql_query 直接拼接"
+  },
+  {
+    "file": "php_sqli.php",
+    "line": 17,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "TP-2: pdo->query 直接拼接"
+  },
+  {
+    "file": "php_sqli.php",
+    "line": 23,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "TP-3: db->execute 直接拼接"
+  },
+  {
+    "file": "php_sqli.php",
+    "line": 31,
+    "type": "SQL_INJECTION",
+    "is_true_positive": false,
+    "description": "TN-1: PDO prepare 参数化"
+  },
+  {
+    "file": "php_sqli.php",
+    "line": 37,
+    "type": "SQL_INJECTION",
+    "is_true_positive": false,
+    "description": "TN-2: intval 净化"
+  },
+  {
+    "file": "php_sqli.php",
+    "line": 48,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "PROP-1: 三跳变量传播"
+  },
+  {
+    "file": "php_sqli.php",
+    "line": 57,
+    "type": "SQL_INJECTION",
+    "is_true_positive": false,
+    "description": "PROP-2: is_numeric 条件守护"
+  },
+  {
+    "_comment": "=== php_xss.php ===",
+    "file": "php_xss.php",
+    "line": 10,
+    "type": "XSS_RISK",
+    "is_true_positive": true,
+    "description": "TP-1: echo GET 参数"
+  },
+  {
+    "file": "php_xss.php",
+    "line": 16,
+    "type": "XSS_RISK",
+    "is_true_positive": true,
+    "description": "TP-2: print POST 参数"
+  },
+  {
+    "file": "php_xss.php",
+    "line": 21,
+    "type": "XSS_RISK",
+    "is_true_positive": true,
+    "description": "TP-3: echo 超全局变量直接"
+  },
+  {
+    "file": "php_xss.php",
+    "line": 27,
+    "type": "XSS_RISK",
+    "is_true_positive": false,
+    "description": "TN-1: htmlspecialchars 净化"
+  },
+  {
+    "file": "php_xss.php",
+    "line": 33,
+    "type": "XSS_RISK",
+    "is_true_positive": false,
+    "description": "TN-2: htmlentities 净化"
+  },
+  {
+    "file": "php_xss.php",
+    "line": 46,
+    "type": "XSS_RISK",
+    "is_true_positive": true,
+    "description": "PROP-1: 赋值传播后 echo"
+  },
+  {
+    "file": "php_xss.php",
+    "line": 53,
+    "type": "XSS_RISK",
+    "is_true_positive": true,
+    "description": "PROP-2: 字符串拼接传播后 echo"
+  },
+  {
+    "_comment": "=== php_rce.php ===",
+    "file": "php_rce.php",
+    "line": 10,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": true,
+    "description": "TP-1: shell_exec GET 注入"
+  },
+  {
+    "file": "php_rce.php",
+    "line": 16,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": true,
+    "description": "TP-2: exec() POST 注入"
+  },
+  {
+    "file": "php_rce.php",
+    "line": 22,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": true,
+    "description": "TP-3: system() REQUEST 注入"
+  },
+  {
+    "file": "php_rce.php",
+    "line": 28,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": false,
+    "description": "TN-1: intval 净化"
+  },
+  {
+    "file": "php_rce.php",
+    "line": 34,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": false,
+    "description": "TN-2: is_numeric 条件守护"
+  },
+  {
+    "file": "php_rce.php",
+    "line": 43,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": false,
+    "description": "TN-3: stripslashes + is_numeric 守护（impossible 风格）"
+  },
+  {
+    "file": "php_rce.php",
+    "line": 51,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": true,
+    "description": "PROP-1: 变量传播后 shell_exec"
+  },
+  {
+    "file": "php_rce.php",
+    "line": 58,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": true,
+    "description": "PROP-2: passthru POST 注入"
+  },
+  {
+    "_comment": "=== js_express.js ===",
+    "file": "js_express.js",
+    "line": 15,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "TP-1: 内联箭头函数 req.query.id → db.query 拼接"
+  },
+  {
+    "file": "js_express.js",
+    "line": 22,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": true,
+    "description": "TP-2: 内联箭头函数 req.body.code → eval()"
+  },
+  {
+    "file": "js_express.js",
+    "line": 37,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "TP-4: 赋值式箭头函数 searchHandler → db.query 拼接"
+  },
+  {
+    "file": "js_express.js",
+    "line": 46,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "TP-5: req.body.username/password → db.query 拼接"
+  },
+  {
+    "file": "js_express.js",
+    "line": 53,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "TP-6: 解构赋值 { username, email } = req.body → db.query"
+  },
+  {
+    "file": "js_express.js",
+    "line": 60,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "TP-7: 模板字符串 req.params.id → db.query"
+  },
+  {
+    "file": "js_express.js",
+    "line": 68,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "TP-8: 多跳变量传播 req.query.sku → sku.trim() → db.query"
+  },
+  {
+    "file": "js_express.js",
+    "line": 75,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": true,
+    "description": "TP-9: 函数表达式 execHandler → child_process.exec"
+  },
+  {
+    "file": "js_express.js",
+    "line": 83,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "TP-10: req.params.id → db.query DELETE"
+  },
+  {
+    "file": "js_express.js",
+    "line": 87,
+    "type": "SQL_INJECTION",
+    "is_true_positive": false,
+    "description": "TN-1: parseInt 净化，不应检出 SQLi"
+  },
+  {
+    "file": "js_express.js",
+    "line": 94,
+    "type": "SQL_INJECTION",
+    "is_true_positive": false,
+    "description": "TN-2: 参数化查询 db.query('?', [id])，不应检出"
+  },
+  {
+    "file": "js_express.js",
+    "line": 105,
+    "type": "SQL_INJECTION",
+    "is_true_positive": false,
+    "description": "TN-3: 校验函数返回布尔值 isValid，不应误报为 tainted sink"
+  },
+  {
+    "file": "js_express.js",
+    "line": 122,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "PROP-1: 解构重命名 { username: user } = req.body → db.query"
+  },
+  {
+    "file": "js_express.js",
+    "line": 130,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "PROP-2: 具名函数 buildQuery + 内部变量传播 → db.query"
+  },
+  {
+    "file": "js_express.js",
+    "line": 139,
+    "type": "SQL_INJECTION",
+    "is_true_positive": true,
+    "description": "PROP-3: 箭头函数赋值 headerHandler + req.headers 传播 → db.query"
+  }
+]
