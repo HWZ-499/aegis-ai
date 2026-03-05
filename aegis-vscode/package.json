@@ -75,6 +75,45 @@
           "type": "string",
           "default": "",
           "description": "强制指定 LSP Server 工作目录（aegis-ai-core 的绝对路径）。留空则自动推断。若诊断不显示可尝试填写，如: C:\\Users\\xxx\\aegis-ai\\aegis-ai-core"
+        },
+        "aegisAI.severity.minimum": {
+          "type": "string",
+          "default": "Low",
+          "enum": ["Critical", "High", "Medium", "Low"],
+          "description": "Minimum severity level to display. Findings below this level are hidden."
+        },
+        "aegisAI.excludePatterns": {
+          "type": "array",
+          "default": ["**/node_modules/**", "**/dist/**", "**/.git/**", "**/vendor/**"],
+          "items": { "type": "string" },
+          "description": "Glob patterns for files/directories to exclude from scanning."
+        },
+        "aegisAI.disabledRules": {
+          "type": "array",
+          "default": [],
+          "items": { "type": "string" },
+          "description": "List of rule IDs to disable (e.g. [\"HARDCODED_CREDENTIALS\", \"SQL_INJECTION_REGEX\"])."
+        },
+        "aegisAI.ai.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable AI-powered fix suggestions (requires DEEPSEEK_API_KEY or OPENAI_API_KEY)."
+        },
+        "aegisAI.ai.provider": {
+          "type": "string",
+          "default": "deepseek",
+          "enum": ["deepseek", "openai"],
+          "description": "AI provider for fix suggestions."
+        },
+        "aegisAI.scanOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically scan files on save."
+        },
+        "aegisAI.scanOnChange": {
+          "type": "boolean",
+          "default": true,
+          "description": "Scan files on text change (with debounce). Disable for better performance on large files."
         }
       }
     }

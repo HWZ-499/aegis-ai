@@ -1,4 +1,10 @@
 # security_rules.py
+"""
+.. deprecated:: 1.2.0
+    此模块为旧版正则规则引擎，已被 ``rule_engine.py`` + ``rules/`` 目录取代。
+    新代码请使用 ``from src.analysis.rule_engine import get_default_rules_for_language``。
+    计划在 v1.5 中移除。
+"""
 import re
 import logging
 
