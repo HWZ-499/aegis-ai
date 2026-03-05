@@ -1,5 +1,10 @@
 # ast_analyzer.py - 基于语法树的静态分析引擎（扩展版）
 """
+.. deprecated:: 1.2.0
+    此模块为旧版 Python-only AST 引擎，已被 ``rule_engine.py`` 取代。
+    新代码请使用 ``from src.analysis.rule_engine import analyze_python``。
+    计划在 v1.5 中移除。
+
 扩展的 AST 规则引擎，能检测 10+ 种常见安全漏洞：
 1. 代码注入（eval, exec）
 2. 命令注入（os.system, subprocess）

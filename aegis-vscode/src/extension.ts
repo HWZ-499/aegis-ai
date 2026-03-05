@@ -224,6 +224,7 @@ export function activate(context: ExtensionContext): void {
 
   /**
    * 客户端配置：指定监听的文档类型，并将 LSP 日志输出到我们的通道。
+   * 通过 initializationOptions 将用户配置传递给 LSP Server。
    */
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
@@ -236,6 +237,15 @@ export function activate(context: ExtensionContext): void {
     ],
     outputChannel: outputChannel,
     revealOutputChannelOn: RevealOutputChannelOn.Error,
+    initializationOptions: {
+      severity_minimum: config.get<string>("severity.minimum", "Low"),
+      exclude_patterns: config.get<string[]>("excludePatterns", []),
+      disabled_rules: config.get<string[]>("disabledRules", []),
+      ai_enabled: config.get<boolean>("ai.enabled", true),
+      ai_provider: config.get<string>("ai.provider", "deepseek"),
+      scan_on_save: config.get<boolean>("scanOnSave", true),
+      scan_on_change: config.get<boolean>("scanOnChange", true),
+    },
     synchronize: {
       fileEvents: workspace.createFileSystemWatcher(
         "**/*.{js,jsx,ts,tsx,py,php,phtml}"

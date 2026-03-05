@@ -32,9 +32,8 @@ except ImportError:
     # 如果没有安装 python-dotenv，只使用系统环境变量
     pass
 
-import requests
+import httpx
 import chromadb
-import urllib3
 import logging
 import time
 import hashlib
@@ -50,65 +49,33 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+from src.core.config import get_settings
+from src.core.logging_config import setup_logging
 
 # =================================================================
-# 3. 📊 结构化日志系统
+# 3. 📊 结构化日志系统（统一初始化）
 # =================================================================
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+_settings = get_settings()
+setup_logging(level=_settings.log_level, json_format=_settings.log_json)
 logger = logging.getLogger("aegis")
 
-# 尝试使用 JSON 格式日志（如果安装了 python-json-logger）
-try:
-    from pythonjsonlogger import jsonlogger
-    logHandler = logging.StreamHandler()
-    formatter = jsonlogger.JsonFormatter(
-        '%(asctime)s %(name)s %(levelname)s %(message)s'
-    )
-    logHandler.setFormatter(formatter)
-    logger.addHandler(logHandler)
-    logger.setLevel(logging.INFO)
-except ImportError:
-    # 如果没有安装 python-json-logger，使用标准格式
-    logger.info("python-json-logger 未安装，使用标准日志格式。安装命令: pip install python-json-logger")
+# =================================================================
+# 4. 🔄 重试机制（内置于 call_deepseek 的 async 循环中）
+# =================================================================
 
 # =================================================================
-# 4. 🔄 错误重试机制
+# 🔑 从统一配置获取参数
 # =================================================================
-try:
-    from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-    RETRY_AVAILABLE = True
-except ImportError:
-    RETRY_AVAILABLE = False
-    logger.warning("tenacity 未安装，将使用简单重试机制。安装命令: pip install tenacity")
-
-# =================================================================
-# 🔑 配置区（API Key 必须通过环境变量或 .env 文件设置，禁止硬编码）
-# =================================================================
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-API_URL = os.getenv("DEEPSEEK_API_URL", "https://api.deepseek.com/chat/completions")
-
-# =================================================================
-# 4.5 💾 缓存 & 限流配置（第二阶段）
-# =================================================================
-# DeepSeek 响应缓存（减少重复调用，节省成本）
-DEEPSEEK_CACHE_TTL_SECONDS = int(os.getenv("DEEPSEEK_CACHE_TTL_SECONDS", "300"))
-DEEPSEEK_CACHE_MAX_ITEMS = int(os.getenv("DEEPSEEK_CACHE_MAX_ITEMS", "128"))
-
-# 简单限流（按 IP / 路由）
-RATE_LIMIT_CHAT_PER_MIN = int(os.getenv("RATE_LIMIT_CHAT_PER_MIN", "30"))
-RATE_LIMIT_AUDIT_PER_MIN = int(os.getenv("RATE_LIMIT_AUDIT_PER_MIN", "10"))
-
-# CORS origins（开发默认 *，生产建议配置具体域名）
-CORS_ALLOW_ORIGINS_RAW = os.getenv("CORS_ALLOW_ORIGINS", "*")
+DEEPSEEK_API_KEY = _settings.deepseek_api_key
+API_URL = _settings.deepseek_api_url
+DEEPSEEK_CACHE_TTL_SECONDS = _settings.cache_ttl_seconds
+DEEPSEEK_CACHE_MAX_ITEMS = _settings.cache_max_items
+RATE_LIMIT_CHAT_PER_MIN = _settings.rate_limit_chat_per_min
+RATE_LIMIT_AUDIT_PER_MIN = _settings.rate_limit_audit_per_min
 
 # 数据库连接
-print("🔌 [System] 正在挂载本地向量数据库...")
-client = chromadb.PersistentClient(path="./aegis_db")
+logger.info("正在挂载本地向量数据库: %s", _settings.db_path)
+client = chromadb.PersistentClient(path=str(_settings.db_path))
 collection = client.get_collection(name="cve_core")
 
 
@@ -134,7 +101,7 @@ class SimpleTTLCache:
         expires_at, value = item
         if expires_at <= now:
             # 过期
-            try:999
+            try:
                 del self._store[key]
             except KeyError:
                 pass
@@ -161,46 +128,58 @@ deepseek_cache = SimpleTTLCache(
 )
 
 # =================================================================
-# 🧠 AI 核心逻辑函数 (封装好的 DeepSeek 调用，带重试和日志)
+# 🧠 AI 核心逻辑函数 (httpx 异步调用，带重试和日志)
 # =================================================================
-def _call_deepseek_once(system_prompt: str, user_message: str) -> requests.Response:
-    """单次 API 调用（内部函数，用于重试）"""
-    with requests.Session() as session:
-        session.trust_env = False  # 强制直连，不走代理
-        resp = session.post(
-            API_URL,
-            json={
-                "model": "deepseek-chat",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message}
-                ],
-                "stream": False
-            },
-            headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}"},
-            timeout=120,
-            verify=valid_cert_path
-        )
-        resp.raise_for_status()  # 抛出 HTTP 错误
-        return resp
+_http_client: Optional[httpx.AsyncClient] = None
 
-def call_deepseek(system_prompt: str, user_message: str) -> str:
+
+def _get_http_client() -> httpx.AsyncClient:
+    """获取或创建全局 httpx 异步客户端。"""
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(120.0, connect=10.0),
+            verify=valid_cert_path,
+            follow_redirects=True,
+        )
+    return _http_client
+
+
+async def _call_deepseek_once(system_prompt: str, user_message: str) -> httpx.Response:
+    """单次异步 API 调用（内部函数，用于重试）。"""
+    client = _get_http_client()
+    resp = await client.post(
+        API_URL,
+        json={
+            "model": "deepseek-chat",
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            "stream": False,
+        },
+        headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}"},
+    )
+    resp.raise_for_status()
+    return resp
+
+
+async def call_deepseek(system_prompt: str, user_message: str) -> str:
     """
-    调用 DeepSeek 聊天接口（带重试机制和日志）。
-    
+    异步调用 DeepSeek 聊天接口（带重试机制和日志）。
+
     Args:
-        system_prompt: 系统提示词
-        user_message: 用户消息
-        
+        system_prompt: 系统提示词。
+        user_message: 用户消息。
+
     Returns:
-        AI 回复内容，或错误信息字符串
+        AI 回复内容，或错误信息字符串。
     """
     if not DEEPSEEK_API_KEY:
         error_msg = "未配置 DEEPSEEK_API_KEY，请在环境变量中设置"
         logger.error(error_msg)
         return f"❌ {error_msg}"
-    
-    # 缓存 key：对输入做哈希，避免存储超长 key
+
     cache_key_src = f"{system_prompt}\0{user_message}".encode("utf-8", errors="ignore")
     cache_key = hashlib.sha256(cache_key_src).hexdigest()
     cached = deepseek_cache.get(cache_key)
@@ -209,78 +188,63 @@ def call_deepseek(system_prompt: str, user_message: str) -> str:
         return cached
 
     start_time = time.time()
-    
-    # 使用 tenacity 重试机制（如果可用）
-    if RETRY_AVAILABLE:
-        @retry(
-            stop=stop_after_attempt(3),
-            wait=wait_exponential(multiplier=1, min=2, max=10),
-            retry=retry_if_exception_type((requests.Timeout, requests.ConnectionError, requests.HTTPError))
-        )
-        def _retryable_call():
-            return _call_deepseek_once(system_prompt, user_message)
-        
+    max_attempts = 3
+    resp: Optional[httpx.Response] = None
+
+    for attempt in range(1, max_attempts + 1):
         try:
-            resp = _retryable_call()
-        except requests.Timeout:
+            resp = await _call_deepseek_once(system_prompt, user_message)
+            break
+        except httpx.TimeoutException as e:
+            if attempt < max_attempts:
+                import asyncio
+                wait_time = 2 ** attempt
+                logger.warning(
+                    "API 调用超时，%ds 后重试 (尝试 %d/%d)",
+                    wait_time, attempt, max_attempts,
+                )
+                await asyncio.sleep(wait_time)
+            else:
+                elapsed = (time.time() - start_time) * 1000
+                error_msg = f"API 请求超时（已重试{max_attempts}次），耗时 {elapsed:.0f}ms"
+                logger.error(error_msg, extra={"elapsed_ms": elapsed})
+                return f"❌ {error_msg}"
+        except httpx.HTTPStatusError as e:
             elapsed = (time.time() - start_time) * 1000
-            error_msg = f"API 请求超时（已重试3次），耗时 {elapsed:.0f}ms"
-            logger.error(error_msg, extra={"elapsed_ms": elapsed, "retries": 3})
+            error_msg = f"API 返回错误: {e.response.status_code}"
+            logger.error(error_msg, extra={"elapsed_ms": elapsed, "status_code": e.response.status_code})
             return f"❌ {error_msg}"
-        except requests.ConnectionError as e:
-            elapsed = (time.time() - start_time) * 1000
-            error_msg = f"网络连接失败: {str(e)}"
-            logger.error(error_msg, extra={"elapsed_ms": elapsed, "error": str(e)})
-            return f"❌ {error_msg}"
-        except requests.HTTPError as e:
-            elapsed = (time.time() - start_time) * 1000
-            error_msg = f"API 返回错误: {resp.status_code if 'resp' in locals() else 'Unknown'}"
-            logger.error(error_msg, extra={"elapsed_ms": elapsed, "status_code": resp.status_code if 'resp' in locals() else None})
-            return f"❌ {error_msg}"
+        except httpx.ConnectError as e:
+            if attempt < max_attempts:
+                import asyncio
+                wait_time = 2 ** attempt
+                logger.warning(
+                    "网络连接失败，%ds 后重试 (尝试 %d/%d)",
+                    wait_time, attempt, max_attempts,
+                )
+                await asyncio.sleep(wait_time)
+            else:
+                elapsed = (time.time() - start_time) * 1000
+                error_msg = f"网络连接失败: {e}"
+                logger.error(error_msg, extra={"elapsed_ms": elapsed})
+                return f"❌ {error_msg}"
         except Exception as e:
             elapsed = (time.time() - start_time) * 1000
-            error_msg = f"未知错误: {str(e)}"
+            error_msg = f"未知错误: {e}"
             logger.error(error_msg, extra={"elapsed_ms": elapsed, "error": str(e)})
             return f"❌ {error_msg}"
-    else:
-        # 简单重试机制（如果没有 tenacity）
-        max_attempts = 3
-        last_exception = None
-        for attempt in range(1, max_attempts + 1):
-            try:
-                resp = _call_deepseek_once(system_prompt, user_message)
-                break
-            except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as e:
-                last_exception = e
-                if attempt < max_attempts:
-                    wait_time = 2 ** attempt
-                    logger.warning(f"API 调用失败，{wait_time}秒后重试 (尝试 {attempt}/{max_attempts})", 
-                                 extra={"attempt": attempt, "error": str(e)})
-                    time.sleep(wait_time)
-                else:
-                    elapsed = (time.time() - start_time) * 1000
-                    error_msg = f"API 调用失败（已重试{max_attempts}次）: {str(e)}"
-                    logger.error(error_msg, extra={"elapsed_ms": elapsed, "retries": max_attempts, "error": str(e)})
-                    return f"❌ {error_msg}"
-            except Exception as e:
-                elapsed = (time.time() - start_time) * 1000
-                error_msg = f"未知错误: {str(e)}"
-                logger.error(error_msg, extra={"elapsed_ms": elapsed, "error": str(e)})
-                return f"❌ {error_msg}"
-    
-    # 成功响应
+
+    if resp is None:
+        return "❌ API 调用失败"
+
     elapsed = (time.time() - start_time) * 1000
     try:
-        content = resp.json()['choices'][0]['message']['content']
-        logger.info("API 调用成功", extra={
-            "elapsed_ms": elapsed,
-            "response_length": len(content)
-        })
-        # 仅缓存成功结果（避免把错误信息缓存进去）
+        content = resp.json()["choices"][0]["message"]["content"]
+        logger.info("API 调用成功", extra={"elapsed_ms": elapsed, "response_length": len(content)})
         deepseek_cache.set(cache_key, content)
         return content
     except (KeyError, ValueError) as e:
-        error_msg = f"响应解析失败: {str(e)}"
+        error_msg = f"响应解析失败: {e}"
         logger.error(error_msg, extra={"elapsed_ms": elapsed, "error": str(e)})
         return f"❌ {error_msg}"
 
@@ -339,14 +303,9 @@ async def rate_limit_middleware(request: Request, call_next):
     return await call_next(request)
 
 
-# ⚠️ 关键：配置 CORS，允许你的 Angular (localhost:4200) 访问我
-cors_origins = ["*"]
-if CORS_ALLOW_ORIGINS_RAW.strip() != "*":
-    cors_origins = [o.strip() for o in CORS_ALLOW_ORIGINS_RAW.split(",") if o.strip()]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,  # 生产环境建议配置具体域名
+    allow_origins=_settings.cors_allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -454,14 +413,13 @@ async def chat_endpoint(req: ChatRequest, request: Request):
             如果资料不相关，请忽略资料并礼貌告知用户。
             """
             user_msg = f"{rag_result['context']}\n\n【用户问题】:\n{user_query}"
-            reply = call_deepseek(sys_prompt, user_msg)
+            reply = await call_deepseek(sys_prompt, user_msg)
             
         else:
             logger.info("进入闲聊模式", extra={"distance": distance})
             mode = "chat"
-            # 纯聊模式提示词
             sys_prompt = "你是一个黑客风格的AI助手。用户在跟你闲聊，请用简练、酷酷的语气回应。"
-            reply = call_deepseek(sys_prompt, user_query)
+            reply = await call_deepseek(sys_prompt, user_query)
 
         elapsed = (time.time() - start_time) * 1000
         logger.info("请求处理完成", extra={
@@ -584,7 +542,7 @@ async def audit_code(file: UploadFile = File(...), request: Request = None):
                 """
 
                 logger.info("提交 AI 增强审计", extra={"code_length": len(code_preview)})
-                reply = call_deepseek(system_prompt, user_msg)
+                reply = await call_deepseek(system_prompt, user_msg)
                 logger.info("AI 增强审计完成")
                 
             except Exception as e:
@@ -649,13 +607,21 @@ async def audit_code(file: UploadFile = File(...), request: Request = None):
 
 
 # 启动提示
-logger.info("="*60)
-logger.info("🚀 Aegis Server 启动成功")
-logger.info(f"📊 数据库记录数: {collection.count()}")
-logger.info(f"🔑 API Key 已配置: {'是' if DEEPSEEK_API_KEY else '否'}")
-logger.info(f"🔄 重试机制: {'启用 (tenacity)' if RETRY_AVAILABLE else '启用 (简单重试)'}")
-logger.info("👉 运行命令: uvicorn src.server.aegis_server:app --reload")
-logger.info("="*60)
+logger.info("=" * 60)
+logger.info("Aegis Server 启动成功")
+logger.info("数据库记录数: %d", collection.count())
+logger.info("AI 可用: %s", _settings.has_ai)
+logger.info("运行命令: uvicorn src.server.aegis_server:app --reload")
+logger.info("=" * 60)
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    """优雅关闭 httpx 客户端，释放连接池资源。"""
+    global _http_client
+    if _http_client and not _http_client.is_closed:
+        await _http_client.aclose()
+        _http_client = None
 
 
 # =================================================================

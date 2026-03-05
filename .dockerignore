@@ -1,0 +1,16 @@
+.git
+.github
+.cursor
+.vscode
+_archived
+aegis-vscode/node_modules
+aegis-vscode/out
+aegis-ai-core/__pycache__
+aegis-ai-core/.env
+aegis-ai-core/real_world_targets
+aegis-ai-core/aegis_db
+**/*.vsix
+**/*.pyc
+**/__pycache__
+*.md
+!aegis-ai-core/src/README.md

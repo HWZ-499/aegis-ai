@@ -1,5 +1,9 @@
 # rule_based_audit.py - 纯规则审计引擎（不依赖 AI）
 """
+.. deprecated:: 1.2.0
+    此模块为旧版审计桥接层，依赖 ``ast_analyzer`` 和 ``security_rules``。
+    新代码请使用 ``rule_engine.py``。计划在 v1.5 中移除。
+
 纯规则审计引擎：结合 AST 分析和正则规则，不依赖外部 AI API。
 即使 AI 不可用，也能给出基础的安全审计报告。
 """

@@ -75,6 +75,120 @@ _pending_lock: threading.Lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
+# 跨文件分析工作区上下文
+# ---------------------------------------------------------------------------
+
+
+class WorkspaceContext:
+    """
+    工作区级别的跨文件分析上下文。
+
+    在后台线程中构建 import graph 和依赖关系，
+    为 ``scan_document`` 提供跨文件污点信息。
+    """
+
+    def __init__(self) -> None:
+        self._analyzer: Optional[Any] = None
+        self._project_path: Optional[str] = None
+        self._building: bool = False
+        self._lock = threading.Lock()
+        self._init_options: Dict[str, Any] = {}
+
+    def configure(self, init_options: Dict[str, Any]) -> None:
+        """存储客户端传入的初始化配置。"""
+        self._init_options = init_options or {}
+
+    @property
+    def disabled_rules(self) -> List[str]:
+        return self._init_options.get("disabled_rules", [])
+
+    @property
+    def severity_minimum(self) -> str:
+        return self._init_options.get("severity_minimum", "Low")
+
+    @property
+    def scan_on_save(self) -> bool:
+        return self._init_options.get("scan_on_save", True)
+
+    @property
+    def scan_on_change(self) -> bool:
+        return self._init_options.get("scan_on_change", True)
+
+    def build_graph_async(self, project_path: str) -> None:
+        """在后台线程中构建依赖图（不阻塞 LSP 事件循环）。"""
+        with self._lock:
+            if self._building:
+                return
+            self._building = True
+            self._project_path = project_path
+
+        def _build() -> None:
+            try:
+                from ..analysis.taint.cross_file_analyzer import CrossFileAnalyzer
+                analyzer = CrossFileAnalyzer(Path(project_path))
+                analyzer.scan_project()
+                with self._lock:
+                    self._analyzer = analyzer
+                logger.info(
+                    "Cross-file dependency graph built for %s", project_path
+                )
+            except Exception:
+                logger.exception("Failed to build cross-file graph")
+            finally:
+                with self._lock:
+                    self._building = False
+
+        t = threading.Thread(target=_build, daemon=True)
+        t.start()
+
+    def get_cross_file_findings(self, file_path: str) -> List[Dict]:
+        """
+        获取与 ``file_path`` 相关的跨文件污点发现。
+
+        Returns:
+            finding dict 列表，可直接合并到单文件扫描结果。
+        """
+        with self._lock:
+            analyzer = self._analyzer
+        if analyzer is None:
+            return []
+        try:
+            paths = analyzer.find_cross_file_taint_paths()
+            results: List[Dict] = []
+            for p in paths:
+                d = p.to_dict()
+                if d["sink"]["file"] == file_path or d["source"]["file"] == file_path:
+                    results.append({
+                        "type": d.get("vuln_type", "CROSS_FILE_TAINT"),
+                        "severity": d.get("severity", "High"),
+                        "line": d["sink"]["line"],
+                        "details": d.get("description", "Cross-file taint path detected"),
+                        "file_path": d["sink"]["file"],
+                        "source": "CrossFileAnalyzer",
+                        "related_locations": [
+                            {
+                                "file_path": step["file"],
+                                "start_line": step["line"],
+                                "message": step.get("expr", ""),
+                            }
+                            for step in d.get("path", [])
+                        ],
+                    })
+            return results
+        except Exception:
+            logger.debug("Cross-file findings retrieval failed", exc_info=True)
+            return []
+
+    def invalidate(self) -> None:
+        """文件变更后标记图需要重建。"""
+        if self._project_path:
+            self.build_graph_async(self._project_path)
+
+
+_workspace_ctx = WorkspaceContext()
+
+
+# ---------------------------------------------------------------------------
 # 工具函数
 # ---------------------------------------------------------------------------
 
@@ -405,6 +519,20 @@ def create_server() -> LanguageServer:
     """
     server = LanguageServer("aegis-ai-lsp", "v0.1.0")
 
+    @server.feature(lsp.INITIALIZE)
+    def on_initialize(params: lsp.InitializeParams) -> None:
+        """初始化时读取客户端配置，启动跨文件图构建。"""
+        init_opts = params.initialization_options or {}
+        _workspace_ctx.configure(init_opts)
+
+        root = None
+        if params.root_path:
+            root = params.root_path
+        elif params.root_uri:
+            root = uri_to_filepath(params.root_uri)
+        if root:
+            _workspace_ctx.build_graph_async(root)
+
     @server.feature(lsp.TEXT_DOCUMENT_DID_OPEN)
     def did_open(params: lsp.DidOpenTextDocumentParams) -> None:
         """文件打开时执行安全扫描并发布 Diagnostics。"""
@@ -415,16 +543,21 @@ def create_server() -> LanguageServer:
     @server.feature(lsp.TEXT_DOCUMENT_DID_SAVE)
     def did_save(params: lsp.DidSaveTextDocumentParams) -> None:
         """文件保存时重新扫描并更新 Diagnostics。"""
+        if not _workspace_ctx.scan_on_save:
+            return
         text = params.text
         if text is None:
             doc = server.workspace.get_text_document(params.text_document.uri)
             text = doc.source
         _cancel_pending_validation(params.text_document.uri)
         _validate_document(server, params.text_document.uri, text)
+        _workspace_ctx.invalidate()
 
     @server.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
     def did_change(params: lsp.DidChangeTextDocumentParams) -> None:
         """M2：文件内容变更时防抖后重新扫描并更新 Diagnostics。"""
+        if not _workspace_ctx.scan_on_change:
+            return
         uri = params.text_document.uri
         _cancel_pending_validation(uri)
         timer = threading.Timer(
@@ -701,6 +834,32 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
         pass
 
     findings = scan_document(source, file_path)
+
+    # 合并跨文件分析结果
+    cross_file_findings = _workspace_ctx.get_cross_file_findings(file_path)
+    if cross_file_findings:
+        findings = findings + cross_file_findings
+        logger.info(
+            "Merged %d cross-file findings for %s",
+            len(cross_file_findings), file_path,
+        )
+
+    # 过滤已禁用的规则
+    disabled = set(_workspace_ctx.disabled_rules)
+    if disabled:
+        findings = [
+            f for f in findings
+            if f.get("type", f.get("rule_id", "")) not in disabled
+        ]
+
+    # 过滤低于最低严重度的发现
+    _severity_order = {"Critical": 4, "High": 3, "Medium": 2, "Low": 1}
+    min_sev = _severity_order.get(_workspace_ctx.severity_minimum, 1)
+    if min_sev > 1:
+        findings = [
+            f for f in findings
+            if _severity_order.get(f.get("severity", "Medium"), 2) >= min_sev
+        ]
 
     # 发布前再次读取版本；若文档已被用户修改，丢弃本次结果并清空诊断
     try:

@@ -1,0 +1,167 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "aegis-ai-core"
+version = "1.2.0"
+description = "Local-first SAST engine with AST analysis, taint tracking, and AI-powered fix suggestions"
+readme = "src/README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Aegis AI Team" }]
+keywords = ["security", "sast", "static-analysis", "vulnerability", "ast"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "chromadb>=0.4.0",
+    "httpx>=0.27.0",
+    "certifi>=2023.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "tree-sitter==0.21.3",
+    "tree-sitter-languages>=1.0.0",
+    "pygls>=2.0.0",
+    "lsprotocol>=2025.0.0",
+]
+
+[project.optional-dependencies]
+ai = [
+    "openai>=1.0.0",
+]
+rag = [
+    "sentence-transformers>=2.2.0",
+    "scikit-learn>=1.0.0",
+]
+logging = [
+    "python-json-logger>=2.0.0",
+]
+retry = [
+    "tenacity>=8.2.0",
+]
+all = [
+    "aegis-ai-core[ai,rag,logging,retry]",
+]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.4.0",
+    "mypy>=1.8.0",
+    "pre-commit>=3.6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/how-about-that/aegis-ai"
+Repository = "https://github.com/how-about-that/aegis-ai"
+Issues = "https://github.com/how-about-that/aegis-ai/issues"
+
+[project.scripts]
+aegis-lsp = "src.lsp.__main__:main"
+aegis-scan = "src.scanner.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --strict-markers"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks integration tests requiring external services",
+    "benchmark: marks benchmark tests",
+]
+collect_ignore = [
+    "tests/test_vulnerable_code.py",
+    "tests/test_api_direct.py",
+]
+
+# ---------------------------------------------------------------------------
+# ruff (linter + formatter)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "S",    # flake8-bandit (security)
+    "T20",  # flake8-print
+    "LOG",  # flake8-logging
+]
+ignore = [
+    "E501",   # line-too-long (handled by formatter)
+    "S101",   # assert used (ok in tests)
+    "S603",   # subprocess without shell=True (intentional in security tools)
+    "S608",   # possible SQL injection (we analyze SQL, not inject it)
+    "T201",   # print found (legacy code, will migrate to logger)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S106", "T201"]
+"scripts/**" = ["T201"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ---------------------------------------------------------------------------
+# mypy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "src.core.*"
+disallow_untyped_defs = true
+
+# ---------------------------------------------------------------------------
+# coverage
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "src/crawler/*",
+    "src/server/aegis_shell.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+    "if TYPE_CHECKING:",
+    "pass",
+]
+show_missing = true
