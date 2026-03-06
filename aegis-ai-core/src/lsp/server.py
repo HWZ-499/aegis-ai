@@ -53,6 +53,8 @@ EXTENSION_LANGUAGE_MAP: Dict[str, str] = {
     ".php": "php",
     ".phtml": "php",
     ".php5": "php",
+    ".java": "java",
+    ".go": "go",
 }
 
 #: Scanner severity -> LSP DiagnosticSeverity
@@ -507,7 +509,13 @@ def scan_document(source: str, file_path: str) -> List[Dict]:
         return []
 
     # 延迟导入，避免在模块加载时就触发 tree-sitter 初始化
-    from ..analysis.rule_engine import analyze_javascript, analyze_php, analyze_python
+    from ..analysis.rule_engine import (
+        analyze_go,
+        analyze_java,
+        analyze_javascript,
+        analyze_php,
+        analyze_python,
+    )
 
     try:
         if language == "python":
@@ -516,6 +524,10 @@ def scan_document(source: str, file_path: str) -> List[Dict]:
             return analyze_javascript(source, file_path, language=language)
         elif language == "php":
             return analyze_php(source, file_path)
+        elif language == "java":
+            return analyze_java(source, file_path)
+        elif language == "go":
+            return analyze_go(source, file_path)
     except Exception:
         logger.exception("Scan failed for %s", file_path)
         return []

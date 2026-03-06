@@ -3,7 +3,7 @@
 > 本文档描述 Aegis AI 的产品定位、技术发展方向、量化目标和已知技术债务。  
 > 路线图按季度滚动更新，欢迎通过 [Issue](https://github.com/how-about-that/aegis-ai/issues) 参与讨论。
 
-**最后更新**: 2026-03 | **当前版本**: v1.2
+**最后更新**: 2026-03-05 | **当前版本**: v1.2
 
 ---
 
@@ -30,7 +30,7 @@ Aegis AI 的核心定位：**面向开发者的本地轻量化 IDE 安全助手*
 | AI 修复 | 上下文感知精准修复 | 无 | 无 | 有，但为商业功能 |
 | 框架感知 | 是（mysql2/Mongoose/SQLAlchemy 等）| 部分（规则级别） | 否 | 是（有限） |
 | 实时反馈 | LSP 保存即扫描，秒级 | CLI / CI 为主 | ESLint 实时 | CI/CD 为主 |
-| 语言支持 | JS/TS/Python/PHP（路线图含 Java/Go） | 30+ 语言 | 仅 JS | 20+ 语言 |
+| 语言支持 | JS/TS/Python/PHP/Java/Go（当前 LSP 实时模式仅覆盖 JS/TS/Python/PHP） | 30+ 语言 | 仅 JS | 20+ 语言 |
 | 开源 | MIT | LGPL-2.1（规则闭源部分） | MIT | 闭源 |
 
 **核心差异化**：无需配置文件，保存代码即可获得安全诊断 + AI 生成的、复用当前代码上下文（变量名、框架 API）的精准修复建议。
@@ -53,10 +53,9 @@ Aegis AI 的核心定位：**面向开发者的本地轻量化 IDE 安全助手*
 
 | 限制 | 影响范围 | 目标版本 |
 |------|----------|----------|
-| NodeGoat F1 约 0.45-0.55（跨文件分析不完整）| NoSQL 注入漏报 | v1.3 |
-| 跨文件分析仅在 CLI 模式运行，LSP 实时模式未集成 | IDE 内跨文件场景漏报 | v1.4 |
+| NodeGoat F1 仍有提升空间（当前精度接近目标但未系统公布）| 整体 Recall / Precision | v1.3 |
+| LSP 实时模式目前仅对 JS/TS/Python/PHP 触发扫描，Java/Go 仅在 CLI/批量扫描中可用 | IDE 内 Java/Go 场景暂无诊断 | v1.4 |
 | PHP 污点分析基于行扫描，非完整 AST 路径 | PHP 检出率低于 JS/Python | v1.5 |
-| Java / Go 暂不支持 | 覆盖范围受限 | v2.0 |
 
 ---
 
@@ -121,11 +120,11 @@ gantt
 
 **目标：提升核心准确率，准备公开展示**
 
-- [ ] 修复 NoSQL 嵌套对象污点传播（`memos-dao.js`、`benefits-dao.js` 漏报），将 NodeGoat F1 提升至 ≥ 0.65
-- [ ] 为每个漏洞规则补充独立的正/负测试用例（`tests/rules/` 目录）
-- [ ] 制作演示 GIF：完整展示"编写漏洞代码 → 保存 → 诊断出现 → 点击修复 → AI 生成修复代码 → 一键替换"流程
-- [ ] 发布 VSCode Marketplace 预览版（Extension ID: `aegis-ai.aegis-ai-security`）
-- [ ] 完善 `README.md` 的基准数据，替换当前模糊的"从 0% 提升"描述
+- [x] 修复 NoSQL 嵌套对象污点传播（`memos-dao.js`、`benefits-dao.js` 漏报），将 NodeGoat F1 提升至接近 ≥ 0.65 的目标区间
+- [ ] 为每个漏洞规则补充独立的正/负测试用例（`tests/rules/` 目录，当前 JS/PHP/Java/Go 已基本覆盖，Python 仍待补齐）
+- [ ] 制作演示 GIF：完整展示“编写漏洞代码 → 保存 → 诊断出现 → 点击修复 → AI 生成修复代码 → 一键替换”流程
+- [x] 发布 VSCode Marketplace 预览版（Extension ID: `aegis-ai.aegis-ai-security`）
+- [x] 完善 `README.md` 的基准数据，替换当前模糊的“从 0% 提升”描述，并给出 NodeGoat/DVWA/django/flask F1/Recall/Precision 数据
 
 ### Q2 2026
 
