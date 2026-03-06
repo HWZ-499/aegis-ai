@@ -24,17 +24,21 @@
 
 | Q1 目标 | 状态 | 证据 |
 |---------|------|------|
-| NoSQL 嵌套对象污点传播修复 | **已完成** | `rules/nosql_injection/javascript_ast_rule.py` 已集成数据流分析 |
-| 规则正/负测试用例 | **部分完成** | `tests/rules/` 覆盖 8 类规则，20+ 用例文件；Python 用例仍缺失 |
+| NoSQL 嵌套对象污点传播修复 | **已完成** | `rules/nosql_injection/javascript_ast_rule.py` 已集成数据流分析，相关 NodeGoat 用例通过 |
+| 规则正/负测试用例 | **部分完成** | `tests/rules/` 覆盖 8 类规则，JS/PHP/Java/Go/OpenRedirect 用例已补齐；Python 用例仍缺失 |
 | VSCode Marketplace 预览版 | **已完成** | `aegis-ai-security-0.2.0.vsix` 已构建 |
 | README 基准数据 | **已完成** | README 含 NodeGoat/DVWA/django/flask F1/Recall/Precision 数据 |
 | 演示 GIF | **未完成** | 仓库中未发现 GIF 文件 |
+| Java/Go 规则与测试补齐 | **已完成** | `rule_engine.py` 已注册 Java/Go 规则；`tests/rules/test_all_rules.py` 全量 59 用例通过 |
+| 单文件性能基准（pytest-benchmark） | **已完成** | `tests/test_performance_benchmark.py` + `pyproject.toml` dev 依赖中已集成 |
 
 ### Q1 遗留项
 
 - [ ] 制作演示 GIF（编写漏洞 → 保存 → 诊断 → AI 修复完整流程）并嵌入 README
 - [ ] `tests/rules/` 补充 Python 语言的 XSS、SQL 注入正/负用例
 - [ ] 清理空规则目录（`buffer_overflow/`、`format_string/`）
+- [ ] LSP 集成 Java/Go 语言（`EXTENSION_LANGUAGE_MAP` 与 `scan_document` 分支仍缺少 Java/Go）
+- [ ] 对齐各语言规则矩阵（补齐 NoSQL / Open Redirect 规则与样本）
 
 ---
 
@@ -46,14 +50,20 @@
 |---|------|----------|------|
 | 1 | `aegis_server.py:137` `try:999` 语法错误 | 移除 `999` | **已修复** |
 | 2 | Pydantic 模型不足 | 创建 `src/core/models.py`（Finding、ScanResult、AuditResponse） | **已修复** |
-| 3 | `requests` 同步阻塞 | 替换为 `httpx.AsyncClient` | **已修复** |
+| 3 | `requests` 同步阻塞 | 核心服务端路径替换为 `httpx.AsyncClient`，crawler/调试脚本暂仍使用 `requests` | **部分修复** |
+
+### P0 — 新增问题（待修复）
+
+| # | 问题 | 修复方案 | 状态 |
+|---|------|----------|------|
+| 11 | LSP 不支持 Java/Go（`EXTENSION_LANGUAGE_MAP` / `scan_document` 缺少 Java/Go 分支） | 在 `server.py` 中为 `.java` / `.go` 映射语言并调用 `analyze_java` / `analyze_go`；补充 LSP 集成测试 | **待修复** |
 
 ### P1 — 已修复
 
 | # | 问题 | 修复方案 | 状态 |
 |---|------|----------|------|
 | 4 | 日志配置分散冲突 | 创建 `src/core/logging_config.py` 统一配置 | **已修复** |
-| 5 | `sys.path` 手动操作 | 创建 `pyproject.toml` + `pip install -e .` | **已修复**（pyproject.toml 已创建） |
+| 5 | `sys.path` 手动操作 | 创建 `pyproject.toml` + `pip install -e .`，为后续清理铺路 | **部分修复**（`src/` 下仍有约 15 处残留） |
 | 6 | ChromaDB 路径不一致 | `src/core/config.py` 通过 `AegisSettings.db_path` 统一 | **已修复** |
 | 7 | 类型注解不完整 | `Finding.from_legacy_dict()` / `to_legacy_dict()` 提供渐进迁移路径 | **部分修复** |
 
@@ -71,6 +81,8 @@
 - [ ] 为 `src/core/` 中所有函数添加完整类型注解
 - [ ] `aegis_server.py` 中移除对旧引擎（`ast_analyzer`、`security_rules`）的 import
 - [ ] 统一所有入口的日志初始化（crawler 脚本、worker_daemon）
+- [ ] 清理 `src/` 下所有残余 `sys.path` 手动操作（`aegis_server.py`、`cli.py`、`project_scanner.py` 等）
+- [ ] 统一 HTTP 客户端：将剩余 `requests` 调用迁移为 `httpx` 或隔离到 crawler 子模块，并更新/弱化 `requirements.txt`
 
 ---
 
@@ -108,6 +120,7 @@ aegis-ai/
 - [ ] `scripts/` 目录按用途分子目录（`benchmark/`、`debug/`、`data/`）
 - [ ] 旧引擎代码移至 `analysis/_legacy/`（v1.4 时执行）
 - [ ] 合并 `aegis-ai-core/docs/` 中剩余文件后清理该目录
+- [ ] 清理空规则包目录（`rules/buffer_overflow/`、`rules/format_string/`）
 
 ---
 
@@ -118,7 +131,7 @@ aegis-ai/
 | 原技术 | 新技术 | 状态 |
 |--------|--------|------|
 | `requirements.txt` | `pyproject.toml` (PEP 621) | **已创建** |
-| `requests` (同步) | `httpx` (异步) | **已替换** |
+| `requests` (同步) | `httpx` (异步) | **部分完成**（核心服务已切换，crawler/调试脚本仍使用 `requests`） |
 | 无 linter 配置 | `ruff` (pyproject.toml 内配置) | **已配置** |
 | 无 pre-commit | `.pre-commit-config.yaml` | **已创建** |
 | 散落 `dotenv` | `pydantic-settings` (AegisSettings) | **已创建** |
@@ -129,7 +142,7 @@ aegis-ai/
 | 方向 | 说明 | 优先级 |
 |------|------|--------|
 | `tree-sitter` 升级 | 监控 `tree-sitter-languages` 对 `>=0.22` 兼容 | 中 |
-| 性能基准自动化 | `pytest-benchmark` 集成到 CI | 中 |
+| 性能基准自动化 | 基于现有 `pytest-benchmark` baseline 集成到 CI | 中 |
 | 向量库评估 | 评估 `qdrant` / `lancedb` 替代 `chromadb` | 低 |
 
 ### Q4+ 长期方向
@@ -220,38 +233,37 @@ security-scan:    测试 + coverage + 基准验收 + SARIF + HTML report
 
 ## 实施路线图
 
-### 阶段 1 — 紧急修复（已完成）
+### Phase 1 — P0 紧急修复（1–2 天）
 
-- [x] 修复 `try:999` 语法错误
-- [x] 创建 `pyproject.toml`
-- [x] 创建 `src/core/` 模块
-- [x] 替换 `requests` → `httpx`
-- [x] 升级 GitHub Actions 版本
+- [ ] LSP 集成 Java/Go 扫描（`EXTENSION_LANGUAGE_MAP` + `scan_document` 分支）
+- [ ] 更新 `ROADMAP.md` / `OPTIMIZATION_ROADMAP.md` 的已知限制与语言支持描述
 
-### 阶段 2 — 架构清理（已完成）
+### Phase 2 — 规则拉齐（约 1 周）
 
-- [x] 旧引擎标记 deprecated
-- [x] `aegis-backend` 移至 `_archived/`
-- [x] 文档目录合并
-- [x] VSCode 扩展配置扩展
-- [x] 跨文件分析集成到 LSP
-- [x] Docker 支持
+- [ ] 为 JavaScript/TypeScript、Python 补齐 Open Redirect 规则及 TP/FP 测试样本
+- [ ] 为 PHP/Java/Go 补齐 NoSQL 注入规则及 TP/FP 测试样本
+- [ ] 在 `tests/rules/test_all_rules.py` 中确保 8 类漏洞 × 5 种语言均有至少 1 组 TP/FP 用例
 
-### 阶段 3 — 渐进迁移（Q2 2026）
+### Phase 3 — 技术债务清理（约 2 周）
 
 - [ ] 各模块 Finding dict → `Finding` Pydantic 模型
 - [ ] `aegis_server.py` `/api/audit` 切换到 `rule_engine.py`
-- [ ] 统一所有入口的日志初始化
-- [ ] `scripts/` 目录重组
-- [ ] 性能基准自动化（pytest-benchmark）
+- [ ] 清理 `src/` 下所有 `sys.path` 手动操作
+- [ ] 统一所有入口的日志初始化（crawler 脚本、`worker_daemon` 等）
+- [ ] `scripts/` 目录重组（按 `benchmark/`、`debug/`、`data/` 分类）
+- [ ] 完成 `pytest-benchmark` 在 CI 中的自动化集成
 
-### 阶段 4 — 功能扩展（Q3-Q4 2026）
+### Phase 4 — 规则 DSL 评估（Q2 2026）
 
-- [ ] Java 语言支持（tree-sitter-java）
-- [ ] Go 语言基础规则
-- [ ] 规则 DSL 评估
-- [ ] VSCode Marketplace 正式发布（500+ installs）
-- [ ] 演示 GIF + 社区运营
+- [ ] 设计 Semgrep-like YAML 规则 DSL PoC，并实现到 `rule_engine` 的适配层
+- [ ] 在 NodeGoat / DVWA / WebGoat 上对比 DSL 版规则与现有 AST 规则的检出率与性能
+- [ ] 评估 DSL 对社区贡献门槛和维护成本的影响，形成决策文档
+
+### Phase 5 — 社区发布准备（Q2–Q3 2026）
+
+- [ ] 演示 GIF：展示“编写漏洞 → 实时诊断 → AI 修复”的完整闭环
+- [ ] VSCode Marketplace 正式发布（目标 500+ installs）
+- [ ] issue 模板与 `good-first-issue` 体系完善，形成对新贡献者友好的入口
 
 ---
 
