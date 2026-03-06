@@ -24,6 +24,7 @@ from .analyzers.python_analyzer import PythonAnalyzer
 from .analyzers.java_analyzer import JavaAnalyzer
 from .analyzers.go_analyzer import GoAnalyzer
 from .base import SecurityRule
+from .dsl import load_dsl_rules_for_language
 from .rules import (
     PythonRCEAstRule,
     SQLInjectionRegexRule,
@@ -81,7 +82,7 @@ def get_default_rules_for_language(language: str) -> List[SecurityRule]:
     language = language.lower()
 
     if language == "python":
-        return [
+        rules: List[SecurityRule] = [
             PythonRCEAstRule(),
             SQLInjectionRegexRule(),
             PythonSQLInjectionAstRule(),
@@ -91,10 +92,12 @@ def get_default_rules_for_language(language: str) -> List[SecurityRule]:
             PythonDeserializationAstRule(),
             PythonNoSQLInjectionAstRule(),
         ]
+        rules.extend(load_dsl_rules_for_language("python"))
+        return rules
 
     if language in ("javascript", "typescript"):
         # 污点图由 JavaScriptAnalyzer 内 TaintAnalyzer.analyze_tree 独家构建，规则通过 context.taint_graph 查询
-        return [
+        rules = [
             JavaScriptRCEAstRule(),
             JavaScriptSQLInjectionAstRule(),
             JavaScriptXSSAstRule(),
@@ -103,6 +106,8 @@ def get_default_rules_for_language(language: str) -> List[SecurityRule]:
             JavaScriptDeserializationAstRule(),
             JavaScriptNoSQLInjectionAstRule(),
         ]
+        rules.extend(load_dsl_rules_for_language(language))
+        return rules
 
     if language == "php":
         from .rules.php import (
@@ -136,7 +141,7 @@ def get_default_rules_for_language(language: str) -> List[SecurityRule]:
         ]
 
     if language == "go":
-        return [
+        rules = [
             GoRCEAstRule(),
             GoSQLInjectionAstRule(),
             GoXSSAstRule(),
@@ -145,6 +150,8 @@ def get_default_rules_for_language(language: str) -> List[SecurityRule]:
             GoDeserializationAstRule(),
             GoOpenRedirectAstRule(),
         ]
+        rules.extend(load_dsl_rules_for_language("go"))
+        return rules
 
     return []
 
