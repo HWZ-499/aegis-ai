@@ -21,27 +21,47 @@ from typing import Dict, List
 
 from .analyzers.javascript_analyzer import JavaScriptAnalyzer
 from .analyzers.python_analyzer import PythonAnalyzer
+from .analyzers.java_analyzer import JavaAnalyzer
+from .analyzers.go_analyzer import GoAnalyzer
 from .base import SecurityRule
 from .rules import (
     PythonRCEAstRule,
     SQLInjectionRegexRule,
     PythonSQLInjectionAstRule,
     JavaScriptSQLInjectionAstRule,
+    JavaSQLInjectionAstRule,
+    GoSQLInjectionAstRule,
     PythonXSSAstRule,
     JavaScriptXSSAstRule,
+    JavaXSSAstRule,
+    GoXSSAstRule,
     PythonPathTraversalAstRule,
     JavaScriptPathTraversalAstRule,
+    JavaPathTraversalAstRule,
+    GoPathTraversalAstRule,
     PythonHardcodedCredentialsAstRule,
     JavaScriptHardcodedCredentialsAstRule,
+    JavaHardcodedCredentialsAstRule,
+    GoHardcodedCredentialsAstRule,
     PythonDeserializationAstRule,
     JavaScriptDeserializationAstRule,
+    JavaDeserializationAstRule,
+    GoDeserializationAstRule,
     JavaScriptRCEAstRule,
+    JavaRCEAstRule,
+    GoRCEAstRule,
     JavaScriptNoSQLInjectionAstRule,
+    PythonNoSQLInjectionAstRule,
+    JavaOpenRedirectAstRule,
+    GoOpenRedirectAstRule,
     # PHP TaintGraph 规则（analyze_php 内部延迟导入，此处仅供类型提示）
     PhpSQLInjectionRule,
     PhpRCERule,
     PhpXSSRule,
     PhpOpenRedirectRule,
+    PhpPathTraversalRule,
+    PhpDeserializationRule,
+    PhpHardcodedCredentialsRule,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,6 +89,7 @@ def get_default_rules_for_language(language: str) -> List[SecurityRule]:
             PythonPathTraversalAstRule(),
             PythonHardcodedCredentialsAstRule(),
             PythonDeserializationAstRule(),
+            PythonNoSQLInjectionAstRule(),
         ]
 
     if language in ("javascript", "typescript"):
@@ -89,12 +110,40 @@ def get_default_rules_for_language(language: str) -> List[SecurityRule]:
             PhpRCERule,
             PhpXSSRule,
             PhpOpenRedirectRule,
+            PhpPathTraversalRule,
+            PhpDeserializationRule,
+            PhpHardcodedCredentialsRule,
         )
         return [
             PhpSQLInjectionRule(),
             PhpRCERule(),
             PhpXSSRule(),
             PhpOpenRedirectRule(),
+            PhpPathTraversalRule(),
+            PhpDeserializationRule(),
+            PhpHardcodedCredentialsRule(),
+        ]
+
+    if language == "java":
+        return [
+            JavaRCEAstRule(),
+            JavaSQLInjectionAstRule(),
+            JavaXSSAstRule(),
+            JavaPathTraversalAstRule(),
+            JavaHardcodedCredentialsAstRule(),
+            JavaDeserializationAstRule(),
+            JavaOpenRedirectAstRule(),
+        ]
+
+    if language == "go":
+        return [
+            GoRCEAstRule(),
+            GoSQLInjectionAstRule(),
+            GoXSSAstRule(),
+            GoPathTraversalAstRule(),
+            GoHardcodedCredentialsAstRule(),
+            GoDeserializationAstRule(),
+            GoOpenRedirectAstRule(),
         ]
 
     return []
@@ -130,6 +179,35 @@ def analyze_javascript(code: str, file_path: Path | str, language: str = "javasc
         return []
 
 
+def analyze_java(code: str, file_path: Path | str) -> List[Dict]:
+    """
+    使用新规则引擎分析单个 Java 文件。
+    TDD 10.1：解析或分析过程异常时返回空列表，不崩溃。
+    """
+    path = Path(file_path)
+    rules = get_default_rules_for_language("java")
+    analyzer = JavaAnalyzer(rules)
+    try:
+        return analyzer.analyze(code, path)
+    except Exception:
+        logger.exception("analyze_java failed for %s", path)
+        return []
+
+
+def analyze_go(code: str, file_path: Path | str) -> List[Dict]:
+    """
+    使用新规则引擎分析单个 Go 文件。
+    """
+    path = Path(file_path)
+    rules = get_default_rules_for_language("go")
+    analyzer = GoAnalyzer(rules)
+    try:
+        return analyzer.analyze(code, path)
+    except Exception:
+        logger.exception("analyze_go failed for %s", path)
+        return []
+
+
 def analyze_php(code: str, file_path: Path | str) -> List[Dict]:
     """
     分析单个 PHP 文件。
@@ -152,6 +230,9 @@ def analyze_php(code: str, file_path: Path | str) -> List[Dict]:
         PhpRCERule,
         PhpXSSRule,
         PhpOpenRedirectRule,
+        PhpPathTraversalRule,
+        PhpDeserializationRule,
+        PhpHardcodedCredentialsRule,
     )
 
     path = Path(file_path)
@@ -163,6 +244,9 @@ def analyze_php(code: str, file_path: Path | str) -> List[Dict]:
         PhpRCERule(),
         PhpXSSRule(),
         PhpOpenRedirectRule(),
+        PhpPathTraversalRule(),
+        PhpDeserializationRule(),
+        PhpHardcodedCredentialsRule(),
     ]
     taint_covered: set[tuple[int, str]] = set()  # (line, vuln_type)
 
@@ -181,12 +265,17 @@ def analyze_php(code: str, file_path: Path | str) -> List[Dict]:
         logger.exception("analyze_php (regex) failed for %s", path)
         raw_findings = []
 
+    lines_of_code = code.split("\n")
     for f in raw_findings:
         line = f.get("line", 1)
         vuln_type = f.get("type", "UNKNOWN")
-        # 若 TaintGraph 已覆盖此（line, type），跳过正则重复报告
         if (line, vuln_type) in taint_covered:
             continue
+        # 正则层：unserialize(..., allowed_classes) 视为安全，不补充报告
+        if vuln_type == "DESERIALIZATION" and 1 <= line <= len(lines_of_code):
+            raw_line = lines_of_code[line - 1]
+            if "allowed_classes" in raw_line:
+                continue
         results.append({
             "type":            vuln_type,
             "severity":        f.get("severity", "Medium"),
@@ -207,6 +296,8 @@ __all__ = [
     "get_default_rules_for_language",
     "analyze_python",
     "analyze_javascript",
+    "analyze_java",
+    "analyze_go",
     "analyze_php",
     "PhpSQLInjectionRule",
     "PhpRCERule",

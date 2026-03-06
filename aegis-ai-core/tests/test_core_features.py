@@ -151,7 +151,7 @@ def test_project_scanner_support_level():
         assert scanner.get_support_level(".js") == "full"
         assert scanner.get_support_level(".cjs") == "full"
         assert scanner.get_support_level(".java") == "partial"
-        assert scanner.get_support_level(".php") == "partial"
+        assert scanner.get_support_level(".php") == "full"
         assert scanner.get_support_level(".go") == "partial"
         assert scanner.get_support_level(".rs") is None
         assert scanner.get_support_level(".swift") is None

@@ -19,6 +19,9 @@ from .php_taint_rules import (
     PhpRCERule,
     PhpXSSRule,
     PhpOpenRedirectRule,
+    PhpPathTraversalRule,
+    PhpDeserializationRule,
+    PhpHardcodedCredentialsRule,
 )
 
 __all__ = [
@@ -26,4 +29,7 @@ __all__ = [
     "PhpRCERule",
     "PhpXSSRule",
     "PhpOpenRedirectRule",
+    "PhpPathTraversalRule",
+    "PhpDeserializationRule",
+    "PhpHardcodedCredentialsRule",
 ]

@@ -149,6 +149,12 @@ class TaintAnalyzer:
                     lang = get_language("javascript")
                 elif self.language == "python":
                     lang = get_language("python")
+                elif self.language == "php":
+                    lang = get_language("php")
+                elif self.language == "java":
+                    lang = get_language("java")
+                elif self.language == "go":
+                    lang = get_language("go")
                 else:
                     lang = get_language("javascript")
                 
@@ -256,9 +262,20 @@ class TaintAnalyzer:
         if node.type in ("variable_declaration", "lexical_declaration"):
             self._process_js_var_declaration(node)
 
-        # JavaScript 赋值表达式
+        # Java 变量声明与赋值
+        elif self.language == "java" and node.type in ("local_variable_declaration", "assignment_expression"):
+            self._process_java_assignment(node)
+
+        # Go 变量声明与赋值
+        elif self.language == "go" and node.type in ("short_var_declaration", "assignment_statement"):
+            self._process_go_assignment(node)
+
+        # JavaScript / PHP 赋值表达式
         elif node.type == "assignment_expression":
-            self._process_js_assignment(node)
+            if self.language == "php":
+                self._process_php_assignment(node)
+            else:
+                self._process_js_assignment(node)
 
         # Express 路由回调：app.get('/path', (req, res) => ...) 中 req 标记为 Source
         elif node.type == "call_expression" and self.language in ("javascript", "typescript"):
@@ -272,6 +289,13 @@ class TaintAnalyzer:
         # Python 赋值（tree-sitter Python 用 "assignment"，子节点用 "=" 分隔）
         elif node.type == "assignment":
             self._process_py_assignment(node)
+
+        # PHP 变量赋值（部分 grammar 使用 expression_statement 包裹 assignment_expression）
+        elif node.type == "expression_statement" and self.language == "php":
+            for child in node.children:
+                if child.type == "assignment_expression":
+                    self._process_php_assignment(child)
+                    break
 
         # Guard Clause / Early Return 净化传播
         # 识别 if (!valid) return; / if (!isNum) { throw ...; } 等模式
@@ -925,6 +949,142 @@ class TaintAnalyzer:
                     left_text, right_text[:60],
                 )
             self._register_variable(left_text, right_text, line)
+
+    def _process_php_assignment(self, node: Any) -> None:
+        """
+        处理 PHP 赋值表达式。
+
+        节点结构：assignment_expression 含 left（variable_name 等）、operator、right。
+        将 $var 名与右值文本注册到污点图，供 Source/Sink 匹配使用。
+        """
+        if not TREE_SITTER_AVAILABLE or not isinstance(node, Node):
+            return
+        left_text: Optional[str] = None
+        right_text: Optional[str] = None
+        for child in node.children:
+            if child.type in ("=", ".=", "+=", "-="):
+                continue
+            if left_text is None:
+                left_text = self._get_node_text(child)
+            else:
+                right_text = self._get_node_text(child)
+                break
+        if left_text and right_text:
+            line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+            self._register_variable(left_text, right_text, line)
+
+    def _process_java_assignment(self, node: Any) -> None:
+        """
+        处理 Java 赋值与局部变量声明。
+
+        支持：
+        - local_variable_declaration: String id = request.getParameter("id");
+        - assignment_expression: id = request.getParameter("id");
+        """
+        if not TREE_SITTER_AVAILABLE or not isinstance(node, Node):
+            return
+
+        # 局部变量声明：可能包含多个 variable_declarator
+        if node.type == "local_variable_declaration":
+            for child in node.children:
+                if child.type == "variable_declarator":
+                    name_node: Optional[Node] = None
+                    value_node: Optional[Node] = None
+                    for sub in child.children:
+                        if sub.type == "identifier" and name_node is None:
+                            name_node = sub
+                        elif sub.type in ("=",):
+                            continue
+                        else:
+                            value_node = sub
+                            break
+                    if name_node is None or value_node is None:
+                        continue
+                    name = self._get_node_text(name_node) or ""
+                    value = self._get_node_text(value_node) or ""
+                    if not name or not value:
+                        continue
+                    line = child.start_point[0] + 1 if hasattr(child, "start_point") else 0
+                    self._register_variable(name, value, line)
+            return
+
+        # 一般赋值表达式：left op right
+        if node.type == "assignment_expression":
+            left_text: Optional[str] = None
+            right_text: Optional[str] = None
+            for child in node.children:
+                if child.type in ("=", "+=", "-=", "*=", "/=", "&=", "|=", "^=", "%=", "<<=", ">>="):
+                    continue
+                if left_text is None:
+                    left_text = self._get_node_text(child)
+                else:
+                    right_text = self._get_node_text(child)
+                    break
+            if left_text and right_text:
+                line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+                self._register_variable(left_text, right_text, line)
+
+    def _process_go_assignment(self, node: Any) -> None:
+        """
+        处理 Go 赋值与短变量声明。
+
+        支持：
+        - short_var_declaration: id := r.FormValue("id")
+        - assignment_statement: id = r.FormValue("id")
+
+        为降低复杂度，当前实现主要覆盖单变量 + 单表达式场景，
+        多重赋值在后续需要时再扩展。
+        """
+        if not TREE_SITTER_AVAILABLE or not isinstance(node, Node):
+            return
+
+        # 短变量声明：identifier_list ':=' expression_list
+        if node.type == "short_var_declaration":
+            names: List[str] = []
+            expr_text: Optional[str] = None
+            for child in node.children:
+                if child.type == "identifier_list":
+                    for ident in child.children:
+                        if ident.type == "identifier":
+                            name = self._get_node_text(ident) or ""
+                            if name:
+                                names.append(name)
+                elif child.type == "expression_list":
+                    # 仅处理单表达式场景
+                    for expr in child.children:
+                        if expr.type in (",",):
+                            continue
+                        expr_text = self._get_node_text(expr)
+                        break
+            if len(names) == 1 and expr_text:
+                line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+                self._register_variable(names[0], expr_text, line)
+            return
+
+        # 一般赋值语句：expression_list op expression_list
+        if node.type == "assignment_statement":
+            left_names: List[str] = []
+            right_exprs: List[Node] = []
+            saw_op = False
+            for child in node.children:
+                if child.type == "expression_list" and not saw_op:
+                    for expr in child.children:
+                        if expr.type == "identifier":
+                            name = self._get_node_text(expr) or ""
+                            if name:
+                                left_names.append(name)
+                elif child.type in ("=", "+=", "-=", "*=", "/=", "%=", "<<=", ">>=", "&=", "|=", "^="):
+                    saw_op = True
+                elif child.type == "expression_list" and saw_op:
+                    for expr in child.children:
+                        if expr.type in (",",):
+                            continue
+                        right_exprs.append(expr)
+            if len(left_names) == 1 and len(right_exprs) == 1:
+                right_text = self._get_node_text(right_exprs[0]) or ""
+                if right_text:
+                    line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+                    self._register_variable(left_names[0], right_text, line)
     
     def _process_py_assignment(self, node: Any) -> None:
         """
@@ -1206,12 +1366,12 @@ class TaintAnalyzer:
         if not TREE_SITTER_AVAILABLE or not isinstance(node, Node):
             return
 
-        # 函数调用（JS: call_expression，Python: call）
-        if node.type in ("call_expression", "call"):
+        # 函数调用（JS: call_expression，Python: call，PHP: function_call_expression，Java: method_invocation/object_creation_expression）
+        if node.type in ("call_expression", "call", "function_call_expression", "method_invocation", "object_creation_expression"):
             self._check_call_expression(node)
 
-        # 成员/属性表达式（JS: member_expression，Python: attribute）
-        elif node.type in ("member_expression", "attribute"):
+        # 成员/属性表达式（JS: member_expression，Python: attribute，PHP: member_access_expression / object_member_expression，Java: field_access，Go: selector_expression）
+        elif node.type in ("member_expression", "attribute", "member_access_expression", "object_member_expression", "field_access", "selector_expression"):
             self._check_member_expression(node)
 
         # 递归处理子节点
@@ -1238,9 +1398,12 @@ class TaintAnalyzer:
         # 提取 callee 文本（即函数/方法名部分）
         # JS: node.children[0] 通常为 identifier / member_expression
         # Python: node.children[0] 通常为 attribute（"cur.execute"）或 identifier
+        # PHP: function_call_expression 可能为 name 或 object_member_expression
+        # Java: method_invocation / object_creation_expression，可能包含 field_access
+        # Go: call_expression 中的 selector_expression / identifier
         callee_text = ""
         for child in node.children:
-            if child.type in ("identifier", "member_expression", "attribute"):
+            if child.type in ("identifier", "member_expression", "attribute", "name", "object_member_expression", "field_access", "selector_expression"):
                 callee_text = self._get_node_text(child) or ""
                 break
 
@@ -1392,8 +1555,8 @@ class TaintAnalyzer:
 
         atype = arg_node.type
 
-        # ── identifier：查已知变量表 ──
-        if atype == "identifier":
+        # ── identifier / variable_name（PHP $var）：查已知变量表 ──
+        if atype in ("identifier", "variable_name"):
             var_name = self._get_node_text(arg_node) or ""
             if var_name in self._variables:
                 var_node = self._variables[var_name]
@@ -1426,8 +1589,8 @@ class TaintAnalyzer:
                             self._check_single_argument(sub, sink_node)
             return
 
-        # ── call / call_expression / member_expression / attribute：直接 Source 匹配 ──
-        if atype in ("call_expression", "call", "member_expression", "attribute"):
+        # ── call / call_expression / member_expression / attribute / method_invocation 等：直接 Source 匹配 ──
+        if atype in ("call_expression", "call", "member_expression", "attribute", "method_invocation", "field_access", "selector_expression"):
             arg_text = self._get_node_text(arg_node) or ""
             normalized = self._normalize_py_source_expr(arg_text) if self.language == "python" else arg_text
             source_pattern = self.registry.find_source(normalized, self.language)

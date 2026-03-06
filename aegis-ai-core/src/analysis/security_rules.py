@@ -494,7 +494,8 @@ _PHP_SANITIZE_RE = re.compile(
     r"|preg_match|filter_var|htmlspecialchars|htmlentities|strip_tags"
     r"|addslashes|mysqli_real_escape_string|pg_escape_string"
     r"|stripslashes|strip_tags|number_format|round|ceil|floor"
-    r"|in_array|array_search|array_key_exists)\s*\(",
+    r"|in_array|array_search|array_key_exists"
+    r"|basename|realpath|dirname|pathinfo)\s*\(",
     re.IGNORECASE,
 )
 
@@ -528,6 +529,16 @@ _PHP_SINK_PATTERNS: list[tuple[re.Pattern, str, str]] = [
         r"header\s*\(\s*['\"]location\s*:",
         re.IGNORECASE,
     ), "OPEN_REDIRECT", "Medium"),
+    # Path Traversal Sink：file_get_contents / include / require / fopen / readfile
+    (re.compile(
+        r"\b(?:file_get_contents|include|require|include_once|require_once|fopen|readfile)\s*\(",
+        re.IGNORECASE,
+    ), "PATH_TRAVERSAL", "High"),
+    # Deserialization Sink：unserialize / json_decode
+    (re.compile(
+        r"\b(?:unserialize|json_decode)\s*\(",
+        re.IGNORECASE,
+    ), "DESERIALIZATION", "High"),
 ]
 
 

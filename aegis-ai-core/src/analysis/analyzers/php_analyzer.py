@@ -82,10 +82,7 @@ class PhpAnalyzer:
         if self._parser:
             try:
                 from ..taint import TaintAnalyzer
-                # TaintAnalyzer 目前主要支持 JS/Python，PHP 使用 javascript 解析器作为近似
-                # （PHP 与 JS 的 AST 结构有差异，但能识别基础赋值/调用模式）
-                # 待 TaintAnalyzer 完整支持 PHP 后切换到 language="php"
-                taint_analyzer = TaintAnalyzer(language="javascript")
+                taint_analyzer = TaintAnalyzer(language="php")
                 ts_tree = self._parser.parse(bytes(code, "utf8"))
                 taint_analyzer.analyze_tree(ts_tree.root_node, str(file_path), code)
                 context.taint_graph = taint_analyzer.get_graph()

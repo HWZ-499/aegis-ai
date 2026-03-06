@@ -282,9 +282,18 @@ class SourceSinkRegistry:
         """加载默认的 Source/Sink/Sanitizer 模式"""
         self._load_javascript_sources()
         self._load_python_sources()
+        self._load_php_sources()
+        self._load_java_sources()
+        self._load_go_sources()
         self._load_javascript_sinks()
         self._load_python_sinks()
+        self._load_php_sinks()
+        self._load_java_sinks()
+        self._load_go_sinks()
         self._load_sanitizers()
+        self._load_php_sanitizers()
+        self._load_java_sanitizers()
+        self._load_go_sanitizers()
     
     def _load_javascript_sources(self) -> None:
         """加载 JavaScript/TypeScript 的 Source 模式"""
@@ -495,6 +504,183 @@ class SourceSinkRegistry:
         ]
         
         for source in py_sources:
+            self.register_source(source)
+
+    def _load_php_sources(self) -> None:
+        """加载 PHP 的 Source 模式（超全局变量与 php://input）"""
+        php_sources = [
+            SourcePattern(
+                name="php_get",
+                pattern=r"\$_GET\s*\[",
+                is_regex=True,
+                languages=["php"],
+                taint_level=TaintLevel.CRITICAL,
+                description="PHP GET 参数",
+            ),
+            SourcePattern(
+                name="php_post",
+                pattern=r"\$_POST\s*\[",
+                is_regex=True,
+                languages=["php"],
+                taint_level=TaintLevel.CRITICAL,
+                description="PHP POST 参数",
+            ),
+            SourcePattern(
+                name="php_request",
+                pattern=r"\$_REQUEST\s*\[",
+                is_regex=True,
+                languages=["php"],
+                taint_level=TaintLevel.CRITICAL,
+                description="PHP REQUEST 参数",
+            ),
+            SourcePattern(
+                name="php_cookie",
+                pattern=r"\$_COOKIE\s*\[",
+                is_regex=True,
+                languages=["php"],
+                taint_level=TaintLevel.HIGH,
+                description="PHP Cookie",
+            ),
+            SourcePattern(
+                name="php_server",
+                pattern=r"\$_SERVER\s*\[",
+                is_regex=True,
+                languages=["php"],
+                taint_level=TaintLevel.HIGH,
+                description="PHP SERVER 变量",
+            ),
+            SourcePattern(
+                name="php_files",
+                pattern=r"\$_FILES\s*\[",
+                is_regex=True,
+                languages=["php"],
+                taint_level=TaintLevel.CRITICAL,
+                description="PHP 上传文件",
+            ),
+            SourcePattern(
+                name="php_session",
+                pattern=r"\$_SESSION\s*\[",
+                is_regex=True,
+                languages=["php"],
+                taint_level=TaintLevel.HIGH,
+                description="PHP Session",
+            ),
+            SourcePattern(
+                name="php_input_stream",
+                pattern=r'file_get_contents\s*\(\s*["\']php://input["\']',
+                is_regex=True,
+                languages=["php"],
+                taint_level=TaintLevel.CRITICAL,
+                description="PHP 原始输入流",
+            ),
+        ]
+        for source in php_sources:
+            self.register_source(source)
+
+    def _load_java_sources(self) -> None:
+        """加载 Java 的 Source 模式"""
+        java_sources = [
+            # Servlet API
+            SourcePattern(
+                name="java_http_servlet_request_get_parameter",
+                pattern=r"\.getParameter\s*\(",
+                is_regex=True,
+                languages=["java"],
+                taint_level=TaintLevel.CRITICAL,
+                description="HttpServletRequest.getParameter / request.getParameter",
+                example='request.getParameter("id")',
+            ),
+            SourcePattern(
+                name="java_http_servlet_request_get_header",
+                pattern=r"\.getHeader\s*\(",
+                is_regex=True,
+                languages=["java"],
+                taint_level=TaintLevel.CRITICAL,
+                description="HttpServletRequest.getHeader / request.getHeader",
+            ),
+            SourcePattern(
+                name="java_http_servlet_request_get_cookies",
+                pattern=r"\.getCookies\s*\(",
+                is_regex=True,
+                languages=["java"],
+                taint_level=TaintLevel.HIGH,
+                description="HttpServletRequest.getCookies / request.getCookies",
+            ),
+
+            # Spring MVC Annotations（主要为规则层提供上下文）
+            SourcePattern(
+                name="java_spring_request_param",
+                pattern="@RequestParam",
+                languages=["java"],
+                taint_level=TaintLevel.CRITICAL,
+                description="Spring @RequestParam 注解",
+            ),
+            SourcePattern(
+                name="java_spring_request_body",
+                pattern="@RequestBody",
+                languages=["java"],
+                taint_level=TaintLevel.CRITICAL,
+                description="Spring @RequestBody 注解",
+            ),
+
+            # 标准输入
+            SourcePattern(
+                name="java_scanner_stdin",
+                pattern="System.in",
+                languages=["java"],
+                taint_level=TaintLevel.HIGH,
+                description="Scanner(System.in) 标准输入",
+            ),
+        ]
+        for source in java_sources:
+            self.register_source(source)
+
+    def _load_go_sources(self) -> None:
+        """加载 Go 的 Source 模式"""
+        go_sources = [
+            # net/http Request
+            SourcePattern(
+                name="go_http_url_query",
+                pattern=r"\.URL\.Query\(",
+                is_regex=True,
+                languages=["go"],
+                taint_level=TaintLevel.CRITICAL,
+                description="net/http: r.URL.Query()",
+            ),
+            SourcePattern(
+                name="go_http_form_value",
+                pattern=r"\.FormValue\s*\(",
+                is_regex=True,
+                languages=["go"],
+                taint_level=TaintLevel.CRITICAL,
+                description="net/http: r.FormValue()",
+            ),
+            SourcePattern(
+                name="go_http_header_get",
+                pattern=r"\.Header\.Get\s*\(",
+                is_regex=True,
+                languages=["go"],
+                taint_level=TaintLevel.HIGH,
+                description="net/http: r.Header.Get()",
+            ),
+            SourcePattern(
+                name="go_http_body",
+                pattern=r"\.Body\b",
+                is_regex=True,
+                languages=["go"],
+                taint_level=TaintLevel.CRITICAL,
+                description="net/http: r.Body（原始请求体）",
+            ),
+            # 命令行参数
+            SourcePattern(
+                name="go_os_args",
+                pattern="os.Args",
+                languages=["go"],
+                taint_level=TaintLevel.HIGH,
+                description="os.Args 命令行参数",
+            ),
+        ]
+        for source in go_sources:
             self.register_source(source)
     
     def _load_javascript_sinks(self) -> None:
@@ -827,6 +1013,365 @@ class SourceSinkRegistry:
         
         for sink in py_sinks:
             self.register_sink(sink)
+
+    def _load_php_sinks(self) -> None:
+        """加载 PHP 的 Sink 模式"""
+        php_sinks = [
+            # SQL Injection
+            SinkPattern(
+                name="php_mysql_query",
+                pattern=r"\b(?:mysql_query|mysqli_query|pg_query)\s*\(",
+                is_regex=True,
+                category=VulnCategory.SQL_INJECTION,
+                languages=["php"],
+                severity="High",
+                description="PHP SQL 查询",
+                cwe="CWE-89",
+            ),
+            SinkPattern(
+                name="php_stmt_execute",
+                pattern=r"\$\w+\s*->\s*(?:query|execute)\s*\(",
+                is_regex=True,
+                category=VulnCategory.SQL_INJECTION,
+                languages=["php"],
+                severity="High",
+                description="PHP 语句执行",
+                cwe="CWE-89",
+            ),
+            # RCE
+            SinkPattern(
+                name="php_system",
+                pattern=r"\bsystem\s*\(",
+                is_regex=True,
+                category=VulnCategory.RCE,
+                languages=["php"],
+                severity="Critical",
+                description="PHP system()",
+                cwe="CWE-78",
+            ),
+            SinkPattern(
+                name="php_exec",
+                pattern=r"\bexec\s*\(",
+                is_regex=True,
+                category=VulnCategory.RCE,
+                languages=["php"],
+                severity="Critical",
+                description="PHP exec()",
+                cwe="CWE-78",
+            ),
+            SinkPattern(
+                name="php_shell_exec",
+                pattern=r"\bshell_exec\s*\(",
+                is_regex=True,
+                category=VulnCategory.RCE,
+                languages=["php"],
+                severity="Critical",
+                description="PHP shell_exec()",
+                cwe="CWE-78",
+            ),
+            SinkPattern(
+                name="php_passthru",
+                pattern=r"\bpassthru\s*\(",
+                is_regex=True,
+                category=VulnCategory.RCE,
+                languages=["php"],
+                severity="Critical",
+                description="PHP passthru()",
+                cwe="CWE-78",
+            ),
+            SinkPattern(
+                name="php_popen",
+                pattern=r"\bpopen\s*\(",
+                is_regex=True,
+                category=VulnCategory.RCE,
+                languages=["php"],
+                severity="Critical",
+                description="PHP popen()",
+                cwe="CWE-78",
+            ),
+            SinkPattern(
+                name="php_eval",
+                pattern=r"\beval\s*\(",
+                is_regex=True,
+                category=VulnCategory.RCE,
+                languages=["php"],
+                severity="Critical",
+                description="PHP eval()",
+                cwe="CWE-94",
+            ),
+            # XSS
+            SinkPattern(
+                name="php_echo_print",
+                pattern=r"\b(?:echo|print|printf|fprintf)\s+",
+                is_regex=True,
+                category=VulnCategory.XSS,
+                languages=["php"],
+                severity="High",
+                description="PHP 输出",
+                cwe="CWE-79",
+            ),
+            # Open Redirect
+            SinkPattern(
+                name="php_header_location",
+                pattern=r"header\s*\(\s*['\"]location\s*:",
+                is_regex=True,
+                category=VulnCategory.OPEN_REDIRECT,
+                languages=["php"],
+                severity="Medium",
+                description="PHP 重定向头",
+                cwe="CWE-601",
+            ),
+            # Path Traversal
+            SinkPattern(
+                name="php_file_get_contents",
+                pattern=r"\bfile_get_contents\s*\(",
+                is_regex=True,
+                category=VulnCategory.PATH_TRAVERSAL,
+                languages=["php"],
+                severity="High",
+                description="PHP 文件读取",
+                cwe="CWE-22",
+            ),
+            SinkPattern(
+                name="php_include_require",
+                pattern=r"\b(?:include|require|include_once|require_once)\s*\(",
+                is_regex=True,
+                category=VulnCategory.PATH_TRAVERSAL,
+                languages=["php"],
+                severity="High",
+                description="PHP 包含",
+                cwe="CWE-22",
+            ),
+            SinkPattern(
+                name="php_fopen",
+                pattern=r"\bfopen\s*\(",
+                is_regex=True,
+                category=VulnCategory.PATH_TRAVERSAL,
+                languages=["php"],
+                severity="High",
+                description="PHP 打开文件",
+                cwe="CWE-22",
+            ),
+            SinkPattern(
+                name="php_readfile",
+                pattern=r"\breadfile\s*\(",
+                is_regex=True,
+                category=VulnCategory.PATH_TRAVERSAL,
+                languages=["php"],
+                severity="High",
+                description="PHP readfile()",
+                cwe="CWE-22",
+            ),
+            # Deserialization
+            SinkPattern(
+                name="php_unserialize",
+                pattern=r"\bunserialize\s*\(",
+                is_regex=True,
+                category=VulnCategory.DESERIALIZATION,
+                languages=["php"],
+                severity="High",
+                description="PHP 反序列化",
+                cwe="CWE-502",
+            ),
+        ]
+        for sink in php_sinks:
+            self.register_sink(sink)
+
+    def _load_java_sinks(self) -> None:
+        """加载 Java 的 Sink 模式"""
+        java_sinks = [
+            # SQL Injection
+            SinkPattern(
+                name="java_statement_execute",
+                pattern=r"\bStatement\b.*\.execute(?:Query|Update)?\s*\(",
+                is_regex=True,
+                category=VulnCategory.SQL_INJECTION,
+                languages=["java"],
+                severity="High",
+                description="JDBC Statement 执行 SQL",
+                cwe="CWE-89",
+            ),
+            SinkPattern(
+                name="java_connection_create_statement",
+                pattern=r"\bcreateStatement\s*\(",
+                is_regex=True,
+                category=VulnCategory.SQL_INJECTION,
+                languages=["java"],
+                severity="High",
+                description="创建非参数化 Statement",
+                cwe="CWE-89",
+            ),
+
+            # RCE / 命令执行
+            SinkPattern(
+                name="java_runtime_exec",
+                pattern=r"Runtime\.getRuntime\(\)\.exec\s*\(",
+                is_regex=True,
+                category=VulnCategory.RCE,
+                languages=["java"],
+                severity="Critical",
+                description="Runtime.exec 命令执行",
+                cwe="CWE-78",
+            ),
+            SinkPattern(
+                name="java_process_builder_start",
+                pattern=r"ProcessBuilder\s*\(",
+                is_regex=True,
+                category=VulnCategory.RCE,
+                languages=["java"],
+                severity="Critical",
+                description="ProcessBuilder.start 命令执行",
+                cwe="CWE-78",
+            ),
+
+            # XSS
+            SinkPattern(
+                name="java_response_writer_write",
+                pattern=r"\.getWriter\(\)\.write\s*\(",
+                is_regex=True,
+                category=VulnCategory.XSS,
+                languages=["java"],
+                severity="High",
+                description="Servlet 响应直接写入",
+                cwe="CWE-79",
+            ),
+
+            # Open Redirect
+            SinkPattern(
+                name="java_response_send_redirect",
+                pattern=r"\.sendRedirect\s*\(",
+                is_regex=True,
+                category=VulnCategory.OPEN_REDIRECT,
+                languages=["java"],
+                severity="Medium",
+                description="Servlet 重定向",
+                cwe="CWE-601",
+            ),
+
+            # Deserialization
+            SinkPattern(
+                name="java_object_input_stream_read_object",
+                pattern=r"\.readObject\s*\(",
+                is_regex=True,
+                category=VulnCategory.DESERIALIZATION,
+                languages=["java"],
+                severity="High",
+                description="ObjectInputStream.readObject 反序列化",
+                cwe="CWE-502",
+            ),
+
+            # Path Traversal
+            SinkPattern(
+                name="java_file_new",
+                pattern=r"new\s+File\s*\(",
+                is_regex=True,
+                category=VulnCategory.PATH_TRAVERSAL,
+                languages=["java"],
+                severity="High",
+                description="File 对象路径访问",
+                cwe="CWE-22",
+            ),
+            SinkPattern(
+                name="java_file_input_stream",
+                pattern=r"new\s+FileInputStream\s*\(",
+                is_regex=True,
+                category=VulnCategory.PATH_TRAVERSAL,
+                languages=["java"],
+                severity="High",
+                description="FileInputStream 文件读取",
+                cwe="CWE-22",
+            ),
+        ]
+        for sink in java_sinks:
+            self.register_sink(sink)
+
+    def _load_go_sinks(self) -> None:
+        """加载 Go 的 Sink 模式"""
+        go_sinks = [
+            # SQL Injection
+            SinkPattern(
+                name="go_db_query_exec",
+                pattern=r"\.(Query|QueryContext|QueryRow|Exec|ExecContext)\s*\(",
+                is_regex=True,
+                category=VulnCategory.SQL_INJECTION,
+                languages=["go"],
+                severity="High",
+                description="database/sql 查询 / 执行",
+                cwe="CWE-89",
+            ),
+
+            # RCE / 命令执行
+            SinkPattern(
+                name="go_exec_command",
+                pattern=r"\bexec\.Command\s*\(",
+                is_regex=True,
+                category=VulnCategory.RCE,
+                languages=["go"],
+                severity="Critical",
+                description="os/exec.Command 命令执行",
+                cwe="CWE-78",
+            ),
+
+            # XSS（HTTP 响应输出）
+            SinkPattern(
+                name="go_fmt_fprintf",
+                pattern=r"\bfmt\.Fprintf\s*\(",
+                is_regex=True,
+                category=VulnCategory.XSS,
+                languages=["go"],
+                severity="High",
+                description="fmt.Fprintf 向 ResponseWriter 输出",
+                cwe="CWE-79",
+            ),
+
+            # Open Redirect
+            SinkPattern(
+                name="go_http_redirect",
+                pattern=r"\bhttp\.Redirect\s*\(",
+                is_regex=True,
+                category=VulnCategory.OPEN_REDIRECT,
+                languages=["go"],
+                severity="Medium",
+                description="net/http Redirect 重定向",
+                cwe="CWE-601",
+            ),
+
+            # Path Traversal
+            SinkPattern(
+                name="go_os_open",
+                pattern=r"\bos\.Open\s*\(",
+                is_regex=True,
+                category=VulnCategory.PATH_TRAVERSAL,
+                languages=["go"],
+                severity="High",
+                description="os.Open 文件读取",
+                cwe="CWE-22",
+            ),
+            SinkPattern(
+                name="go_os_openfile",
+                pattern=r"\bos\.OpenFile\s*\(",
+                is_regex=True,
+                category=VulnCategory.PATH_TRAVERSAL,
+                languages=["go"],
+                severity="High",
+                description="os.OpenFile 文件访问",
+                cwe="CWE-22",
+            ),
+
+            # Deserialization
+            SinkPattern(
+                name="go_json_unmarshal",
+                pattern=r"\bjson\.Unmarshal\s*\(",
+                is_regex=True,
+                category=VulnCategory.DESERIALIZATION,
+                languages=["go"],
+                severity="High",
+                description="json.Unmarshal 反序列化",
+                cwe="CWE-502",
+            ),
+        ]
+        for sink in go_sinks:
+            self.register_sink(sink)
     
     def _load_sanitizers(self) -> None:
         """
@@ -912,10 +1457,7 @@ class SourceSinkRegistry:
                 description="mongo-sanitize 净化",
             ),
 
-            # 路径 Sanitizer
-            # path.resolve / path.normalize 本身不能防止路径穿越（仍可访问任意绝对路径），
-            # 移除它们。仅保留 path.basename（截取文件名，有一定削减效果，但仍非充分净化）。
-            # 注意：彻底的路径净化需配合白名单目录校验，basename 仅降低告警优先级。
+            # 路径 Sanitizer（path.basename / normalize / resolve 作为净化感知，降低告警或跳过）
             SanitizerPattern(
                 name="path_basename",
                 pattern=r"path\.basename\(",
@@ -923,6 +1465,22 @@ class SourceSinkRegistry:
                 sanitizes_categories=[VulnCategory.PATH_TRAVERSAL],
                 languages=["javascript", "typescript"],
                 description="path.basename() 限制为文件名（需配合目录白名单）",
+            ),
+            SanitizerPattern(
+                name="path_normalize",
+                pattern=r"path\.normalize\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.PATH_TRAVERSAL],
+                languages=["javascript", "typescript"],
+                description="path.normalize() 路径规范化",
+            ),
+            SanitizerPattern(
+                name="path_resolve",
+                pattern=r"path\.resolve\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.PATH_TRAVERSAL],
+                languages=["javascript", "typescript"],
+                description="path.resolve() 解析为绝对路径",
             ),
 
             # ── Python ──
@@ -991,6 +1549,186 @@ class SourceSinkRegistry:
         ]
 
         for sanitizer in sanitizers:
+            self.register_sanitizer(sanitizer)
+
+    def _load_php_sanitizers(self) -> None:
+        """加载 PHP 的 Sanitizer 模式"""
+        php_sanitizers = [
+            SanitizerPattern(
+                name="php_htmlspecialchars",
+                pattern=r"\bhtmlspecialchars\s*\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.XSS],
+                languages=["php"],
+                description="htmlspecialchars() 转义",
+            ),
+            SanitizerPattern(
+                name="php_htmlentities",
+                pattern=r"\bhtmlentities\s*\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.XSS],
+                languages=["php"],
+                description="htmlentities() 转义",
+            ),
+            SanitizerPattern(
+                name="php_intval",
+                pattern=r"\bintval\s*\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.SQL_INJECTION],
+                languages=["php"],
+                description="intval() 整数转换",
+            ),
+            SanitizerPattern(
+                name="php_floatval",
+                pattern=r"\bfloatval\s*\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.SQL_INJECTION],
+                languages=["php"],
+                description="floatval() 浮点转换",
+            ),
+            SanitizerPattern(
+                name="php_mysqli_real_escape_string",
+                pattern=r"\bmysqli_real_escape_string\s*\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.SQL_INJECTION],
+                languages=["php"],
+                description="mysqli_real_escape_string()",
+            ),
+            SanitizerPattern(
+                name="php_addslashes",
+                pattern=r"\baddslashes\s*\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.SQL_INJECTION],
+                languages=["php"],
+                description="addslashes()",
+            ),
+            SanitizerPattern(
+                name="php_basename",
+                pattern=r"\bbasename\s*\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.PATH_TRAVERSAL],
+                languages=["php"],
+                description="basename() 路径基名",
+            ),
+            SanitizerPattern(
+                name="php_realpath",
+                pattern=r"\brealpath\s*\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.PATH_TRAVERSAL],
+                languages=["php"],
+                description="realpath() 规范路径",
+            ),
+            SanitizerPattern(
+                name="php_escapeshellarg",
+                pattern=r"\bescapeshellarg\s*\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.RCE],
+                languages=["php"],
+                description="escapeshellarg() Shell 转义",
+            ),
+            SanitizerPattern(
+                name="php_escapeshellcmd",
+                pattern=r"\bescapeshellcmd\s*\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.RCE],
+                languages=["php"],
+                description="escapeshellcmd() Shell 转义",
+            ),
+        ]
+        for sanitizer in php_sanitizers:
+            self.register_sanitizer(sanitizer)
+
+    def _load_java_sanitizers(self) -> None:
+        """加载 Java 的 Sanitizer 模式"""
+        java_sanitizers = [
+            # SQLI - 参数化查询 / PreparedStatement
+            SanitizerPattern(
+                name="java_prepared_statement",
+                pattern=r"\bprepareStatement\s*\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.SQL_INJECTION],
+                languages=["java"],
+                description="JDBC PreparedStatement 参数化查询",
+            ),
+
+            # XSS
+            SanitizerPattern(
+                name="java_html_utils_html_escape",
+                pattern=r"HtmlUtils\.htmlEscape\s*\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.XSS],
+                languages=["java"],
+                description="Spring HtmlUtils.htmlEscape XSS 转义",
+            ),
+            SanitizerPattern(
+                name="java_esapi_encoder",
+                pattern=r"ESAPI\.encoder\(\)\.encode",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.XSS],
+                languages=["java"],
+                description="OWASP ESAPI encoder 编码输出",
+            ),
+
+            # 数值转换
+            SanitizerPattern(
+                name="java_integer_parse_int",
+                pattern=r"Integer\.parseInt\s*\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.SQL_INJECTION],
+                languages=["java"],
+                description="Integer.parseInt 数值转换",
+            ),
+
+            # 路径规范化
+            SanitizerPattern(
+                name="java_paths_get_normalize",
+                pattern=r"Paths\.get\s*\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.PATH_TRAVERSAL],
+                languages=["java"],
+                description="Paths.get(...).normalize() 路径规范化（部分识别）",
+            ),
+        ]
+        for sanitizer in java_sanitizers:
+            self.register_sanitizer(sanitizer)
+
+    def _load_go_sanitizers(self) -> None:
+        """加载 Go 的 Sanitizer 模式"""
+        go_sanitizers = [
+            # XSS Sanitizer
+            SanitizerPattern(
+                name="go_template_html_escape_string",
+                pattern=r"template\.HTMLEscapeString\s*\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.XSS],
+                languages=["go"],
+                description="html/template.HTMLEscapeString XSS 转义",
+            ),
+
+            # 路径规范化
+            SanitizerPattern(
+                name="go_filepath_clean",
+                pattern=r"filepath\.Clean\s*\(",
+                is_regex=True,
+                sanitizes_categories=[VulnCategory.PATH_TRAVERSAL],
+                languages=["go"],
+                description="filepath.Clean() 路径规范化",
+            ),
+
+            # 数值转换（端口/ID 等）
+            SanitizerPattern(
+                name="go_strconv_atoi",
+                pattern=r"strconv\.Atoi\s*\(",
+                is_regex=True,
+                sanitizes_categories=[
+                    VulnCategory.SQL_INJECTION,
+                    VulnCategory.NOSQL_INJECTION,
+                ],
+                languages=["go"],
+                description="strconv.Atoi() 整数解析",
+            ),
+        ]
+        for sanitizer in go_sanitizers:
             self.register_sanitizer(sanitizer)
     
     def get_stats(self) -> Dict[str, int]:

@@ -119,6 +119,40 @@ BUILTIN_REMEDIATION = {
                 "# 原始 SQL:\n"
                 "User.objects.raw('SELECT * FROM users WHERE id = %s', [user_id])"
             ),
+            "jdbc": (
+                "// Java: JDBC PreparedStatement 参数化查询\n"
+                "String sql = \"SELECT * FROM users WHERE id = ?\";\n"
+                "try (PreparedStatement ps = connection.prepareStatement(sql)) {\n"
+                "    ps.setInt(1, userId);\n"
+                "    try (ResultSet rs = ps.executeQuery()) {\n"
+                "        // TODO: 处理结果集\n"
+                "    }\n"
+                "}"
+            ),
+            "spring": (
+                "// Java: Spring JdbcTemplate 参数化查询\n"
+                "String sql = \"SELECT * FROM users WHERE id = ?\";\n"
+                "User user = jdbcTemplate.queryForObject(\n"
+                "    sql,\n"
+                "    new Object[] { userId },\n"
+                "    (rs, rowNum) -> mapUser(rs)\n"
+                ");"
+            ),
+            "hibernate": (
+                "// Java: Hibernate HQL 参数化查询\n"
+                "String hql = \"FROM User u WHERE u.id = :id\";\n"
+                "User user = session.createQuery(hql, User.class)\n"
+                "    .setParameter(\"id\", userId)\n"
+                "    .uniqueResult();"
+            ),
+            "mybatis": (
+                "// Java: MyBatis 使用 #{id} 占位符（自动参数化）\n"
+                "// Mapper XML:\n"
+                "// <select id=\"findUser\" resultType=\"User\">\n"
+                "//   SELECT * FROM users WHERE id = #{id}\n"
+                "// </select>\n"
+                "User user = userMapper.findUser(userId);"
+            ),
         },
     },
     "NOSQL_INJECTION": {
@@ -192,6 +226,25 @@ BUILTIN_REMEDIATION = {
             "// ── 避免 eval() 动态执行 ──\n"
             "// 将 eval(\"require('crypto')\") 改为直接 require('crypto')"
         ),
+        "framework_suggested_code": {
+            "child_process": (
+                "// Node.js: 用 execFile + 参数数组替代 exec\n"
+                "const { execFile } = require('child_process');\n"
+                "const ALLOWED_CMDS = ['ls', 'pwd'];\n"
+                "if (!ALLOWED_CMDS.includes(cmd)) throw new Error('Disallowed');\n"
+                "execFile(cmd, [], (err, stdout) => { /* 安全 */ });"
+            ),
+            "subprocess": (
+                "# Python: 用列表参数替代 shell=True\n"
+                "import subprocess\n"
+                "result = subprocess.run(['ls', '-la', safe_path], capture_output=True, text=True)"
+            ),
+            "escapeshellarg": (
+                "// PHP: 使用 escapeshellarg 转义参数\n"
+                "$safe = escapeshellarg($user_input);\n"
+                "exec('ls ' . $safe);"
+            ),
+        },
     },
     "XSS": {
         "description": "跨站脚本攻击允许攻击者在用户浏览器中执行恶意脚本。",
@@ -220,6 +273,35 @@ BUILTIN_REMEDIATION = {
             "// 避免 [innerHTML]，若必须使用则:\n"
             "// this.sanitizer.bypassSecurityTrustHtml(content)"
         ),
+        "framework_suggested_code": {
+            "dompurify": (
+                "// DOMPurify 净化后插入\n"
+                "element.innerHTML = DOMPurify.sanitize(userInput);"
+            ),
+            "he": (
+                "// Node.js 服务端: he 编码\n"
+                "const he = require('he');\n"
+                "res.send(`<p>${he.encode(userInput)}</p>`);"
+            ),
+            "dom_sanitizer": (
+                "// Angular: 模板中 {{ userInput }} 自动转义\n"
+                "// 必须用 [innerHTML] 时: this.sanitizer.sanitize(SecurityContext.HTML, content)"
+            ),
+            "html_escape": (
+                "# Python: html.escape\n"
+                "import html\n"
+                "safe = html.escape(user_input)"
+            ),
+            "markupsafe": (
+                "# Jinja2 / MarkupSafe\n"
+                "from markupsafe import escape\n"
+                "safe = escape(user_input)"
+            ),
+            "htmlspecialchars": (
+                "// PHP: 输出前转义\n"
+                "echo htmlspecialchars($var, ENT_QUOTES, 'UTF-8');"
+            ),
+        },
     },
     "PATH_TRAVERSAL": {
         "description": "路径穿越漏洞允许攻击者访问服务器上的任意文件。",
@@ -252,6 +334,46 @@ BUILTIN_REMEDIATION = {
             "if not requested.startswith(BASE_DIR + os.sep):\n"
             "    raise PermissionError('Path traversal detected')"
         ),
+        "framework_suggested_code": {
+            "path_resolve": (
+                "// Node.js: path.resolve + startsWith 校验\n"
+                "const path = require('path');\n"
+                "const BASE_DIR = path.resolve('/var/www/uploads');\n"
+                "const requested = path.resolve(BASE_DIR, req.params.filename);\n"
+                "if (!requested.startsWith(BASE_DIR + path.sep)) return res.status(403).send('Forbidden');\n"
+                "fs.readFile(requested, 'utf8', callback);"
+            ),
+            "os_path": (
+                "# Python: os.path.realpath + startswith\n"
+                "import os\n"
+                "BASE_DIR = os.path.realpath('/var/www/uploads')\n"
+                "requested = os.path.realpath(os.path.join(BASE_DIR, filename))\n"
+                "if not requested.startswith(BASE_DIR + os.sep):\n"
+                "    raise PermissionError('Path traversal detected')"
+            ),
+            "basename_realpath": (
+                "// PHP: basename 或 realpath 限制在目录内\n"
+                "$base = realpath('/var/www/uploads');\n"
+                "$file = $base . '/' . basename($_GET['file']);\n"
+                "if (strpos(realpath($file), $base) !== 0) exit('Forbidden');\n"
+                "readfile($file);"
+            ),
+            "database_sql": (
+                "// Go: database/sql 使用占位符参数\n"
+                "row := db.QueryRow(\"SELECT * FROM users WHERE id = ?\", userID)\n"
+                "var user User\n"
+                "if err := row.Scan(&user.ID, &user.Name); err != nil {\n"
+                "    // 处理错误\n"
+                "}"
+            ),
+            "gorm": (
+                "// Go: GORM 查询（自动参数化）\n"
+                "var user User\n"
+                "if err := db.Where(\"id = ?\", userID).First(&user).Error; err != nil {\n"
+                "    // 处理错误\n"
+                "}"
+            ),
+        },
     },
     "HARDCODED_CREDENTIALS": {
         "description": "硬编码凭证会导致敏感信息泄露，攻击者可利用这些凭证访问系统。",
@@ -266,6 +388,32 @@ BUILTIN_REMEDIATION = {
             "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
         ],
         "cwe": "CWE-798",
+        "suggested_code": (
+            "// 使用环境变量或密钥管理服务\n"
+            "// Node: process.env.DB_PASSWORD\n"
+            "# Python: os.environ.get('DB_PASSWORD')\n"
+            "// PHP: getenv('DB_PASSWORD')"
+        ),
+        "framework_suggested_code": {
+            "process_env": (
+                "// Node.js: 环境变量\n"
+                "const password = process.env.DB_PASSWORD;"
+            ),
+            "os_environ": (
+                "# Python: 环境变量\n"
+                "import os\n"
+                "password = os.environ.get('DB_PASSWORD')"
+            ),
+            "getenv": (
+                "// PHP: getenv\n"
+                "$password = getenv('DB_PASSWORD');"
+            ),
+            "dotenv": (
+                "// 通用: .env 文件（不要提交到 Git）\n"
+                "// Node: require('dotenv').config(); process.env.KEY\n"
+                "# Python: python-dotenv 加载 .env"
+            ),
+        },
     },
     "DESERIALIZATION": {
         "description": "不安全的反序列化可能导致远程代码执行或拒绝服务攻击。",
@@ -280,6 +428,55 @@ BUILTIN_REMEDIATION = {
             "https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html",
         ],
         "cwe": "CWE-502",
+        "suggested_code": (
+            "// 使用 JSON 等安全格式替代 pickle/unserialize\n"
+            "// JS: JSON.parse()\n"
+            "# Python: json.loads() / yaml.safe_load()\n"
+            "// PHP: json_decode()"
+        ),
+        "framework_suggested_code": {
+            "json_parse": (
+                "// JavaScript: 使用 JSON 替代不安全反序列化\n"
+                "const data = JSON.parse(userInput);"
+            ),
+            "json_loads": (
+                "# Python: json.loads\n"
+                "import json\n"
+                "data = json.loads(user_input)"
+            ),
+            "json_decode": (
+                "// PHP: json_decode 替代 unserialize\n"
+                "$data = json_decode($input, true);"
+            ),
+            "yaml_safe_load": (
+                "# Python: yaml.safe_load（勿用 yaml.load）\n"
+                "import yaml\n"
+                "data = yaml.safe_load(user_input)"
+            ),
+            "gin": (
+                "// Go: Gin 框架中安全绑定 JSON（并做字段校验）\n"
+                "type LoginRequest struct {\n"
+                "    Username string `json:\"username\" binding:\"required\"`\n"
+                "    Password string `json:\"password\" binding:\"required\"`\n"
+                "}\n"
+                "var req LoginRequest\n"
+                "if err := c.ShouldBindJSON(&req); err != nil {\n"
+                "    c.JSON(400, gin.H{\"error\": \"invalid input\"})\n"
+                "    return\n"
+                "}"
+            ),
+            "echo": (
+                "// Go: Echo 框架中安全绑定 JSON\n"
+                "type LoginRequest struct {\n"
+                "    Username string `json:\"username\" validate:\"required\"`\n"
+                "    Password string `json:\"password\" validate:\"required\"`\n"
+                "}\n"
+                "var req LoginRequest\n"
+                "if err := c.Bind(&req); err != nil {\n"
+                "    return c.JSON(400, map[string]string{\"error\": \"invalid input\"})\n"
+                "}"
+            ),
+        },
     },
     "OPEN_REDIRECT": {
         "description": "任意 URL 跳转（CWE-601）允许攻击者将受害者重定向到钓鱼或恶意站点，常被用于绕过安全检查。",
@@ -306,6 +503,28 @@ BUILTIN_REMEDIATION = {
             "    exit('Invalid redirect target');\n"
             "}"
         ),
+        "framework_suggested_code": {
+            "url_whitelist_js": (
+                "// JavaScript: 白名单校验 URL\n"
+                "const allowedHosts = ['example.com'];\n"
+                "const url = new URL(userRedirect);\n"
+                "if (!allowedHosts.includes(url.hostname)) throw new Error('Invalid redirect');\n"
+                "location.href = url.toString();"
+            ),
+            "url_has_allowed_host_and_scheme": (
+                "# Django: url_has_allowed_host_and_scheme\n"
+                "from django.utils.http import url_has_allowed_host_and_scheme\n"
+                "if not url_has_allowed_host_and_scheme(redirect_to, allowed_hosts):\n"
+                "    raise ValueError('Invalid redirect')"
+            ),
+            "in_array": (
+                "// PHP: 白名单\n"
+                "$allowed = ['info.php', 'home.php'];\n"
+                "$target = $_GET['redirect'] ?? '';\n"
+                "if (in_array($target, $allowed)) header('Location: ' . $target);\n"
+                "else http_response_code(400);"
+            ),
+        },
     },
     "XSS_RISK": {
         "description": "跨站脚本攻击（XSS）允许攻击者在用户浏览器中执行恶意脚本，窃取会话或重定向用户。",
@@ -324,6 +543,20 @@ BUILTIN_REMEDIATION = {
             "// PHP 安全输出示例\n"
             "echo htmlspecialchars($_GET['name'], ENT_QUOTES, 'UTF-8');"
         ),
+        "framework_suggested_code": {
+            "htmlspecialchars": (
+                "// PHP: 输出前转义\n"
+                "echo htmlspecialchars($var, ENT_QUOTES, 'UTF-8');"
+            ),
+            "dompurify": (
+                "// 前端: DOMPurify\n"
+                "element.innerHTML = DOMPurify.sanitize(userInput);"
+            ),
+            "textcontent": (
+                "// 安全: 使用 textContent 替代 innerHTML\n"
+                "element.textContent = userInput;"
+            ),
+        },
     },
 }
 
