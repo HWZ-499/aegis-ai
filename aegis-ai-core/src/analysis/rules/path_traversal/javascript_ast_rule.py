@@ -65,24 +65,35 @@ class JavaScriptPathTraversalAstRule(SecurityRule):
         if not self._is_file_operation(object_name, method_name):
             return
 
-        # 检查参数中是否有用户输入
-        if not node.children:
-            return
-
+        # 取路径参数（文件操作第一个参数）
+        path_arg = None
         for child in node.children:
             if child.type == "arguments":
                 for arg in child.children:
-                    if self._looks_like_user_input(arg):
-                        line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                        finding: Dict[str, Any] = {
-                            "type": "PATH_TRAVERSAL",
-                            "rule_id": self.rule_id,
-                            "severity": self.severity,
-                            "line": line_no,
-                            "details": f"文件操作 {object_name}.{method_name}() 使用疑似用户输入作为路径参数，可能存在路径遍历风险。",
-                        }
-                        context.add_finding(finding)
-                        return
+                    if arg.type not in (",", ")"):
+                        path_arg = arg
+                        break
+                break
+        if path_arg is None:
+            return
+
+        # 【污点 + 净化感知】优先使用 taint_graph / dataflow_tracker
+        if context.taint_graph or context.dataflow_tracker:
+            identifiers = self._collect_identifiers_from_node(path_arg)
+            if identifiers and all(context.is_var_sanitized(v) for v in identifiers):
+                return
+            if identifiers and any(context.is_var_tainted(v) for v in identifiers):
+                line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+                finding = self._make_finding(line_no, object_name, method_name)
+                context.add_finding(finding)
+                return
+            if identifiers:
+                return  # 已追踪但未污染，不报
+        # 降级：结构化用户输入检测
+        if self._looks_like_user_input(path_arg, context):
+            line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+            finding = self._make_finding(line_no, object_name, method_name)
+            context.add_finding(finding)
 
     # ------------------------------------------------------------------
     # 辅助方法
@@ -114,15 +125,43 @@ class JavaScriptPathTraversalAstRule(SecurityRule):
 
         return False
 
-    @staticmethod
-    def _looks_like_user_input(node: Node) -> bool:
+    def _collect_identifiers_from_node(self, node: Node) -> list[str]:
         """
-        判断节点是否来自用户输入（结构化检测）。
+        从 AST 节点子树收集标识符与 member_expression 文本，供污点/净化查询。
+        """
+        out: list[str] = []
+        if node.type == "identifier":
+            t = self._get_node_text(node)
+            if t:
+                out.append(t)
+            return out
+        if node.type == "member_expression":
+            full = self._get_node_text(node)
+            if full:
+                out.append(full)
+            return out
+        for child in getattr(node, "children", []) or []:
+            out.extend(self._collect_identifiers_from_node(child))
+        return out
 
-        使用 ``is_user_input_node`` 进行精确 AST 匹配，
-        不再使用关键词子串模糊搜索。
+    def _make_finding(self, line_no: int, object_name: str | None, method_name: str | None) -> Dict[str, Any]:
+        """构建 PATH_TRAVERSAL finding。"""
+        return {
+            "type": "PATH_TRAVERSAL",
+            "rule_id": self.rule_id,
+            "severity": self.severity,
+            "line": line_no,
+            "details": f"文件操作 {object_name or '?'}.{method_name or '?'}() 使用疑似用户输入作为路径参数，可能存在路径遍历风险。建议使用 path.basename/path.normalize 或白名单校验。",
+        }
+
+    @staticmethod
+    def _looks_like_user_input(node: Node, context: AnalysisContext | None = None) -> bool:
         """
-        return is_user_input_node(node, language="javascript")
+        判断节点是否来自用户输入（结构化检测 + 污点查询）。
+
+        使用 ``is_user_input_node`` 进行精确 AST 匹配。
+        """
+        return is_user_input_node(node, context, language="javascript")
 
     @staticmethod
     def _get_node_text(node: Node) -> str | None:

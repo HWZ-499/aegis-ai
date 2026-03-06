@@ -94,6 +94,26 @@ def _is_parameterized(call_node: ast.Call) -> bool:
     return False
 
 
+def _is_sqlalchemy_text_bindparams(node: ast.AST) -> bool:
+    """
+    判断是否为 SQLAlchemy text(...).bindparams() 安全模式。
+    """
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if not isinstance(func, ast.Attribute) or func.attr != "bindparams":
+        return False
+    inner = func.value
+    if not isinstance(inner, ast.Call):
+        return False
+    inner_func = inner.func
+    if isinstance(inner_func, ast.Name) and inner_func.id == "text":
+        return True
+    if isinstance(inner_func, ast.Attribute) and inner_func.attr == "text":
+        return True
+    return False
+
+
 def _collect_names(node: ast.AST) -> List[str]:
     """从节点子树中收集所有 Name.id。"""
     names: List[str] = []
@@ -204,13 +224,25 @@ class PythonSQLInjectionAstRule(SecurityRule):
         """
         检测 Python AST 中的 SQL 注入模式。
 
-        只在 execute() 调用层检测，避免裸 BinOp 重复报告：
-        1. cursor.execute("..." + var)  ← BinOp/call 组合
-        2. cursor.execute(f"...{var}")  ← JoinedStr
-        3. cursor.execute("...%s" % var) ← BinOp(Mod)
+        1. Django ORM Model.objects.raw(user_input) → Critical
+        2. cursor.execute(...) 参数化 / SQLAlchemy text().bindparams() → 安全
+        3. cursor.execute("..." + var) / f-string / % 格式化 → 注入风险
         """
-        if isinstance(node, ast.Call):
-            self._check_execute_call(node, context)
+        if not isinstance(node, ast.Call):
+            return
+        # Django ORM .raw() 使用用户输入 → Critical
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "raw" and node.args:
+            if _is_user_input_node(node.args[0], context):
+                line_no = getattr(node, "lineno", 0) or 0
+                context.add_finding({
+                    "type": "SQL_INJECTION",
+                    "rule_id": self.rule_id,
+                    "severity": "Critical",
+                    "line": line_no,
+                    "details": "Django Model.objects.raw() 使用用户输入作为 SQL，存在严重 SQL 注入风险，请使用 ORM 或参数化查询。",
+                })
+                return
+        self._check_execute_call(node, context)
 
     # ------------------------------------------------------------------
     # 子检测方法
@@ -245,6 +277,9 @@ class PythonSQLInjectionAstRule(SecurityRule):
         self, arg: ast.AST, call_node: ast.Call, context: AnalysisContext
     ) -> None:
         """分析 execute() 第一个参数是否存在注入风险。"""
+        # SQLAlchemy text().bindparams() 为安全模式
+        if _is_sqlalchemy_text_bindparams(arg):
+            return
         # BinOp：字符串拼接 ("SELECT..." + uid) 或 % 格式化
         if isinstance(arg, ast.BinOp):
             if isinstance(arg.op, (ast.Add, ast.Mod)):

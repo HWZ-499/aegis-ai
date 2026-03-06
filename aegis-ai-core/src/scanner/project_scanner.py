@@ -25,6 +25,7 @@ from src.analysis.rule_engine import (
     analyze_python as analyze_python_new,
     analyze_javascript as analyze_javascript_new,
     analyze_php as analyze_php_new,
+    analyze_java as analyze_java_new,
 )
 
 
@@ -78,8 +79,8 @@ class ProjectScanner:
         # ──────────────────────────────────────────────
         # 支持的文件扩展名（1.4 多语言诚实标注）
         #
-        # 完整支持（AST + 规则 + 污点）：Python、JavaScript、TypeScript、PHP
-        # 基础支持（仅正则匹配）：Java、Go、C/C++，无专用 AST 规则，误报率较高
+        # 完整支持（AST + 规则 + 污点）：Python、JavaScript、TypeScript、PHP、Java、Go
+        # 基础支持（仅正则匹配）：C/C++，无专用 AST 规则，误报率较高
         # 未支持：Rust、Swift、Kotlin、C# 等无规则语言已不列入
         # ──────────────────────────────────────────────
         self._full_support = {
@@ -92,10 +93,10 @@ class ProjectScanner:
             '.ts': 'typescript',
             '.tsx': 'typescript',
             '.php': 'php',   # PhpTaintGraph 污点分析（SQLi/XSS/RCE/OPEN_REDIRECT）
+            '.java': 'java', # Java AST + TaintAnalyzer + 规则引擎
+            '.go': 'go',     # Go AST + TaintAnalyzer + 规则引擎
         }
         self._partial_support = {
-            '.java': 'java',
-            '.go': 'go',
             '.c': 'c',
             '.cpp': 'cpp',
             '.cc': 'cpp',
@@ -315,6 +316,12 @@ class ProjectScanner:
             elif language == 'php' and self.engine == 'new':
                 # ✅ 新规则引擎（PHP）：PhpTaintGraph 污点分析
                 merged_findings = analyze_php_new(code, file_path_str)
+            elif language == 'java' and self.engine == 'new':
+                # ✅ 新规则引擎（Java）：Tree-sitter Java + TaintAnalyzer + 规则引擎
+                merged_findings = analyze_java_new(code, file_path_str)
+            elif language == 'go' and self.engine == 'new':
+                # ✅ 新规则引擎（Go）：Tree-sitter Go + TaintAnalyzer + 规则引擎
+                merged_findings = analyze_go_new(code, file_path_str)
             else:
                 if language == 'python':
                     # 旧版 Python 引擎：AST 分析 + 本地规则匹配

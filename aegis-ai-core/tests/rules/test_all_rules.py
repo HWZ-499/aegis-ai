@@ -28,7 +28,13 @@ from typing import List
 
 import pytest
 
-from src.analysis.rule_engine import analyze_javascript, analyze_python
+from src.analysis.rule_engine import (
+    analyze_javascript,
+    analyze_php,
+    analyze_python,
+    analyze_java,
+    analyze_go,
+)
 
 # ------------------------------------------------------------------
 # 常量
@@ -44,10 +50,14 @@ VULN_TYPE_MAP = {
     "rce": "RCE_COMMAND_EXEC",
     "sql_injection": "SQL_INJECTION",
     "deserialization": "DESERIALIZATION",
+    "open_redirect": "OPEN_REDIRECT",
 }
 
 JS_EXTENSIONS = {".js", ".ts", ".jsx", ".tsx"}
 PY_EXTENSIONS = {".py"}
+PHP_EXTENSIONS = {".php"}
+JAVA_EXTENSIONS = {".java"}
+GO_EXTENSIONS = {".go"}
 
 
 def _analyze(file_path: Path) -> List[dict]:
@@ -58,6 +68,12 @@ def _analyze(file_path: Path) -> List[dict]:
         return analyze_javascript(code, str(file_path))
     if ext in PY_EXTENSIONS:
         return analyze_python(code, str(file_path))
+    if ext in PHP_EXTENSIONS:
+        return analyze_php(code, str(file_path))
+    if ext in JAVA_EXTENSIONS:
+        return analyze_java(code, str(file_path))
+    if ext in GO_EXTENSIONS:
+        return analyze_go(code, str(file_path))
     return []
 
 
@@ -80,7 +96,7 @@ def _collect_cases():
             if not sub_dir.exists():
                 continue
             for sample_file in sorted(sub_dir.iterdir()):
-                if sample_file.suffix.lower() not in JS_EXTENSIONS | PY_EXTENSIONS:
+                if sample_file.suffix.lower() not in JS_EXTENSIONS | PY_EXTENSIONS | PHP_EXTENSIONS | JAVA_EXTENSIONS | GO_EXTENSIONS:
                     continue
                 cases.append((sample_file, vuln_type, expect))
     return cases

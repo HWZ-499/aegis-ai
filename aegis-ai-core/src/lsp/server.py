@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 # M1：内置修复建议（与 rag_enhancer 结构一致，避免 LSP 层依赖 scanner）
 from ..scanner.rag_enhancer import BUILTIN_REMEDIATION
+from ..scanner.smart_remediation import generate_smart_remediation
 # A：AI 修复建议（可选），与 CLI 共享 AIAnalyzer 实现
 try:
     from ..scanner.ai_analyzer import AIAnalyzer
@@ -238,12 +239,17 @@ def _filepath_to_uri(file_path: str) -> str:
     return "file:///" + quote(raw)
 
 
-def finding_to_diagnostic(finding: Dict, document_uri: str) -> lsp.Diagnostic:
+def finding_to_diagnostic(
+    finding: Dict,
+    document_uri: str,
+    source_code: Optional[str] = None,
+    file_path: Optional[str] = None,
+) -> lsp.Diagnostic:
     """
     将 rule_engine 的 finding dict 转换为 LSP Diagnostic。
 
-    支持 TDD 7.1/7.2：字符级 range（start_line/start_character/end_line/end_character）、
-    related_locations 映射为 Diagnostic.relatedInformation。
+    支持 TDD 7.1/7.2：字符级 range、related_locations → relatedInformation。
+    当提供 source_code 与 file_path 时，使用智能模板生成精准修复建议（变量名替换 + 框架推断）。
     """
     # 主诊断 range：优先字符级，否则退化为整行
     if all(k in finding for k in ("start_line", "end_line")):
@@ -287,29 +293,41 @@ def finding_to_diagnostic(finding: Dict, document_uri: str) -> lsp.Diagnostic:
             chain_info += "\n⚠ 变量已经过净化函数，建议人工确认净化充分性。"
         message = message.rstrip() + chain_info
 
-    # M1：悬停时即可见修复建议 + 建议修复后的代码（不依赖 Code Action 菜单）
-    remediation = _get_remediation_for_rule(str(code).strip())
-    if remediation and (remediation.get("remediation") or remediation.get("description")):
-        first_tip = (remediation.get("remediation") or [])[0] if remediation.get("remediation") else remediation.get("description", "")
-        if first_tip:
+    # M1：悬停时即可见修复建议 + 建议修复后的代码（智能模板：变量名替换 + 框架推断）
+    fp = file_path or finding.get("file", "")
+    if source_code and fp:
+        try:
+            smart = generate_smart_remediation(finding, source_code, fp)
             message = message.rstrip()
             if not message.endswith("。"):
                 message += "。"
-            message += "\n修复建议: " + first_tip
-        # PHP 来源：使用 PHP 专属修复示例，不显示 JS 示例
-        if finding_source == "PHP-TaintGraph":
-            php_code = _PHP_REMEDIATION_CODE.get(str(code).strip())
-            if php_code:
-                message += "\n建议修复代码 (PHP):\n" + php_code.strip()
-        else:
-            # 框架感知：优先选择与当前文件匹配的框架专用示例
-            framework_code = _pick_framework_suggested_code(
-                remediation, finding.get("file", "")
-            )
-            if framework_code:
-                message += "\n建议修复代码:\n" + framework_code.strip()
-            elif remediation.get("suggested_code"):
-                message += "\n建议修复代码:\n" + remediation["suggested_code"].strip()
+            message += "\n修复建议: " + smart.message
+            if smart.suggested_code:
+                message += "\n建议修复代码:\n" + smart.suggested_code
+        except Exception:
+            pass  # 降级到静态模板
+    if not (source_code and fp) or not message.count("建议修复代码"):
+        remediation = _get_remediation_for_rule(str(code).strip())
+        if remediation and (remediation.get("remediation") or remediation.get("description")):
+            first_tip = (remediation.get("remediation") or [])[0] if remediation.get("remediation") else remediation.get("description", "")
+            if first_tip and "修复建议:" not in message:
+                message = message.rstrip()
+                if not message.endswith("。"):
+                    message += "。"
+                message += "\n修复建议: " + first_tip
+            if "建议修复代码" not in message:
+                if finding_source == "PHP-TaintGraph":
+                    php_code = _PHP_REMEDIATION_CODE.get(str(code).strip())
+                    if php_code:
+                        message += "\n建议修复代码 (PHP):\n" + php_code.strip()
+                else:
+                    framework_code = _pick_framework_suggested_code(
+                        remediation, fp or finding.get("file", "")
+                    )
+                    if framework_code:
+                        message += "\n建议修复代码:\n" + framework_code.strip()
+                    elif remediation.get("suggested_code"):
+                        message += "\n建议修复代码:\n" + remediation["suggested_code"].strip()
 
     # related_locations -> Diagnostic.relatedInformation（TDD 7.2）
     related: List[lsp.DiagnosticRelatedInformation] = []
@@ -679,19 +697,26 @@ def create_server() -> LanguageServer:
 
                 try:
                     if ai_analyzer.should_analyze(finding_like):
-                        # 获取完整源代码，传给 rich context 提取器
-                        doc_source: Optional[str] = None
-                        try:
-                            doc = server.workspace.get_text_document(uri)
-                            doc_source = doc.source
-                        except Exception:
-                            pass
-
-                        result = ai_analyzer.analyze_finding(
-                            finding_like,
-                            language=lang,
-                            source_code=doc_source,
-                        )
+                        cache_key = (uri, rule_id, diag_start_line)
+                        ai_cache = getattr(server, "_ai_cache", None)
+                        if ai_cache is None:
+                            setattr(server, "_ai_cache", {})
+                            ai_cache = getattr(server, "_ai_cache", {})
+                        result = ai_cache.get(cache_key) if ai_cache else None
+                        if result is None:
+                            doc_source: Optional[str] = None
+                            try:
+                                doc = server.workspace.get_text_document(uri)
+                                doc_source = doc.source
+                            except Exception:
+                                pass
+                            result = ai_analyzer.analyze_finding(
+                                finding_like,
+                                language=lang,
+                                source_code=doc_source,
+                            )
+                            if ai_cache is not None and result:
+                                ai_cache[cache_key] = result
 
                         if result:
                             # ── 高置信度（>= 0.75）且有修复代码：直接替换漏洞行 ──
@@ -721,9 +746,13 @@ def create_server() -> LanguageServer:
                                         ]
                                     }
                                 )
+                                preview = (fixed_text.strip().replace("\n", " "))[:40]
+                                if len(fixed_text.strip()) > 40:
+                                    preview += "…"
+                                title = f"Aegis: ✓ 应用 AI 精准修复 | {preview}"
                                 actions.append(
                                     lsp.CodeAction(
-                                        title=f"Aegis: ✓ 应用 AI 精准修复（{rule_id}，置信度 {result.confidence:.0%}）",
+                                        title=title,
                                         kind=lsp.CodeActionKind.QuickFix,
                                         diagnostics=[diag],
                                         edit=replace_edit,
@@ -731,23 +760,21 @@ def create_server() -> LanguageServer:
                                     )
                                 )
 
-                            # ── 低置信度或无 fixed_code：插入注释说明 ──
+                            # ── 低置信度或无 fixed_code：插入 diff 格式注释 ──
                             else:
                                 comment_lines = [
-                                    f"// Aegis AI 修复建议 ({rule_id}):",
-                                    f"// 置信度: {result.confidence:.2f} | 风险等级: {result.risk_level}",
+                                    f"// Aegis AI 修复建议 ({rule_id}) 置信度 {result.confidence:.0%}",
                                 ]
                                 if result.requires_review:
-                                    comment_lines.append("// ⚠ AI 建议需人工复核。")
+                                    comment_lines.append("// ⚠ 需人工复核")
 
                                 if result.fix_suggestion:
-                                    comment_lines.append(f"// 修复思路: {result.fix_suggestion}")
+                                    comment_lines.append(f"// 思路: {result.fix_suggestion}")
 
                                 if result.fixed_code:
-                                    comment_lines.append("// --- AI 修复参考代码 ---")
-                                    comment_lines += [
-                                        f"//   {ln}" for ln in result.fixed_code.splitlines()
-                                    ]
+                                    comment_lines.append("// 建议修改为 (diff 格式):")
+                                    for ln in result.fixed_code.splitlines():
+                                        comment_lines.append("// + " + ln)
 
                                 ai_comment = "\n".join(comment_lines)
                                 ai_edit = lsp.WorkspaceEdit(
@@ -760,9 +787,15 @@ def create_server() -> LanguageServer:
                                         ]
                                     }
                                 )
+                                preview = (result.fixed_code or result.fix_suggestion or "").strip().replace("\n", " ")[:40]
+                                if preview and len((result.fixed_code or result.fix_suggestion or "").strip()) > 40:
+                                    preview += "…"
+                                title = f"Aegis: 插入 AI 修复建议（{rule_id}）"
+                                if preview:
+                                    title += f" | {preview}"
                                 actions.append(
                                     lsp.CodeAction(
-                                        title=f"Aegis: 插入 AI 修复建议注释（{rule_id}）",
+                                        title=title,
                                         kind=lsp.CodeActionKind.QuickFix,
                                         diagnostics=[diag],
                                         edit=ai_edit,
@@ -880,7 +913,10 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
     except Exception:
         pass
 
-    diagnostics = [finding_to_diagnostic(f, uri) for f in findings]
+    diagnostics = [
+        finding_to_diagnostic(f, uri, source_code=source, file_path=file_path)
+        for f in findings
+    ]
     issue_count = len(diagnostics)
     logger.info(
         "Published %d diagnostics for %s (%s)",
@@ -897,3 +933,51 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
         server.send_notification("aegis/scanEnd", {"uri": uri, "issueCount": issue_count})
     except Exception:
         pass
+
+    # ── B3：后台预缓存 Critical/High 的 AI 修复结果，Code Action 时即显 ──
+    def _precache_ai() -> None:
+        try:
+            ai_analyzer = getattr(server, "_ai_analyzer", None)
+            if not AI_ANALYZER_AVAILABLE or ai_analyzer is None:
+                return
+            if not getattr(ai_analyzer, "enabled", False):
+                return
+            cache = getattr(server, "_ai_cache", None)
+            if cache is None:
+                setattr(server, "_ai_cache", {})
+                cache = getattr(server, "_ai_cache", {})
+            for f in findings:
+                if f.get("severity") not in ("Critical", "High"):
+                    continue
+                rule_id = f.get("type") or f.get("rule_id") or ""
+                line_no = int(f.get("line") or f.get("start_line") or 0)
+                if not rule_id or not line_no:
+                    continue
+                key = (uri, str(rule_id).strip(), line_no)
+                if key in cache:
+                    continue
+                finding_like = {
+                    "type": rule_id,
+                    "severity": f.get("severity", "High"),
+                    "file": file_path,
+                    "line": line_no,
+                    "start_line": line_no,
+                    "end_line": int(f.get("end_line") or line_no),
+                    "details": f.get("details", ""),
+                    "language": language,
+                }
+                try:
+                    result = ai_analyzer.analyze_finding(
+                        finding_like,
+                        language=language,
+                        source_code=source,
+                    )
+                    if result:
+                        cache[key] = result
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    t = threading.Thread(target=_precache_ai, daemon=True)
+    t.start()

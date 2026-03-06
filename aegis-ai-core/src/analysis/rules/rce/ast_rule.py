@@ -231,6 +231,11 @@ class PythonRCEAstRule(SecurityRule):
         if _is_constant_arg(first_arg):
             return
 
+        # 净化感知：shlex.quote / shlex.split / 白名单等
+        names = _collect_names(first_arg)
+        if context is not None and names and all(context.is_var_sanitized(n) for n in names):
+            return
+
         # 用户输入直接流入
         if _is_user_input_node(first_arg, context):
             self._add_finding(
@@ -286,11 +291,20 @@ class PythonRCEAstRule(SecurityRule):
         if first_arg and _is_constant_arg(first_arg):
             return
 
+        # 净化感知：shlex.quote / shlex.split / 白名单等
+        names = _collect_names(first_arg) if first_arg else []
+        if context is not None and names and all(context.is_var_sanitized(n) for n in names):
+            return
+
+        # subprocess 使用 shell=False 且首参为 list 时降级为 Low（安全用法）
+        severity_override = None
+        if "subprocess" in call_str and first_arg is not None and isinstance(first_arg, ast.List):
+            severity_override = "Low"
+
         # 判断是否有用户输入
         has_user_input = False
         if first_arg:
             has_user_input = _is_user_input_node(first_arg, context)
-        # 若无法确认输入来源，也报（保守召回）
         has_any_var = first_arg is not None and bool(_collect_names(first_arg))
 
         # 业务上下文：setup 脚本降级
@@ -303,13 +317,15 @@ class PythonRCEAstRule(SecurityRule):
             return
 
         if has_user_input:
+            sev = severity_override or "Critical"
             self._add_finding(
-                context, node, "Critical",
+                context, node, sev,
                 details=f"发现 {call_str}() 调用，参数来自用户输入，存在命令注入风险。",
             )
         elif has_any_var:
+            sev = severity_override or "High"
             self._add_finding(
-                context, node, "High",
+                context, node, sev,
                 details=f"发现 {call_str}() 调用，参数含变量，建议确认是否可控。",
             )
 

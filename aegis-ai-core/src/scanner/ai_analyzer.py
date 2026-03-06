@@ -304,7 +304,7 @@ class AIAnalyzer:
     
     # AI 分析阈值配置
     ANALYSIS_CONFIG = {
-        "enabled_severities": ["Critical", "High"],  # 只分析这些级别
+        "enabled_severities": ["Critical", "High", "Medium"],  # 降低门槛至 Medium
         "max_findings_per_batch": 10,                # 每批最大数量
         "confidence_threshold": 0.7,                 # 置信度阈值
         "cache_enabled": True,                       # 是否启用缓存

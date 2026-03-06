@@ -34,6 +34,9 @@ _CWE_MAP: Dict[str, str] = {
     "RCE_COMMAND_EXEC": "CWE-78",
     "XSS_RISK":         "CWE-79",
     "OPEN_REDIRECT":    "CWE-601",
+    "PATH_TRAVERSAL":   "CWE-22",
+    "DESERIALIZATION":  "CWE-502",
+    "HARDCODED_CREDENTIALS": "CWE-798",
 }
 
 # Sink 类型过滤表：每个 Rule 只关心自己的 vuln_type
@@ -41,6 +44,8 @@ _SQLI_TYPES  = frozenset(["SQL_INJECTION"])
 _RCE_TYPES   = frozenset(["RCE_COMMAND_EXEC"])
 _XSS_TYPES   = frozenset(["XSS_RISK"])
 _REDIR_TYPES = frozenset(["OPEN_REDIRECT"])
+_PATH_TRAVERSAL_TYPES = frozenset(["PATH_TRAVERSAL"])
+_DESERIALIZATION_TYPES = frozenset(["DESERIALIZATION"])
 
 # 参数化查询识别：第一个字符串参数含占位符，且存在第二个参数
 _PARAM_PLACEHOLDER_RE = re.compile(
@@ -160,6 +165,12 @@ def _extract_sink_var(line: str, vuln_type: str) -> Optional[str]:
         if m:
             return m.group(1)
 
+    if vuln_type in ("PATH_TRAVERSAL", "DESERIALIZATION"):
+        # 第一个参数变量：file_get_contents($path)、unserialize($data)
+        m = re.search(r"\(\s*(?:[^$)\"']*['\"][^'\"]*['\"]\s*\.\s*)?(\$[\w]+)", line)
+        if m:
+            return m.group(1)
+
     # 通用：圆括号内第一个 $var（跳过字符串字面量前缀）
     m = re.search(
         r"""\(\s*(?:[^$)\"']*['"][^'"]*['"]\s*\.\s*)?(\$[\w]+)""",
@@ -209,6 +220,9 @@ class _PhpTaintBaseRule(SecurityRule):
             "RCE_COMMAND_EXEC": "Critical",
             "XSS_RISK": "High",
             "OPEN_REDIRECT": "Medium",
+            "PATH_TRAVERSAL": "High",
+            "DESERIALIZATION": "High",
+            "HARDCODED_CREDENTIALS": "High",
         }
         super().__init__(
             rule_id=f"{vuln_type}_PHP_TAINT",
@@ -539,9 +553,136 @@ class PhpOpenRedirectRule(_PhpTaintBaseRule):
     _VULN_TYPES: frozenset = frozenset(["OPEN_REDIRECT"])
 
 
+# 路径遍历净化：basename / realpath 等
+_PATH_SANITIZER_RE = re.compile(
+    r"\b(basename|realpath|dirname|pathinfo)\s*\(",
+    re.IGNORECASE,
+)
+# 反序列化净化：unserialize 的 allowed_classes 等
+_DESERIALIZE_SAFE_RE = re.compile(
+    r"unserialize\s*\([^,]+,\s*\[[^\]]*allowed_classes",
+    re.IGNORECASE,
+)
+
+
+class PhpPathTraversalRule(_PhpTaintBaseRule):
+    """
+    PHP 路径遍历检测规则（TaintGraph 精确版）。
+
+    Source：$_GET / $_POST / $_REQUEST
+    Sink  ：file_get_contents / include / require / fopen / readfile
+    TN    ：basename() / realpath() + 白名单目录校验
+    """
+
+    _VULN_TYPES: frozenset = frozenset(["PATH_TRAVERSAL"])
+
+    def _extra_filter(self, line: str, vuln_type: str) -> bool:
+        """净化函数包裹 → 跳过。"""
+        return bool(_PATH_SANITIZER_RE.search(line))
+
+    def _skip_sanitized(
+        self,
+        line: str,
+        vuln_type: str,
+        arg_var: str,
+        taint: "PhpTaintGraph",
+    ) -> bool:
+        """路径经 basename/realpath 等净化后不再报告（含 Low）。"""
+        return True
+
+
+class PhpDeserializationRule(_PhpTaintBaseRule):
+    """
+    PHP 反序列化检测规则（TaintGraph 精确版）。
+
+    Source：$_GET / $_POST / $_REQUEST
+    Sink  ：unserialize() / json_decode()（后接危险操作时）
+    TN    ：allowed_classes 参数检查
+    """
+
+    _VULN_TYPES: frozenset = frozenset(["DESERIALIZATION"])
+
+    def _extra_filter(self, line: str, vuln_type: str) -> bool:
+        """unserialize(..., ['allowed_classes' => ...]) → 跳过。"""
+        return bool(_DESERIALIZE_SAFE_RE.search(line))
+
+
+# 硬编码凭证模式：$password = "..." / define("DB_PASSWORD", "...") / 'api_key' => '...'
+_CREDENTIAL_ASSIGN_RE = re.compile(
+    r"(?:^\s*(\$[\w]*password[\w]*|\$[\w]*secret[\w]*|\$api[_\w]*key)\s*=\s*['\"][^'\"]+['\"]"
+    r"|define\s*\(\s*['\"](\w*PASSWORD\w*|\w*SECRET\w*|\w*API_KEY\w*)['\"]\s*,\s*['\"][^'\"]+['\"]"
+    r"|['\"](?:api[_\w]*key|password|secret)['\"]\s*=>\s*['\"][^'\"]+['\"])",
+    re.IGNORECASE,
+)
+# 排除：环境变量引用、占位符（不含 secret 子串，避免误排真实密码如 mySecretPass123）
+_CREDENTIAL_EXCLUDE_RE = re.compile(
+    r"getenv\s*\(|get_cfg_var\s*\(|['\"](?:xxx|xxx\.xxx|your[_\w]*|placeholder|changeme|redact)['\"]",
+    re.IGNORECASE,
+)
+_TEST_FILE_NAMES = frozenset(["test", "example", "mock", "stub", "sample", "fixture"])
+
+
+class PhpHardcodedCredentialsRule(SecurityRule):
+    """
+    PHP 硬编码凭证检测规则（模式匹配）。
+
+    模式：$password = "..."、define("DB_PASSWORD", "...")、'api_key' => '...'
+    排除：环境变量引用、占位符、测试文件。
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            rule_id="HARDCODED_CREDENTIALS_PHP_TAINT",
+            severity="High",
+            languages=["php"],
+        )
+
+    def visit(self, node: Any, context: AnalysisContext) -> None:
+        pass
+
+    def after_file(self, context: AnalysisContext) -> None:
+        for f in self.analyze(
+            context.extras.get("source", "") or "",
+            context.file_path or "",
+        ):
+            context.add_finding(f)
+
+    def analyze(self, code: str, file_path: "str | Path") -> List[Dict]:
+        """对 PHP 源码扫描硬编码凭证模式，返回 finding 列表（供 rule_engine.analyze_php 调用）。"""
+        fp = str(file_path)
+        stem = Path(fp).stem.lower()
+        if any(stem.startswith(n) or stem == n for n in _TEST_FILE_NAMES):
+            return []
+        lines = code.split("\n")
+        findings: List[Dict] = []
+        for idx, raw_line in enumerate(lines):
+            line_num = idx + 1
+            line = raw_line.strip()
+            if not _CREDENTIAL_ASSIGN_RE.search(line):
+                continue
+            if _CREDENTIAL_EXCLUDE_RE.search(line):
+                continue
+            findings.append({
+                "type": "HARDCODED_CREDENTIALS",
+                "rule_id": self.rule_id,
+                "severity": self.severity,
+                "line": line_num,
+                "start_line": line_num,
+                "end_line": line_num,
+                "details": "检测到疑似硬编码凭证（密码/API Key/Secret），建议使用环境变量或密钥管理服务。",
+                "file": fp,
+                "cwe": _CWE_MAP.get("HARDCODED_CREDENTIALS", ""),
+                "source": "PHP-TaintGraph",
+            })
+        return findings
+
+
 __all__ = [
     "PhpSQLInjectionRule",
     "PhpRCERule",
     "PhpXSSRule",
     "PhpOpenRedirectRule",
+    "PhpPathTraversalRule",
+    "PhpDeserializationRule",
+    "PhpHardcodedCredentialsRule",
 ]
