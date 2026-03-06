@@ -13,13 +13,6 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from functools import lru_cache
 
-# 添加项目根目录到 Python 路径
-_current_dir = Path(__file__).parent
-_project_root = _current_dir.parent.parent.parent  # aegis-ai-core
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
-
-
 class ScanCache:
     """
     扫描结果缓存管理器

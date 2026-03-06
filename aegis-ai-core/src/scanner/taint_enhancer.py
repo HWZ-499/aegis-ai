@@ -17,16 +17,8 @@ taint_enhancer.py - 污点分析增强器
 
 from __future__ import annotations
 
-import sys
 import os
-from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-# 添加项目路径
-_current_dir = os.path.dirname(os.path.abspath(__file__))
-_project_root = os.path.dirname(os.path.dirname(_current_dir))
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
 
 # 导入污点分析模块
 try:

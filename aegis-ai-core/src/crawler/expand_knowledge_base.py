@@ -22,12 +22,6 @@ import json
 from typing import List, Dict, Optional
 from datetime import datetime
 
-# 添加项目路径
-_current_dir = os.path.dirname(os.path.abspath(__file__))
-_project_root = os.path.dirname(os.path.dirname(_current_dir))
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-
 # 环境变量处理
 try:
     from dotenv import load_dotenv
@@ -35,7 +29,7 @@ try:
 except ImportError:
     pass
 
-import requests
+import httpx
 import chromadb
 
 
@@ -420,9 +414,9 @@ class KnowledgeBaseExpander:
         }
         
         try:
-            response = requests.get(url, headers=headers, params=params, timeout=30)
+            response = httpx.get(url, headers=headers, params=params, timeout=30.0, verify=valid_cert_path)
             response.raise_for_status()
-            
+
             data = response.json()
             vulnerabilities = data.get("vulnerabilities", [])
             

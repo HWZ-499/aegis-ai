@@ -10,8 +10,6 @@ import certifi
 _current_file = os.path.abspath(__file__)
 _current_dir = os.path.dirname(_current_file)  # src/server
 _project_root = os.path.dirname(os.path.dirname(_current_dir))  # aegis-ai-core (向上两级)
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
 
 # =================================================================
 # 1. 🛡️ 环境净化与证书修复 (保留昨晚的成果)
@@ -39,10 +37,14 @@ import time
 import hashlib
 from collections import OrderedDict, defaultdict, deque
 from datetime import datetime
-from typing import Optional, Dict, Any
-from src.analysis.ast_analyzer import analyze_code_ast
-from src.analysis.security_rules import scan_code_locally
-from src.analysis.rule_based_audit import audit_code_with_rules_only, merge_findings
+from typing import Any, Dict, List, Optional
+from src.analysis.rule_engine import (
+    analyze_go,
+    analyze_java,
+    analyze_javascript,
+    analyze_php,
+    analyze_python,
+)
 from src.rag.rag_optimizer import optimized_rag_retrieval
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -252,6 +254,127 @@ async def call_deepseek(system_prompt: str, user_message: str) -> str:
 # 🌐 FastAPI 服务配置
 # =================================================================
 app = FastAPI(title="Aegis-AI Backend", version="1.0")
+
+
+EXTENSION_LANGUAGE_MAP: Dict[str, str] = {
+    ".py": "python",
+    ".pyw": "python",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".php": "php",
+    ".phtml": "php",
+    ".php5": "php",
+    ".java": "java",
+    ".go": "go",
+}
+
+
+def _detect_language(filename: str) -> Optional[str]:
+    """
+    根据文件扩展名推断语言标识。
+
+    Args:
+        filename: 文件名。
+
+    Returns:
+        语言字符串（如 \"python\"、\"javascript\"），未知时返回 None。
+    """
+    _, ext = os.path.splitext(filename or "")
+    return EXTENSION_LANGUAGE_MAP.get(ext.lower() or "")
+
+
+def _analyze_with_rule_engine(code_text: str, filename: str) -> List[Dict[str, Any]]:
+    """
+    使用统一 rule_engine 对单个文件做安全扫描。
+
+    Args:
+        code_text: 源代码。
+        filename: 文件名（用于语言检测与路径）。
+
+    Returns:
+        规则引擎返回的 finding 列表。
+    """
+    language = _detect_language(filename)
+    if language is None:
+        return []
+
+    if language == "python":
+        return analyze_python(code_text, filename)
+    if language in ("javascript", "typescript"):
+        return analyze_javascript(code_text, filename, language=language)
+    if language == "php":
+        return analyze_php(code_text, filename)
+    if language == "java":
+        return analyze_java(code_text, filename)
+    if language == "go":
+        return analyze_go(code_text, filename)
+
+    return []
+
+
+def _generate_rule_engine_report(findings: List[Dict[str, Any]], filename: str) -> str:
+    """
+    基于 rule_engine 检测结果生成 Markdown 审计报告。
+
+    Args:
+        findings: 检测结果列表。
+        filename: 文件名。
+
+    Returns:
+        Markdown 格式审计报告。
+    """
+    if not findings:
+        return f"""# 代码安全审计报告
+
+**文件**: `{filename}`
+
+## ✅ 检测结果
+
+未发现明显的静态安全漏洞。
+
+**说明**:
+- 规则引擎未发现高危函数调用或已知危险模式
+
+**建议**:
+尽管未发现明显漏洞，仍建议进行人工代码审查与必要的动态测试。
+"""
+
+    critical = [f for f in findings if f.get("severity") == "Critical"]
+    high = [f for f in findings if f.get("severity") == "High"]
+    medium = [f for f in findings if f.get("severity") == "Medium"]
+    low = [f for f in findings if f.get("severity") == "Low"]
+
+    report = f"""# 代码安全审计报告
+
+**文件**: `{filename}`  
+**检测方法**: Aegis 规则引擎（AST + 污点分析）
+
+---
+
+## 严重程度统计
+
+- Critical: {len(critical)} 项
+- High: {len(high)} 项
+- Medium: {len(medium)} 项
+- Low: {len(low)} 项
+
+---
+
+## 详细发现列表
+"""
+
+    for f in findings:
+        line = f.get("line", 0)
+        vuln_type = f.get("type", "UNKNOWN")
+        severity = f.get("severity", "Medium")
+        details = f.get("details") or f.get("content") or ""
+        report += f"\n### 第 {line} 行 - [{severity}] {vuln_type}\n\n{details}\n"
+
+    return report
 
 # =================================================================
 # 6. 🚦 简单限流（按 IP / 路由）
@@ -470,32 +593,30 @@ async def audit_code(file: UploadFile = File(...), request: Request = None):
             "code_size": code_size
         })
         
-        # === 🔥 核心升级：双重检测（AST + 正则规则）===
-        ast_start = time.time()
-        ast_findings = analyze_code_ast(code_text)
-        regex_findings = scan_code_locally(code_text, file_path=file.filename)
-        merged_findings = merge_findings(ast_findings, regex_findings)
-        analysis_time = (time.time() - ast_start) * 1000
-        
-        logger.info("双重检测完成", extra={
-            "ast_count": len(ast_findings),
-            "regex_count": len(regex_findings),
-            "total_findings": len(merged_findings),
-            "analysis_time_ms": analysis_time
-        })
-        
-        local_report_str = ""
-        if ast_findings:
-            logger.info("AST 分析发现风险点", extra={
-                "findings_count": len(ast_findings),
-                "analysis_time_ms": analysis_time
-            })
-            local_report_str = "【AST 静态分析报告】(基于语法树结构分析，置信度高)：\n"
-            for f in ast_findings:
-                local_report_str += f"- 第 {f['line']} 行 [{f['type']}]: {f['details']}\n"
+        # === 🔥 核心升级：统一规则引擎（多语言 AST + 污点分析）===
+        analysis_start = time.time()
+        findings = _analyze_with_rule_engine(code_text, file.filename or "unknown")
+        analysis_time = (time.time() - analysis_start) * 1000
+
+        logger.info(
+            "规则引擎检测完成",
+            extra={
+                "total_findings": len(findings),
+                "analysis_time_ms": analysis_time,
+                "filename": file.filename,
+            },
+        )
+
+        if findings:
+            local_report_str = "【规则引擎静态分析报告】：\n"
+            for f in findings:
+                line = f.get("line", 0)
+                vuln_type = f.get("type", "UNKNOWN")
+                details = f.get("details") or f.get("content") or ""
+                local_report_str += f"- 第 {line} 行 [{vuln_type}]: {details}\n"
         else:
-            logger.info("AST 分析未发现结构性漏洞", extra={"analysis_time_ms": analysis_time})
-            local_report_str = "【AST 静态分析】未发现高危函数调用（但这不代表逻辑绝对安全）。"
+            logger.info("规则引擎未发现结构性漏洞", extra={"analysis_time_ms": analysis_time})
+            local_report_str = "【规则引擎静态分析】未发现高危函数调用（但这不代表逻辑绝对安全）。"
 
         # === 构建 Prompt ===
         # 告诉 DeepSeek：我有 AST 报告，你帮我复查逻辑
@@ -552,25 +673,21 @@ async def audit_code(file: UploadFile = File(...), request: Request = None):
         # === 降级策略：如果 AI 不可用，使用纯规则审计 ===
         if not use_ai or not reply or reply.startswith("❌"):
             logger.info("使用纯规则审计引擎")
-            rule_result = audit_code_with_rules_only(code_text, file.filename)
-            reply = rule_result["report"]
-            merged_findings = rule_result["findings"]
+            reply = _generate_rule_engine_report(findings, file.filename or "unknown")
         
         elapsed = (time.time() - start_time) * 1000
         
         # 统计严重程度
         severity_count = {
-            "Critical": len([f for f in merged_findings if f.get('severity') == 'Critical']),
-            "High": len([f for f in merged_findings if f.get('severity') == 'High']),
-            "Medium": len([f for f in merged_findings if f.get('severity') == 'Medium']),
-            "Low": len([f for f in merged_findings if f.get('severity') == 'Low'])
+            "Critical": len([f for f in findings if f.get("severity") == "Critical"]),
+            "High": len([f for f in findings if f.get("severity") == "High"]),
+            "Medium": len([f for f in findings if f.get("severity") == "Medium"]),
+            "Low": len([f for f in findings if f.get("severity") == "Low"]),
         }
         
         logger.info("审计完成", extra={
             "file_name": file.filename,
-            "total_findings": len(merged_findings),
-            "ast_count": len(ast_findings),
-            "regex_count": len(regex_findings),
+            "total_findings": len(findings),
             "severity": severity_count,
             "used_ai": use_ai,
             "total_time_ms": elapsed,
@@ -581,9 +698,7 @@ async def audit_code(file: UploadFile = File(...), request: Request = None):
             "reply": reply,
             "mode": "audit",
             "filename": file.filename,
-            "findings_count": len(merged_findings),
-            "ast_findings_count": len(ast_findings),
-            "regex_findings_count": len(regex_findings),
+            "findings_count": len(findings),
             "severity_count": severity_count,
             "used_ai": use_ai
         }
