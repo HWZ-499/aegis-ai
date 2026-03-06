@@ -3,35 +3,31 @@ import os
 import sys
 import certifi 
 
-# =================================================================
-# 0. 📁 添加项目根目录到 Python 路径（支持新的目录结构）
-# =================================================================
 _current_file = os.path.abspath(__file__)
 _current_dir = os.path.dirname(_current_file)  # src/server
 _project_root = os.path.dirname(os.path.dirname(_current_dir))  # aegis-ai-core (向上两级)
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
 
 # =================================================================
 # 1. 证书修复 (保留，防止 FileNotFoundError)
 # =================================================================
 valid_cert_path = certifi.where()
-os.environ['REQUESTS_CA_BUNDLE'] = valid_cert_path
-os.environ['SSL_CERT_FILE'] = valid_cert_path
+os.environ["REQUESTS_CA_BUNDLE"] = valid_cert_path
+os.environ["SSL_CERT_FILE"] = valid_cert_path
 
 # =================================================================
 # 2. 🔑 加载环境变量（支持 .env 文件）
 # =================================================================
 try:
     from dotenv import load_dotenv
+
     # 尝试从当前目录或父目录加载 .env 文件
     load_dotenv()
-    load_dotenv(os.path.join(_project_root, '.env'))
+    load_dotenv(os.path.join(_project_root, ".env"))
 except ImportError:
     # 如果没有安装 python-dotenv，只使用系统环境变量
     pass
 
-import requests
+import httpx
 import chromadb
 import json
 import time
@@ -78,31 +74,32 @@ def ask_deepseek_rag(user_query, context_text):
     print("   🤖 [DeepSeek] 正在进行二次语义校验...", end="", flush=True)
     
     try:
-        with requests.Session() as session:
-            session.trust_env = False 
-            resp = session.post(
+        with httpx.Client(
+            timeout=30.0,
+            verify=valid_cert_path,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            resp = client.post(
                 API_URL,
                 json={
                     "model": "deepseek-chat",
                     "messages": [
                         {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_message}
+                        {"role": "user", "content": user_message},
                     ],
-                    "stream": False
+                    "stream": False,
                 },
                 headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}"},
-                timeout=30,
-                verify=valid_cert_path
             )
-        
-        print(" ✅") 
-        if resp.status_code == 200:
-            return resp.json()['choices'][0]['message']['content']
-        else:
-            return f"❌ API 报错: {resp.status_code}"
 
-    except Exception as e:
-        return f"❌ 错误: {e}"
+        print(" ✅")
+        if resp.status_code == 200:
+            return resp.json()["choices"][0]["message"]["content"]
+        return f"❌ API 报错: {resp.status_code}"
+
+    except httpx.HTTPError as e:
+        return f"❌ 网络错误: {e}"
 
 # 1. 新增一个“纯聊天”函数 (放在 ask_deepseek_rag 后面)
 def ask_deepseek_pure_chat(user_query):
@@ -112,27 +109,29 @@ def ask_deepseek_pure_chat(user_query):
     pure_prompt = "你是一个黑客风格的AI助手。用户在跟你闲聊，请用简练、酷酷的语气回应。"
     
     try:
-        with requests.Session() as session:
-            session.trust_env = False 
-            resp = session.post(
+        with httpx.Client(
+            timeout=30.0,
+            verify=valid_cert_path,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            resp = client.post(
                 API_URL,
                 json={
                     "model": "deepseek-chat",
                     "messages": [
                         {"role": "system", "content": pure_prompt},
-                        {"role": "user", "content": user_query} # 只发问题，不发资料
+                        {"role": "user", "content": user_query},
                     ],
-                    "stream": False
+                    "stream": False,
                 },
                 headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}"},
-                timeout=30,
-                verify=valid_cert_path
             )
-        print(" ✅") 
+        print(" ✅")
         if resp.status_code == 200:
-            return resp.json()['choices'][0]['message']['content']
-    except Exception as e:
-        return f"❌ 错误: {e}"
+            return resp.json()["choices"][0]["message"]["content"]
+    except httpx.HTTPError as e:
+        return f"❌ 网络错误: {e}"
 
 print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 print(f"🛡️  Aegis-AI RAG Terminal (Direct Mode)")

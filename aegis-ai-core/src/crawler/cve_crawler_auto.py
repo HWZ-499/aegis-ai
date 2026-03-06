@@ -7,7 +7,6 @@
 4. 数据清洗与向量化
 """
 import os
-import sys
 import json
 import time
 import logging
@@ -27,7 +26,7 @@ try:
 except ImportError:
     pass
 
-import requests
+import httpx
 import chromadb
 import urllib3
 import certifi
@@ -173,45 +172,53 @@ class CVECrawler:
             # 使用代理和 SSL 验证
             # 如果使用代理，禁用 SSL 验证；否则使用证书验证
             verify_ssl = not USE_PROXY
-            
+
             # 尝试请求（最多重试 3 次）
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    response = requests.get(
-                        api_base, 
-                        params=params, 
-                        headers=headers, 
-                        proxies=PROXIES,
+                    proxies = PROXIES or None
+                    timeout = httpx.Timeout(30.0)
+                    with httpx.Client(
+                        proxies=proxies,
                         verify=verify_ssl,
-                        timeout=30
-                    )
+                        timeout=timeout,
+                        follow_redirects=False,
+                    ) as client:
+                        response = client.get(
+                            api_base,
+                            params=params,
+                            headers=headers,
+                        )
                     response.raise_for_status()
                     return response.json()
-                except requests.exceptions.SSLError as e:
+                except httpx.ConnectError as e:
                     if attempt < max_retries - 1:
-                        logger.warning(f"⚠️ SSL 错误（尝试 {attempt + 1}/{max_retries}），禁用 SSL 验证重试...")
-                        verify_ssl = False  # 重试时禁用 SSL 验证
+                        logger.warning(
+                            f"⚠️ 连接错误（尝试 {attempt + 1}/{max_retries}），将重试...",
+                        )
                         continue
-                    else:
-                        raise
-                        
-        except requests.exceptions.SSLError as e:
-            logger.error(f"❌ SSL 错误: {e}")
-            logger.error(f"   提示: 如果使用代理，请关闭代理或设置 PROXY_PORT 环境变量")
-            logger.error(f"   或者尝试: export PROXY_PORT=7897  # 你的代理端口")
-            logger.error(f"   已自动禁用 SSL 验证重试，如果仍然失败，请检查网络连接")
-            return {}
-        except requests.exceptions.RequestException as e:
+                    raise
+                except httpx.HTTPError as e:
+                    # 对于 SSL 或其他 HTTP 错误，若还有重试次数则禁用 SSL 验证后重试一次
+                    if isinstance(e, httpx.TransportError) and attempt < max_retries - 1:
+                        logger.warning(
+                            f"⚠️ 传输错误（尝试 {attempt + 1}/{max_retries}），禁用 SSL 验证重试...",
+                        )
+                        verify_ssl = False
+                        continue
+                    raise
+
+        except httpx.HTTPError as e:
             logger.error(f"❌ API 请求失败: {e}")
-            if 'response' in locals():
-                logger.error(f"   URL: {response.url}")
-                logger.error(f"   状态码: {response.status_code}")
-                logger.error(f"   响应: {response.text[:200]}")
+            if "response" in locals():
+                logger.error("   URL: %s", response.url)
+                logger.error("   状态码: %s", getattr(response, "status_code", "unknown"))
+                logger.error("   响应: %s", response.text[:200])
             else:
-                logger.error(f"   URL: {api_base}")
+                logger.error("   URL: %s", api_base)
             if use_api_v2:
-                logger.error(f"   提示: 如果使用 API 2.0，请检查 NVD_API_KEY 是否正确")
+                logger.error("   提示: 如果使用 API 2.0，请检查 NVD_API_KEY 是否正确")
             return {}
     
     def parse_cve_data(self, cve_item: Dict) -> Optional[Dict]:

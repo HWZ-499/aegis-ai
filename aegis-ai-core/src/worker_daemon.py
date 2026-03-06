@@ -19,13 +19,7 @@ import argparse
 import json
 import logging
 import os
-import sys
 from pathlib import Path
-
-# 确保可导入 src
-_ROOT = Path(__file__).resolve().parents[1]
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("aegis.worker_daemon")

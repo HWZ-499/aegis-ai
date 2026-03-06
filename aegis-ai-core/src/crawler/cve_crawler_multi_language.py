@@ -3,16 +3,9 @@
 扩展 CVE 爬虫，专门爬取不同编程语言的漏洞信息
 """
 import os
-import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
-
-# 添加项目根目录到 Python 路径
-_current_dir = Path(__file__).parent
-_project_root = _current_dir.parent.parent.parent  # aegis-ai-core
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
 
 from src.crawler.cve_crawler_auto import CVECrawler
 
