@@ -1,4 +1,4 @@
-## Aegis AI 规则 DSL 评估与 PoC 设计（草案）
+## Aegis AI 规则 DSL 评估与 PoC 设计（PoC 结果版）
 
 **目标日期**: 2026-03-06  
 **适用范围**: Aegis AI IDE 安全助手（LSP + rule_engine）
@@ -16,29 +16,23 @@
 
 ---
 
-## 2. YAML 规则 DSL 初稿
+## 2. YAML 规则 DSL 设计
 
 ### 2.1 顶层结构
 
 ```yaml
-id: python.hardcoded-password
+id: dsl.python.hardcoded-password
 language: python
 severity: HIGH
 message: "检测到疑似硬编码密码，请改为从安全配置或环境变量加载。"
-
-rules:
-  - pattern: |
-      $VAR = "$SECRET"
+vuln_type: HARDCODED_CREDENTIALS
+patterns:
+  - pattern: $VAR = "$SECRET"
     metavariables:
       VAR:
         regex: "(?i)(password|passwd|pwd|secret|token|api_?key)"
       SECRET:
-        # 明确排除占位符、空值等
         not_regex: "^(changeme|example|sample|test|null|none)$"
-    where:
-      - not:
-          file:
-            regex: "(?i)test|fixture"
 ```
 
 ### 2.2 关键字段说明
@@ -47,49 +41,48 @@ rules:
 - **language**: 目标语言（`python`/`javascript`/`php`/`java`/`go`）。
 - **severity**: `INFO`/`LOW`/`MEDIUM`/`HIGH`/`CRITICAL`。
 - **message**: 用户可见说明，后续可作为 AI 修复提示的补充上下文。
-- **rules[]**:
+- **patterns[]**:
   - `pattern`: 以目标语言源码片段描述的匹配模式，支持 `$VAR`、`$EXPR` 等元变量。
   - `metavariables`: 对元变量施加 **正/负 regex 约束**。
-  - `where`: 附加过滤条件，PoC 仅支持：
-    - `file.regex`: 基于文件路径的包含/排除。
-    - `not`/`any`/`all` 组合。
+  - `where`: 附加过滤条件，PoC 仅支持基于文件路径的包含/排除（`file_regex` / `file_not_regex`）。
 
 ---
 
-## 3. dsl/ 模块 PoC 设计
+## 3. dsl/ 模块 PoC 实现
 
 ### 3.1 模块划分
 
-在 `aegis-ai-core/src/analysis/dsl/` 下新增：
+在 `aegis-ai-core/src/analysis/dsl/` 下已实现：
 
 - `rule_schema.py`
-  - 使用 **Pydantic** 定义 YAML 规则模型：
-    - `DslRule`：单条规则（id、language、severity、message、patterns）。
-    - `DslPattern`：包含 `pattern`、`metavariables`、`where`。
-    - `MetaVariableConstraint`：`regex` / `not_regex`。
+  - 使用 Pydantic 定义：
+    - `DslRule`：id、language、severity、message、vuln_type、patterns。
+    - `DslPattern`：pattern、metavariables、where。
+    - `MetaVarConstraint`：`regex` / `not_regex`。
+    - `WhereClause`：`file_regex` / `file_not_regex`。
 - `dsl_engine.py`
   - 负责：
-    - 从 YAML 文件/目录加载并校验 `DslRule`。
-    - 将 `pattern` 转换为 Tree-sitter 查询或简化文本模式（PoC 阶段可先用 **行级正则+简单 AST 上下文**）。
-    - 执行匹配并生成统一的 `Finding` dict。
+    - `load_rules_from_directory(root: Path) -> list[DslRule]`：safe_load YAML 并做模型校验。
+    - 将包含 `$VAR` 的 `pattern` 转换为命名捕获组正则（支持 `"$SECRET"` 场景）。
+    - 行级匹配 + 元变量约束检查 + where 过滤，返回 Finding 列表。
 - `dsl_adapter.py`
   - 提供：
-    - `make_dsl_rule_wrappers(rules: list[DslRule]) -> list[SecurityRule]`
-      - 将 DSL 规则包装为实现 `SecurityRule` 接口的轻量适配器。
-    - （可选）`load_default_dsl_rules(language: str)`：加载 `rules/dsl/<language>/*.yaml`。
+    - `DslRuleAdapter`：实现 `SecurityRule` 接口，在 `after_file()` 中对 `context.extras["source"]` 运行 DSL 匹配，并与 AST 结果做去重（同一 `(line, type)` 已存在则跳过）。
+    - `load_dsl_rules_for_language(language: str) -> list[SecurityRule]`：从 `rules/dsl/` 加载指定语言的 YAML 规则并包装为适配器。
 
-### 3.2 PoC 范围（建议）
+### 3.2 PoC 范围（当前）
 
-- 仅覆盖 **模式类规则**：
-  - Python/Go 硬编码凭证（与现有 AST 规则对齐）。
-  - JavaScript/Python 简单 XSS 模式（如 `innerHTML = userInput` / `mark_safe(user_input)`）。
-- **不覆盖**：
-  - 复杂跨函数/跨文件污点（仍由现有 TaintGraph 负责）。
+- 仅覆盖 **模式类规则**（已实现）：
+  - Python/Go 硬编码凭证（与 AST 规则 `PythonHardcodedCredentialsAstRule` / `GoHardcodedCredentialsAstRule` 对齐）。
+  - JavaScript 简单 XSS：`elem.innerHTML = expr`。
+  - Python 简单 XSS：`mark_safe(user_input)`。
+- 不覆盖：
+  - 复杂跨函数/跨文件污点（继续由现有 TaintGraph 负责）。
   - 需要 CFG/类型信息的高级规则。
 
 ---
 
-## 4. 检出率与性能评估方案
+## 4. 检出率与性能评估方案与结果
 
 ### 4.1 测试目标
 
@@ -114,19 +107,25 @@ rules:
     - 基线：启用现有 AST 规则。
     - 对比：在同一入口上追加 DSL 规则执行，记录 `mean`, `stddev`, `ops`。
 
-### 4.4 实施步骤（PoC）
+### 4.4 PoC 实施与当前结果
 
-1. 在 `scripts/benchmark/` 下新增一个 PoC 脚本（后续实现时按此方案）：
-   - 对 NodeGoat / DVWA 的固定文件集跑两轮：
-     - 仅 AST 规则。
-     - AST + DSL 规则。
-   - 输出 JSON 报告：
-     - `{"file": "...", "ast_findings": N1, "dsl_findings": N2, "overlap": N3, "benchmark": {...}}`
-2. 使用 `pytest-benchmark` 记录多轮运行结果，比较 **99 分位耗时** 与 **平均耗时**。
+- 检出率 PoC：
+  - 新增 `aegis-ai-core/tests/test_dsl_vs_ast.py`，针对 Hardcoded Credentials（Python/Go）复用现有 TP/FP 样本：
+    - `tp_python_password_string.py` / `fp_python_env_password.py`
+    - `tp_go_hardcoded_password.go` / `fp_go_config_placeholder.go`
+  - 分别构造：
+    - AST-only：仅启用对应 AST 规则；
+    - DSL-only：仅启用 DSL 规则；
+  - 断言两种模式在上述样本上的 TP/FP 行为一致（全部通过）。
+- 性能 PoC：
+  - 扩展 `aegis-ai-core/tests/test_performance_benchmark.py`：
+    - `*_with_dsl`：通过 `analyze_python/analyze_javascript/analyze_go` 路径执行 AST+DSL 完整规则集。
+    - `*_ast_only`：直接构造对应 Analyzer，仅挂载 AST 规则子集，度量 AST-only 的单文件扫描耗时。
+  - 使用 `pytest-benchmark` 提供的统计信息对比 AST-only 与 AST+DSL 的平均耗时和尾延迟（具体数值以本地/CI 实测为准）。
 
 ---
 
-## 5. 决策维度与结论模板
+## 5. 决策维度与初步结论
 
 ### 5.1 评估维度
 
@@ -140,29 +139,23 @@ rules:
 - **安全性**：
   - DSL 表达能力是否足够受限，避免引入“可执行代码”攻击面。
 
-### 5.2 决策文档结构（本文件后续演进为正式结论）
+### 5.2 初步结论（面向当前 PoC）
 
-后续在完成 PoC 与 benchmark 之后，将本文件补充为正式决策文档，结构建议：
-
-1. **背景与目标**（本节已有）
-2. **DSL 设计与实现概览**（基于第 2-3 节）
-3. **实验设置**：
-   - 数据集、评估脚本、规则列表。
-4. **结果对比**：
-   - 检出率表格（AST vs DSL）。
-   - 性能基准对比（基于 pytest-benchmark）。
-5. **优劣分析**：
-   - 典型成功/失败样例。
-6. **最终建议**：
-   - **全面采用**：将模式类规则迁移至 DSL，AST 规则仅保留复杂场景。
-   - **部分采用**：仅对硬编码凭证、部分 XSS/SQLi 使用 DSL。
-   - **不采用**：保持当前 AST 方案，仅作为设计实验归档。
+- 检出率：
+  - 在 Hardcoded Credentials（Python/Go）的现有 TP/FP 样本上，DSL-only 与 AST-only 行为一致，说明在该规则族上 DSL 至少能够复现当前能力。
+- 性能：
+  - DSL 匹配采用行级正则 + 元变量约束，仅在 `after_file` 执行一次线性扫描；在单文件场景下，预计相对 AST-only 的额外开销为常数级，具体数值需结合本地/CI 的 `pytest-benchmark` 输出解读。
+- 可维护性：
+  - 对于模式类规则，YAML 规则显著简化了新增/调整成本，且不需要理解 AST 结构细节。
+  - 对跨函数/跨文件污点类规则，仍建议保留 AST/TaintGraph 方案。
+- 建议：
+  - **部分采用**：将 Hardcoded Credentials、简单 XSS 等模式类规则逐步迁移到 DSL 层；复杂污点类规则继续使用 AST/TaintGraph，必要时在 DSL 层做补充性覆盖。
 
 ---
 
-## 6. 下一步行动（供后续实现使用）
+## 6. 下一步行动
 
-- 在 `src/analysis/dsl/` 下按本设计创建 `rule_schema.py` / `dsl_engine.py` / `dsl_adapter.py` 骨架，并配套最小 PoC 规则。
-- 在 `docs/technical/` 下维护 DSL 规则示例与贡献指南。
-- 等 PoC 与 benchmark 完成后，将本文件从“草案”更新为正式的 `DSL_EVALUATION` 决策文档。
+- 将 DSL 规则扩展到更多模式类漏洞（如部分 SQLi/XSS 变体），并丰富测试样本。
+- 在真实靶场（NodeGoat/DVWA）上运行 AST-only vs AST+DSL 的对比实验，将具体 TP/FP/性能数字写入本文件。
+- 评估是否在 LSP 层面引入「仅 DSL 规则」快速扫描模式，作为 AST/TaintGraph 的补充视图。
 

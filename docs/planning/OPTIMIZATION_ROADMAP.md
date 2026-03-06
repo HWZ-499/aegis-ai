@@ -247,7 +247,7 @@ security-scan:    测试 + coverage + 基准验收 + SARIF + HTML report
 
 ### Phase 4 — 规则 DSL 评估（Q2 2026）
 
-- [ ] 设计 Semgrep-like YAML 规则 DSL PoC，并实现到 `rule_engine` 的适配层
+- [x] 设计 Semgrep-like YAML 规则 DSL PoC，并实现到 `rule_engine` 的适配层
 - [ ] 在 NodeGoat / DVWA / WebGoat 上对比 DSL 版规则与现有 AST 规则的检出率与性能
 - [ ] 评估 DSL 对社区贡献门槛和维护成本的影响，形成决策文档
 

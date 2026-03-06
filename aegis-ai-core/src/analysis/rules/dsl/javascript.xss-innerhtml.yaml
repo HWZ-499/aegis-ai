@@ -1,0 +1,10 @@
+id: dsl.javascript.xss-innerhtml
+language: javascript
+severity: HIGH
+message: "检测到将用户可控内容直接赋值给 innerHTML，存在 XSS 风险。"
+vuln_type: XSS_RISK
+patterns:
+  - pattern: $ELEM.innerHTML = $EXPR
+    where:
+      file_not_regex: "(?i)test|fixture"
+

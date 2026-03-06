@@ -36,6 +36,7 @@ dependencies = [
     "tree-sitter-languages>=1.0.0",
     "pygls>=2.0.0",
     "lsprotocol>=2025.0.0",
+    "pyyaml>=6.0.0",
 ]
 
 [project.optional-dependencies]
