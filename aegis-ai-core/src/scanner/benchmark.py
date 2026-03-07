@@ -12,12 +12,15 @@ benchmark.py - 阶段四：标准基准测试与量化报告
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
 # 用例定义（与 test_acceptance_benchmark 对齐，便于统一维护）
 from .benchmark_cases import BENCH_CASES_TN, BENCH_CASES_TP, BenchCase
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -411,10 +414,16 @@ def evaluate_project_against_ground_truth(
 
 def main() -> None:
     """CLI 入口：运行基准并写入 reports/。"""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     md_path, json_path, result = run_and_save_report()
-    print(f"报告已生成: {md_path}")
-    print(f"JSON: {json_path}")
-    print(f"Recall: {result.recall:.1%}, Precision: {result.precision:.1%}, F1: {result.f1:.2f}")
+    logger.info("报告已生成: %s", md_path)
+    logger.info("JSON: %s", json_path)
+    logger.info(
+        "Recall: %s, Precision: %s, F1: %s",
+        f"{result.recall:.1%}",
+        f"{result.precision:.1%}",
+        f"{result.f1:.2f}",
+    )
 
 
 if __name__ == "__main__":

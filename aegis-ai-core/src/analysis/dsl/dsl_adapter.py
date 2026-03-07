@@ -2,15 +2,44 @@
 dsl_adapter.py
 
 将 YAML DSL 规则适配为现有 SecurityRule 接口，便于与 AST 规则并存。
+支持从 .aegis/rules/ 或 --rules-dir 加载额外 DSL 规则。
 """
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from ..base import AnalysisContext, SecurityRule
 from .dsl_engine import load_rules_from_directory, match_source
 from .rule_schema import DslRule
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_extra_dirs(extra_dirs: list[Path] | None, allowed_root: Path | None) -> list[Path]:
+    """过滤并解析 extra_dirs，拒绝路径穿越与 allowed_root 外路径。"""
+    if not extra_dirs:
+        return []
+    out: list[Path] = []
+    for p in extra_dirs:
+        try:
+            resolved = p.resolve()
+            if not resolved.exists() or not resolved.is_dir():
+                continue
+            if ".." in p.parts:
+                logger.warning("跳过规则目录（含 ..）: %s", p)
+                continue
+            if allowed_root is not None:
+                try:
+                    resolved.relative_to(allowed_root)
+                except ValueError:
+                    logger.warning("跳过规则目录（超出允许根）: %s", p)
+                    continue
+            out.append(resolved)
+        except (OSError, RuntimeError) as e:
+            logger.debug("跳过规则目录 %s: %s", p, e)
+    return out
 
 _SEVERITY_MAP: dict[str, str] = {
     "INFO": "Info",
@@ -77,17 +106,26 @@ class DslRuleAdapter(SecurityRule):
             context.add_finding(finding)
 
 
-def load_dsl_rules_for_language(language: str) -> list[SecurityRule]:
+def load_dsl_rules_for_language(
+    language: str,
+    extra_dirs: list[Path] | None = None,
+    allowed_root: Path | None = None,
+) -> list[SecurityRule]:
     """加载指定语言的 DSL 规则并包装为 SecurityRule 适配器。
 
     Args:
         language: 语言标识，例如 \"python\"、\"javascript\"、\"go\"。
+        extra_dirs: 额外规则目录（如 .aegis/rules），会与内置规则合并。
+        allowed_root: 若提供，则 extra_dirs 中的路径必须在此根下。
 
     Returns:
         对应语言的 DslRuleAdapter 列表。
     """
     root = Path(__file__).resolve().parent.parent / "rules" / "dsl"
-    all_rules = load_rules_from_directory(root)
+    all_rules: list[DslRule] = []
+    all_rules.extend(load_rules_from_directory(root))
+    for d in _safe_extra_dirs(extra_dirs or [], allowed_root):
+        all_rules.extend(load_rules_from_directory(d))
     adapters: list[SecurityRule] = []
     lang = language.lower()
     for rule in all_rules:

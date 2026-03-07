@@ -5,8 +5,11 @@
 
 import html
 import json
+import logging
 from datetime import datetime
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def _esc(value: Any) -> str:
@@ -854,9 +857,9 @@ if __name__ == "__main__":
         "severity_stats": {"High": 1},
     }
 
-    print("JSON 格式:")
-    print(generator.generate_json(test_results, test_stats))
-    print("\n" + "=" * 70 + "\n")
-
-    print("Markdown 格式:")
-    print(generator.generate_markdown(test_results, test_stats))
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logger.info("JSON 格式:")
+    logger.info("%s", generator.generate_json(test_results, test_stats))
+    logger.info("\n" + "=" * 70 + "\n")
+    logger.info("Markdown 格式:")
+    logger.info("%s", generator.generate_markdown(test_results, test_stats))

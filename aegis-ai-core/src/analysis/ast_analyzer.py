@@ -19,6 +19,9 @@
 """
 
 import ast
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SecurityVisitor(ast.NodeVisitor):
@@ -182,8 +185,8 @@ class SecurityVisitor(ast.NodeVisitor):
                                 "details": f"使用弱加密算法 {func_name}，建议使用 SHA256 或更强的算法。",
                             }
                         )
-            except:
-                pass  # 忽略解析失败的复杂结构
+            except Exception as e:
+                logger.debug("AST Call 节点解析失败: %s", e)
 
         # 继续遍历子节点
         self.generic_visit(node)
@@ -293,5 +296,5 @@ def analyze_code_ast(code_content):
     except SyntaxError:
         return []  # 如果不是Python代码或语法错误，直接返回空，交给AI去处理
     except Exception as e:
-        print(f"AST Parse Error: {e}")
+        logger.warning("AST parse error: %s", e)
         return []

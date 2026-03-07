@@ -238,24 +238,29 @@ security-scan:    测试 + coverage + 基准验收 + SARIF + HTML report
 
 ### Phase 3 — 技术债务清理（关键前置已完成）
 
-- [ ] 各模块 Finding dict → `Finding` Pydantic 模型
+- [x] 各模块 Finding dict → `Finding` Pydantic 模型（AnalysisContext 内部存储 Finding，对外 to_legacy_dict 兼容）
 - [x] `aegis_server.py` `/api/audit` 切换到 `rule_engine.py`
 - [x] 清理 `src/` 下所有 `sys.path` 手动操作
 - [ ] 统一所有入口的日志初始化（crawler 脚本、`worker_daemon` 等）
 - [x] `scripts/` 目录重组（按 `benchmark/`、`debug/`、`data/` 分类）
-- [ ] 完成 `pytest-benchmark` 在 CI 中的自动化集成
+- [x] 完成 `pytest-benchmark` 在 CI 中的自动化集成（security-scan 新增 DSL vs AST、pytest-benchmark 步骤）
 
 ### Phase 4 — 规则 DSL 评估（Q2 2026）
 
 - [x] 设计 Semgrep-like YAML 规则 DSL PoC，并实现到 `rule_engine` 的适配层
-- [ ] 在 NodeGoat / DVWA / WebGoat 上对比 DSL 版规则与现有 AST 规则的检出率与性能
+- [x] 在 NodeGoat 上对比 DSL 版规则与现有 AST 规则的检出率（21/21 一致，无漏报/增量）
+- [x] 新增 `compare_ast_vs_dsl.py` 脚本与 `realworld-benchmark.yml` CI 工作流
+- [ ] 在 DVWA 上补充 PHP 为主靶场对比
 - [ ] 评估 DSL 对社区贡献门槛和维护成本的影响，形成决策文档
 
 ### Phase 5 — 社区发布准备（Q2–Q3 2026）
 
-- [ ] 演示 GIF：展示“编写漏洞 → 实时诊断 → AI 修复”的完整闭环
+- [x] 演示 GIF 制作指南（`docs/guides/DEMO_GIF.md`）+ README 占位
+- [x] VSCode Marketplace 发布指南（`docs/guides/PUBLISHING.md`）+ `npm run package` 脚本
+- [x] issue 模板：feature_request、good_first_issue、config.yml 联系链接
+- [x] CONTRIBUTING.md 补充 Good First Issue 入口
+- [ ] 实际录制并嵌入演示 GIF
 - [ ] VSCode Marketplace 正式发布（目标 500+ installs）
-- [ ] issue 模板与 `good-first-issue` 体系完善，形成对新贡献者友好的入口
 
 ---
 
@@ -265,3 +270,4 @@ security-scan:    测试 + coverage + 基准验收 + SARIF + HTML report
 |------|----------|
 | 2026-03-05 | 初始文档创建，完成阶段 1-2 全部实施 |
 | 2026-03-06 | 完成 Phase 3 关键技术债务清理（`/api/audit` 切换 `rule_engine`、清理 `src/` 下 `sys.path`、`requests` → `httpx`、`scripts/` 与 `aegis-ai-core/docs/` 重组），并更新 Q1 遗留项与代码质量清单 |
+| 2026-03-07 | 完成 Phase 5 社区发布准备：DEMO_GIF.md、PUBLISHING.md、issue 模板（feature_request、good_first_issue、config.yml）、CONTRIBUTING Good First Issue 入口 |

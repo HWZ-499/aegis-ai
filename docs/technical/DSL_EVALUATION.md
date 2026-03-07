@@ -153,9 +153,46 @@ patterns:
 
 ---
 
-## 6. 下一步行动
+## 6. 真实靶场对比实验结果（NodeGoat）
+
+**执行时间**: 2026-03-07  
+**靶场**: [OWASP NodeGoat](https://github.com/OWASP/NodeGoat)  
+**扫描文件数**: 27（排除 node_modules、test 等）
+
+### 6.1 汇总
+
+| 模式 | 发现总数 |
+|------|----------|
+| AST-only | 21 |
+| AST+DSL | 21 |
+
+### 6.2 按漏洞类型
+
+| 类型 | AST-only | AST+DSL |
+|------|----------|---------|
+| HARDCODED_CREDENTIALS | 7 | 7 |
+| NOSQL_INJECTION | 8 | 8 |
+| OPEN_REDIRECT | 3 | 3 |
+| RCE_COMMAND_EXEC | 3 | 3 |
+
+### 6.3 对比结论
+
+- **两者均有**: 21（所有检出在两种模式下完全一致）
+- **仅 AST**: 0
+- **仅 DSL 增量**: 0
+
+**结论**: 在 NodeGoat 上，AST 规则与 DSL 规则检出完全一致，DSL 未产生漏报或额外 FP。当前 DSL 覆盖的规则族（硬编码凭证、简单 XSS、NoSQL 注入等）在 NodeGoat 场景下与 AST 规则等效。
+
+### 6.4 自动化
+
+- 脚本: `aegis-ai-core/scripts/benchmark/compare_ast_vs_dsl.py`
+- CI: `.github/workflows/realworld-benchmark.yml`（可手动触发或每周日 03:00 UTC 自动运行）
+
+---
+
+## 7. 下一步行动
 
 - 将 DSL 规则扩展到更多模式类漏洞（如部分 SQLi/XSS 变体），并丰富测试样本。
-- 在真实靶场（NodeGoat/DVWA）上运行 AST-only vs AST+DSL 的对比实验，将具体 TP/FP/性能数字写入本文件。
+- 在 DVWA 上补充 AST vs DSL 对比实验（PHP 为主）。
 - 评估是否在 LSP 层面引入「仅 DSL 规则」快速扫描模式，作为 AST/TaintGraph 的补充视图。
 

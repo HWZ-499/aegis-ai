@@ -624,9 +624,9 @@ Finding 既用于**报告展示**，也用于**程序消费**（如 LSP Diagnost
 ### 13.1 参考文档
 
 - 项目 README：`README.md`  
-- 锐评与路线图：`CRITICAL_REVIEW_AND_ROADMAP.md`  
-- 优化总结：`OPTIMIZATION_PROGRESS_SUMMARY.md`  
-- 第二阶段计划：`docs/archive/PHASE2_PLAN.md`  
+- 锐评与路线图：`docs/planning/CRITICAL_REVIEW_AND_ROADMAP.md`  
+- 优化路线图：`docs/planning/OPTIMIZATION_ROADMAP.md`  
+- 项目路线图：`docs/planning/ROADMAP.md`  
 
 ### 13.2 文档修订记录
 

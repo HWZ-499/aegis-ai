@@ -1,8 +1,16 @@
 # Aegis AI — IDE 实时安全扫描 + AI 精准修复
 
+[![Security Scan](https://github.com/aegis-ai/aegis-ai/actions/workflows/security-scan.yml/badge.svg)](https://github.com/aegis-ai/aegis-ai/actions/workflows/security-scan.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![PyPI version](https://badge.fury.io/py/aegis-ai-core.svg)](https://pypi.org/project/aegis-ai-core/)
+
 > 开源的 VSCode/Cursor 安全扫描插件，在编写代码的同时实时检测漏洞，并由 AI 生成框架感知的精准修复建议。
 
 **当前版本**: v0.2.0 | **扩展 ID**: `aegis-ai.aegis-ai-security` | **状态**: 预览版，积极开发中 | [查看路线图 →](ROADMAP.md)
+
+<!-- 演示 GIF：录制后放置于 docs/assets/demo.gif，详见 docs/guides/DEMO_GIF.md -->
+![Demo](docs/assets/demo.gif)
 
 ---
 
@@ -21,9 +29,16 @@
 
 ## 快速开始
 
+### 安装核心引擎（二选一）
+
+- **从 PyPI 安装（推荐）**：`pip install aegis-ai-core`，安装后可直接使用 `aegis-scan`、`aegis-lsp` 命令。
+- **从源码安装**：`cd aegis-ai-core && pip install -e .`
+
 ### 方式一：VSCode/Cursor 扩展（推荐）
 
 #### 1. 安装 Python 依赖
+
+若未通过 PyPI 安装，请在本仓库中执行：
 
 ```bash
 cd aegis-ai-core
@@ -268,7 +283,7 @@ aegis-ai/
 
 ## 贡献
 
-欢迎提交 Issue 和 Pull Request。
+欢迎提交 Issue 和 Pull Request。参与本项目即表示同意遵守我们的 [行为准则（Code of Conduct）](CODE_OF_CONDUCT.md)。安全相关问题请参见 [SECURITY.md](SECURITY.md)。
 
 在提交 PR 之前，请确保：
 1. 运行测试套件：`cd aegis-ai-core && python -m pytest tests/ -v`

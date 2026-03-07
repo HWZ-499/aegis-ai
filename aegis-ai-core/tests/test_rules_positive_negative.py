@@ -38,6 +38,7 @@ except ImportError:
     pass
 
 from src.analysis.base import AnalysisContext
+from src.analysis.rule_engine import analyze_javascript
 
 # 各规则
 from src.analysis.rules.nosql_injection.javascript_ast_rule import JavaScriptNoSQLInjectionAstRule
@@ -434,11 +435,14 @@ class TestDeserialization:
     rule = JavaScriptDeserializationAstRule()
 
     def test_json_parse_user_input(self) -> None:
-        """JSON.parse(req.body.data) 必须被检测。"""
-        code = 'const obj = JSON.parse(req.body.data);'
-        findings = _scan_js(code, self.rule)
-        assert len(findings) > 0
-        assert any("DESERIALIZATION" in f["type"] for f in findings)
+        """JSON.parse(req.body.data) 必须被检测（完整管道含污点分析）。"""
+        code = "const obj = JSON.parse(req.body.data);"
+        findings = analyze_javascript(code, Path("test.js"))
+        assert len(findings) > 0, "完整扫描应检出反序列化风险"
+        assert any(
+            "DESERIALIZATION" in f.get("type", "")
+            for f in findings
+        ), f"应有 DESERIALIZATION 类型，实际: {[f.get('type') for f in findings]}"
 
     def test_json_parse_safe_string(self) -> None:
         """JSON.parse('{"key":"value"}') 使用常量字符串不应误报。"""

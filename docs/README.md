@@ -26,24 +26,11 @@
 
 ---
 
-## 📖 根目录文档
-
-### 核心文档
+## 📖 根目录与历史文档
 
 - [README.md](../README.md) - 项目主文档
-- [第一阶段总结](../PHASE1_SUMMARY.md) - 第一阶段完成的工作总结
-- [专业评价报告](../PHASE1_PROFESSIONAL_EVALUATION.md) - 客观的专业评价
-- [第二阶段计划](../PHASE2_PLAN.md) - IDE 插件开发计划
 
-### 功能完成报告
-
-- [Scanner 模块完成](../SCANNER_ALL_FEATURES_COMPLETED.md)
-- [多语言支持完成](../MULTI_LANGUAGE_COMPLETED.md)
-- [Tree-sitter 集成完成](../TREE_SITTER_COMPLETED.md)
-- [规则优化完成](../RULE_OPTIMIZATION_COMPLETED.md)
-- [性能优化完成](../PERFORMANCE_OPTIMIZATION_COMPLETED.md)
-- [核心功能测试报告](../CORE_FEATURES_TEST_REPORT.md)
-- [实际项目扫描报告](../REAL_PROJECT_SCAN_REPORT.md)
+历史阶段总结与功能完成报告（如 PHASE1_SUMMARY、SCANNER_ALL_FEATURES_COMPLETED 等）已归档，当前以 [项目路线图](planning/ROADMAP.md) 与 [严格审查与长期优化方案](planning/CRITICAL_REVIEW_AND_ROADMAP.md) 为准。
 
 ---
 
@@ -56,11 +43,6 @@
 - **项目规划**: `planning/` - 项目规划和路线图
 - **问题排查**: `troubleshooting/` - 常见问题和解决方案
 
-### 按阶段分类
-
-- **第一阶段**: 核心功能开发（已完成）
-- **第二阶段**: IDE 插件开发（计划中）
-
 ---
 
-*最后更新: 2026-02-03*
+*最后更新: 2026-03-07*

@@ -14,6 +14,7 @@
     "url": "https://github.com/aegis-ai/aegis-ai/issues"
   },
   "homepage": "https://github.com/aegis-ai/aegis-ai#readme",
+  "icon": "images/icon.png",
   "galleryBanner": {
     "color": "#1e1e2e",
     "theme": "dark"
@@ -42,17 +43,81 @@
     "owasp"
   ],
   "activationEvents": [
-    "*",
-    "onStartupFinished",
     "onLanguage:javascript",
     "onLanguage:typescript",
     "onLanguage:javascriptreact",
     "onLanguage:typescriptreact",
     "onLanguage:python",
-    "onLanguage:php"
+    "onLanguage:php",
+    "onCommand:aegisAI.scanCurrentFile",
+    "onCommand:aegisAI.scanWorkspace",
+    "onCommand:aegisAI.showOutput",
+    "onCommand:aegisAI.showReport"
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "aegisAI.scanCurrentFile",
+        "title": "Aegis: Scan Current File",
+        "category": "Aegis AI"
+      },
+      {
+        "command": "aegisAI.scanWorkspace",
+        "title": "Aegis: Scan Workspace",
+        "category": "Aegis AI"
+      },
+      {
+        "command": "aegisAI.showOutput",
+        "title": "Aegis: Show Output Log",
+        "category": "Aegis AI"
+      },
+      {
+        "command": "aegisAI.showReport",
+        "title": "Aegis: Show Report",
+        "category": "Aegis AI"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "aegisAI.scanCurrentFile",
+        "key": "ctrl+shift+s",
+        "mac": "cmd+shift+s"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "aegisSecurity",
+          "title": "Aegis Security",
+          "icon": "images/icon.png"
+        }
+      ]
+    },
+    "views": {
+      "aegisSecurity": [
+        {
+          "id": "aegisFindings",
+          "name": "Findings"
+        }
+      ]
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "aegisAI.scanCurrentFile",
+          "when": "editorTextFocus",
+          "group": "aegis@1"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "aegisAI.scanCurrentFile",
+          "when": "explorerResourceIsFile",
+          "group": "aegis@1"
+        }
+      ]
+    },
     "configuration": {
       "title": "Aegis AI Security Scanner",
       "properties": {
@@ -121,14 +186,22 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node ./out/test/runTest.js",
+    "package": "vsce package",
+    "publish:patch": "vsce publish patch",
+    "publish:minor": "vsce publish minor"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
+    "@types/mocha": "^10.0.0",
     "@types/node": "^25.2.2",
     "@types/vscode": "^1.75.0",
+    "@vscode/test-electron": "^2.4.0",
+    "@vscode/vsce": "^3.2.1",
+    "mocha": "^10.2.0",
     "typescript": "^5.3.0"
   }
 }

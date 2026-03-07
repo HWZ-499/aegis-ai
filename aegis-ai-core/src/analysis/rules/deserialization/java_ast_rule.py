@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...base import AnalysisContext, SecurityRule
+from ...base import AnalysisContext, SecurityRule, safe_find_paths
 
 
 class JavaDeserializationAstRule(SecurityRule):
@@ -39,10 +39,7 @@ class JavaDeserializationAstRule(SecurityRule):
         reported_sinks: set[str] = set()
 
         # 优先使用完整污点路径（若存在）
-        try:
-            paths: list[Any] = graph.find_paths_to_sinks()
-        except Exception:
-            paths = []
+        paths = safe_find_paths(graph, self.rule_id)
 
         for path in paths:
             if getattr(path, "is_sanitized", False):
@@ -87,11 +84,8 @@ class JavaDeserializationAstRule(SecurityRule):
         if reported_sinks:
             return
 
-        try:
-            source_ids: set[str] = getattr(graph, "_sources", set())
-            sink_ids: set[str] = getattr(graph, "_sinks", set())
-        except Exception:
-            return
+        source_ids: set[str] = getattr(graph, "_sources", set())
+        sink_ids: set[str] = getattr(graph, "_sinks", set())
 
         if not source_ids or not sink_ids:
             return

@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ...base import AnalysisContext, SecurityRule
+from ...base import AnalysisContext, SecurityRule, safe_find_paths
 
 
 class JavaSQLInjectionAstRule(SecurityRule):
@@ -44,10 +44,7 @@ class JavaSQLInjectionAstRule(SecurityRule):
             # 避免同一 Sink 重复报多条路径
             reported_sinks: set[str] = set()
 
-            try:
-                paths: list[Any] = graph.find_paths_to_sinks()
-            except Exception:
-                paths = []
+            paths = safe_find_paths(graph, self.rule_id)
 
             for path in paths:
                 # 跳过已净化路径

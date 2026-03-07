@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...base import AnalysisContext, SecurityRule
+from ...base import AnalysisContext, SecurityRule, safe_find_paths
 
 
 class GoSQLInjectionAstRule(SecurityRule):
@@ -37,10 +37,7 @@ class GoSQLInjectionAstRule(SecurityRule):
 
         reported_sinks: set[str] = set()
 
-        try:
-            paths: list[Any] = graph.find_paths_to_sinks()
-        except Exception:
-            return
+        paths = safe_find_paths(graph, self.rule_id)
 
         for path in paths:
             if getattr(path, "is_sanitized", False):

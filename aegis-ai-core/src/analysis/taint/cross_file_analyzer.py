@@ -18,6 +18,7 @@ cross_file_analyzer.py - 跨文件数据流分析器
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
@@ -34,6 +35,8 @@ except ImportError:
     Parser = None
     Node = None
     get_language = None
+
+logger = logging.getLogger(__name__)
 
 
 class ExportType(Enum):
@@ -176,8 +179,8 @@ class CrossFileAnalyzer:
                 py_lang = get_language("python")
                 self._py_parser = Parser()
                 self._py_parser.set_language(py_lang)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to init Tree-sitter parsers for cross-file analysis: %s", e)
 
     def scan_project(self) -> None:
         """
@@ -229,7 +232,7 @@ class CrossFileAnalyzer:
             self._traverse_js_ast(tree.root_node, file_str)
 
         except Exception as e:
-            print(f"⚠️ 分析失败 {file_path}: {e}")
+            logger.warning("分析失败 %s: %s", file_path, e)
 
     def _traverse_js_ast(self, node: Any, file_path: str) -> None:
         """遍历 JavaScript AST"""
@@ -423,7 +426,7 @@ class CrossFileAnalyzer:
             self._traverse_py_ast(tree.root_node, file_str)
 
         except Exception as e:
-            print(f"⚠️ 分析失败 {file_path}: {e}")
+            logger.warning("分析失败 %s: %s", file_path, e)
 
     def _traverse_py_ast(self, node: Any, file_path: str) -> None:
         """遍历 Python AST"""

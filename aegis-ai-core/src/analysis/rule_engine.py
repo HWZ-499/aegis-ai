@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
+from typing import Any, Type
 
 from .analyzers.go_analyzer import GoAnalyzer
 from .analyzers.java_analyzer import JavaAnalyzer
@@ -76,6 +77,8 @@ logger = logging.getLogger(__name__)
 def get_default_rules_for_language(
     language: str,
     include_dsl: bool = True,
+    extra_rule_dirs: list[Path] | None = None,
+    rules_allowed_root: Path | None = None,
 ) -> list[SecurityRule]:
     """
     根据语言返回默认规则集合。
@@ -103,7 +106,13 @@ def get_default_rules_for_language(
             PythonOpenRedirectAstRule(),
         ]
         if include_dsl:
-            rules.extend(load_dsl_rules_for_language("python"))
+            rules.extend(
+                load_dsl_rules_for_language(
+                    "python",
+                    extra_dirs=extra_rule_dirs,
+                    allowed_root=rules_allowed_root,
+                )
+            )
         return rules
 
     if language in ("javascript", "typescript"):
@@ -119,7 +128,13 @@ def get_default_rules_for_language(
             JavaScriptOpenRedirectAstRule(),
         ]
         if include_dsl:
-            rules.extend(load_dsl_rules_for_language(language))
+            rules.extend(
+                load_dsl_rules_for_language(
+                    language,
+                    extra_dirs=extra_rule_dirs,
+                    allowed_root=rules_allowed_root,
+                )
+            )
         return rules
 
     if language == "php":
@@ -158,25 +173,73 @@ def get_default_rules_for_language(
             GoOpenRedirectAstRule(),
         ]
         if include_dsl:
-            rules.extend(load_dsl_rules_for_language("go"))
+            rules.extend(
+                load_dsl_rules_for_language(
+                    "go",
+                    extra_dirs=extra_rule_dirs,
+                    allowed_root=rules_allowed_root,
+                )
+            )
         return rules
 
     return []
 
 
-def analyze_python(code: str, file_path: Path | str, include_dsl: bool = True) -> list[dict]:
-    """
-    使用新规则引擎分析单个 Python 文件。
-    TDD 10.1：解析或分析过程异常时返回空列表，不崩溃。
-    """
+_LANGUAGE_ANALYZER_MAP: dict[str, Type[Any]] = {
+    "python": PythonAnalyzer,
+    "javascript": JavaScriptAnalyzer,
+    "typescript": JavaScriptAnalyzer,
+    "java": JavaAnalyzer,
+    "go": GoAnalyzer,
+}
+
+
+def _analyze_with(
+    language: str,
+    code: str,
+    file_path: Path | str,
+    include_dsl: bool = True,
+    extra_rule_dirs: list[Path] | None = None,
+    rules_allowed_root: Path | None = None,
+) -> list[dict]:
+    """统一入口：按语言选择分析器并执行分析，异常时记录日志并返回空列表。"""
+    from src.scanner.baseline import filter_suppressed_findings
+
     path = Path(file_path)
-    rules = get_default_rules_for_language("python", include_dsl=include_dsl)
-    analyzer = PythonAnalyzer(rules)
-    try:
-        return analyzer.analyze(code, path)
-    except Exception:
-        logger.exception("analyze_python failed for %s", path)
+    rules = get_default_rules_for_language(
+        language,
+        include_dsl=include_dsl,
+        extra_rule_dirs=extra_rule_dirs,
+        rules_allowed_root=rules_allowed_root,
+    )
+    analyzer_cls = _LANGUAGE_ANALYZER_MAP.get(language)
+    if analyzer_cls is None:
         return []
+    analyzer = analyzer_cls(rules)
+    try:
+        if language in ("javascript", "typescript"):
+            raw = analyzer.analyze(code, path, language=language)
+        else:
+            raw = analyzer.analyze(code, path)
+        return filter_suppressed_findings(raw, code)
+    except Exception:
+        logger.exception("_analyze_with(%s) failed for %s", language, path)
+        return []
+
+
+def analyze_python(
+    code: str,
+    file_path: Path | str,
+    include_dsl: bool = True,
+    extra_rule_dirs: list[Path] | None = None,
+    rules_allowed_root: Path | None = None,
+) -> list[dict]:
+    """使用新规则引擎分析单个 Python 文件。TDD 10.1：异常时返回空列表。"""
+    return _analyze_with(
+        "python", code, file_path, include_dsl,
+        extra_rule_dirs=extra_rule_dirs,
+        rules_allowed_root=rules_allowed_root,
+    )
 
 
 def analyze_javascript(
@@ -184,48 +247,45 @@ def analyze_javascript(
     file_path: Path | str,
     language: str = "javascript",
     include_dsl: bool = True,
+    extra_rule_dirs: list[Path] | None = None,
+    rules_allowed_root: Path | None = None,
 ) -> list[dict]:
-    """
-    使用新规则引擎分析单个 JavaScript/TypeScript 文件。
-    TDD 10.1：解析或分析过程异常时返回空列表，不崩溃。
-    """
-    path = Path(file_path)
-    rules = get_default_rules_for_language(language, include_dsl=include_dsl)
-    analyzer = JavaScriptAnalyzer(rules)
-    try:
-        return analyzer.analyze(code, path, language=language)
-    except Exception:
-        logger.exception("analyze_javascript failed for %s", path)
-        return []
+    """使用新规则引擎分析单个 JavaScript/TypeScript 文件。TDD 10.1：异常时返回空列表。"""
+    return _analyze_with(
+        language, code, file_path, include_dsl,
+        extra_rule_dirs=extra_rule_dirs,
+        rules_allowed_root=rules_allowed_root,
+    )
 
 
-def analyze_java(code: str, file_path: Path | str, include_dsl: bool = True) -> list[dict]:
-    """
-    使用新规则引擎分析单个 Java 文件。
-    TDD 10.1：解析或分析过程异常时返回空列表，不崩溃。
-    """
-    path = Path(file_path)
-    rules = get_default_rules_for_language("java", include_dsl=include_dsl)
-    analyzer = JavaAnalyzer(rules)
-    try:
-        return analyzer.analyze(code, path)
-    except Exception:
-        logger.exception("analyze_java failed for %s", path)
-        return []
+def analyze_java(
+    code: str,
+    file_path: Path | str,
+    include_dsl: bool = True,
+    extra_rule_dirs: list[Path] | None = None,
+    rules_allowed_root: Path | None = None,
+) -> list[dict]:
+    """使用新规则引擎分析单个 Java 文件。TDD 10.1：异常时返回空列表。"""
+    return _analyze_with(
+        "java", code, file_path, include_dsl,
+        extra_rule_dirs=extra_rule_dirs,
+        rules_allowed_root=rules_allowed_root,
+    )
 
 
-def analyze_go(code: str, file_path: Path | str, include_dsl: bool = True) -> list[dict]:
-    """
-    使用新规则引擎分析单个 Go 文件。
-    """
-    path = Path(file_path)
-    rules = get_default_rules_for_language("go", include_dsl=include_dsl)
-    analyzer = GoAnalyzer(rules)
-    try:
-        return analyzer.analyze(code, path)
-    except Exception:
-        logger.exception("analyze_go failed for %s", path)
-        return []
+def analyze_go(
+    code: str,
+    file_path: Path | str,
+    include_dsl: bool = True,
+    extra_rule_dirs: list[Path] | None = None,
+    rules_allowed_root: Path | None = None,
+) -> list[dict]:
+    """使用新规则引擎分析单个 Go 文件。异常时返回空列表。"""
+    return _analyze_with(
+        "go", code, file_path, include_dsl,
+        extra_rule_dirs=extra_rule_dirs,
+        rules_allowed_root=rules_allowed_root,
+    )
 
 
 def analyze_php(code: str, file_path: Path | str) -> list[dict]:

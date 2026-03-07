@@ -297,4 +297,24 @@ python -m pytest scripts/test_cases/guard_clause_test.py -v
 
 ---
 
+## Good First Issue
+
+适合新贡献者的任务会标注 `good-first-issue` 标签，通常具有以下特点：
+
+- 范围明确，可在 1–2 天内完成
+- 不依赖复杂污点分析或跨文件逻辑
+- 有现成参考（如类似规则的实现）
+
+**浏览 Good First Issues**：  
+[Issues with good-first-issue label](https://github.com/aegis-ai/aegis-ai/issues?q=label%3A%22good+first+issue%22)
+
+若你发现适合新贡献者的任务，可使用 [建议 Good First Issue](.github/ISSUE_TEMPLATE/good_first_issue.md) 模板提交，维护者审核后会添加标签。
+
+---
+
+## 社区与安全
+
+- **[行为准则（Code of Conduct）](CODE_OF_CONDUCT.md)**：参与本社区即表示同意遵守 [Contributor Covenant v2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/)。
+- **[安全策略（SECURITY）](SECURITY.md)**：漏洞披露与安全相关问题请参见 SECURITY.md。
+
 感谢你的贡献！

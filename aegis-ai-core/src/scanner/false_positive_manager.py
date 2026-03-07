@@ -4,7 +4,10 @@
 """
 
 import json
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class FalsePositiveManager:
@@ -44,7 +47,7 @@ class FalsePositiveManager:
                     config = json.load(f)
                     return config
             except Exception as e:
-                print(f"⚠️  加载误报配置文件失败: {e}，使用默认配置")
+                logger.warning("加载误报配置文件失败: %s，使用默认配置", e)
                 return default_config
 
         return default_config
@@ -109,7 +112,7 @@ class FalsePositiveManager:
         # 检查是否已存在
         for fp in fp_list:
             if fp.get("file_path") == file_path and fp.get("line") == line and fp.get("type") == vuln_type:
-                print("ℹ️  该问题已被标记为误报")
+                logger.info("该问题已被标记为误报")
                 return
 
         # 添加新的误报标记
@@ -126,7 +129,7 @@ class FalsePositiveManager:
         self.false_positives["false_positives"] = fp_list
         self._save_config()
 
-        print(f"✅ 已标记为误报: {file_path}:{line} - {vuln_type}")
+        logger.info("已标记为误报: %s:%s - %s", file_path, line, vuln_type)
 
     def remove_false_positive(self, file_path: str, line: int, vuln_type: str):
         """
@@ -149,9 +152,9 @@ class FalsePositiveManager:
         if len(fp_list) < original_count:
             self.false_positives["false_positives"] = fp_list
             self._save_config()
-            print(f"✅ 已移除误报标记: {file_path}:{line} - {vuln_type}")
+            logger.info("已移除误报标记: %s:%s - %s", file_path, line, vuln_type)
         else:
-            print("ℹ️  未找到匹配的误报标记")
+            logger.info("未找到匹配的误报标记")
 
     def filter_findings(self, findings: list[dict], file_path: str = "") -> list[dict]:
         """
@@ -209,14 +212,15 @@ if __name__ == "__main__":
         manager.remove_false_positive(file_path, int(line), vuln_type)
 
     if args.list:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
         fp_list = manager.list_false_positives()
         if fp_list:
-            print("📋 误报标记列表:")
+            logger.info("误报标记列表:")
             for fp in fp_list:
-                print(f"\n  文件: {fp.get('file_path')}")
-                print(f"  行号: {fp.get('line')}")
-                print(f"  类型: {fp.get('type')}")
+                logger.info("  文件: %s", fp.get("file_path"))
+                logger.info("  行号: %s", fp.get("line"))
+                logger.info("  类型: %s", fp.get("type"))
                 if fp.get("reason"):
-                    print(f"  原因: {fp.get('reason')}")
+                    logger.info("  原因: %s", fp.get("reason"))
         else:
-            print("ℹ️  没有误报标记")
+            logger.info("没有误报标记")

@@ -14,16 +14,28 @@ TDD 对齐：
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import threading
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote, unquote, urlparse
+
+if TYPE_CHECKING:
+    from ..analysis.taint.cross_file_analyzer import CrossFileAnalyzer
 
 from lsprotocol import types as lsp
 from pygls.lsp.server import LanguageServer
 
 logger = logging.getLogger(__name__)
+
+# P1-1：扫描失败时向客户端发送 aegis/scanError 通知
+NOTIFICATION_SCAN_ERROR = "aegis/scanError"
+
+
+class ScanError(Exception):
+    """扫描过程发生异常时抛出，供 _validate_document 捕获并通知客户端。"""
+
 
 # M1：内置修复建议（与 rag_enhancer 结构一致，避免 LSP 层依赖 scanner）
 from ..scanner.rag_enhancer import BUILTIN_REMEDIATION
@@ -75,6 +87,11 @@ SEVERITY_MAP: dict[str, lsp.DiagnosticSeverity] = {
 
 # M2：didChange 防抖（秒）；同一 URI 仅保留最新一次待执行验证
 DEBOUNCE_SECONDS: float = 0.4
+
+# P1-3：单文件扫描超时（秒）；超时则记录警告并返回空结果
+SCAN_TIMEOUT_SECONDS: float = 30.0
+# P1-3：单文件大小上限（字节）；超过则跳过
+MAX_FILE_SIZE_BYTES: int = 2 * 1024 * 1024  # 2 MB
 _pending_validation: dict[str, threading.Timer] = {}
 _pending_lock: threading.Lock = threading.Lock()
 
@@ -93,7 +110,7 @@ class WorkspaceContext:
     """
 
     def __init__(self) -> None:
-        self._analyzer: Any | None = None
+        self._analyzer: CrossFileAnalyzer | None = None
         self._project_path: str | None = None
         self._building: bool = False
         self._lock = threading.Lock()
@@ -305,8 +322,8 @@ def finding_to_diagnostic(
             message += "\n修复建议: " + smart.message
             if smart.suggested_code:
                 message += "\n建议修复代码:\n" + smart.suggested_code
-        except Exception:
-            pass  # 降级到静态模板
+        except Exception as e:
+            logger.debug("Smart remediation failed for %s: %s", fp, e)
     if not (source_code and fp) or not message.count("建议修复代码"):
         remediation = _get_remediation_for_rule(str(code).strip())
         if remediation and (remediation.get("remediation") or remediation.get("description")):
@@ -432,7 +449,8 @@ def _pick_framework_suggested_code(remediation: dict[str, Any], file_path: str) 
                     break
                 header += line
         header_lower = header.lower()
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to read file header for framework detection: %s", e)
         return None
 
     # 按优先级匹配
@@ -502,13 +520,20 @@ def _extract_code_context(
     return snippet, ctx_start + 1
 
 
-def scan_document(source: str, file_path: str) -> list[dict]:
+def scan_document(
+    source: str,
+    file_path: str,
+    extra_rule_dirs: list[Path] | None = None,
+    rules_allowed_root: Path | None = None,
+) -> list[dict]:
     """
     调用 rule_engine 对源代码执行安全扫描。
 
     Args:
         source: 文件源代码
         file_path: 文件路径
+        extra_rule_dirs: 额外 DSL 规则目录（LSP 从 initializationOptions.rules_dirs 传入）
+        rules_allowed_root: 规则目录允许根（通常为工作区根）
 
     Returns:
         finding 列表。
@@ -517,7 +542,6 @@ def scan_document(source: str, file_path: str) -> list[dict]:
     if language is None:
         return []
 
-    # 延迟导入，避免在模块加载时就触发 tree-sitter 初始化
     from ..analysis.rule_engine import (
         analyze_go,
         analyze_java,
@@ -528,18 +552,34 @@ def scan_document(source: str, file_path: str) -> list[dict]:
 
     try:
         if language == "python":
-            return analyze_python(source, file_path)
+            return analyze_python(
+                source, file_path,
+                extra_rule_dirs=extra_rule_dirs,
+                rules_allowed_root=rules_allowed_root,
+            )
         elif language in ("javascript", "typescript"):
-            return analyze_javascript(source, file_path, language=language)
+            return analyze_javascript(
+                source, file_path, language=language,
+                extra_rule_dirs=extra_rule_dirs,
+                rules_allowed_root=rules_allowed_root,
+            )
         elif language == "php":
             return analyze_php(source, file_path)
         elif language == "java":
-            return analyze_java(source, file_path)
+            return analyze_java(
+                source, file_path,
+                extra_rule_dirs=extra_rule_dirs,
+                rules_allowed_root=rules_allowed_root,
+            )
         elif language == "go":
-            return analyze_go(source, file_path)
-    except Exception:
+            return analyze_go(
+                source, file_path,
+                extra_rule_dirs=extra_rule_dirs,
+                rules_allowed_root=rules_allowed_root,
+            )
+    except Exception as e:
         logger.exception("Scan failed for %s", file_path)
-        return []
+        raise ScanError(str(e)) from e
 
     return []
 
@@ -608,6 +648,42 @@ def create_server() -> LanguageServer:
         with _pending_lock:
             _pending_validation[uri] = timer
         timer.start()
+
+    # P1-2：扩展命令「扫描当前文件」触发的自定义通知
+    @server.feature("aegis/requestScan")
+    def on_request_scan(params: dict[str, Any] | None) -> None:
+        uri = (params or {}).get("uri", "")
+        if not uri:
+            return
+        try:
+            doc = server.workspace.get_text_document(uri)
+            _validate_document(server, uri, doc.source)
+        except Exception as e:
+            logger.warning("Manual scan failed for %s: %s", uri, e)
+
+    # P1-2 / P5-4：扩展命令「扫描工作区」触发的自定义通知（遍历已打开的文档，发送进度）
+    @server.feature("aegis/requestScanWorkspace")
+    def on_request_scan_workspace(_params: dict[str, Any] | None) -> None:
+        try:
+            docs = getattr(server.workspace, "_documents", {})
+            items = list(docs.items())
+            total = len(items)
+            if total == 0:
+                server.send_notification(
+                    "aegis/scanProgress",
+                    {"current": 0, "total": 0, "uri": ""},
+                )
+            for idx, (uri, doc) in enumerate(items):
+                try:
+                    server.send_notification(
+                        "aegis/scanProgress",
+                        {"current": idx + 1, "total": total, "uri": uri},
+                    )
+                    _validate_document(server, uri, doc.source)
+                except Exception as e:
+                    logger.warning("Workspace scan failed for %s: %s", uri, e)
+        except Exception as e:
+            logger.warning("Workspace scan failed: %s", e)
 
     @server.feature(
         lsp.TEXT_DOCUMENT_CODE_ACTION,
@@ -730,8 +806,8 @@ def create_server() -> LanguageServer:
                             try:
                                 doc = server.workspace.get_text_document(uri)
                                 doc_source = doc.source
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.debug("Failed to get document source for AI analysis: %s", e)
                             result = ai_analyzer.analyze_finding(
                                 finding_like,
                                 language=lang,
@@ -836,8 +912,8 @@ def _cancel_pending_validation(uri: str) -> None:
     if timer is not None:
         try:
             timer.cancel()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to cancel pending timer for %s: %s", uri, e)
 
 
 def _debounced_validate(server: LanguageServer, uri: str) -> None:
@@ -868,21 +944,91 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
         server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
         return
 
+    # P1-3：文件过大则跳过并清空诊断
+    try:
+        fpath = Path(file_path)
+        if fpath.exists() and fpath.stat().st_size > MAX_FILE_SIZE_BYTES:
+            logger.info(
+                "Skipping oversized file (%d bytes): %s",
+                fpath.stat().st_size,
+                file_path,
+            )
+            server.text_document_publish_diagnostics(
+                lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[])
+            )
+            return
+    except OSError:
+        pass
+
     # ── 通知前端：扫描开始 ───────────────────────────────────────────────────
     try:
         server.send_notification("aegis/scanStart", {"uri": uri})
-    except Exception:
-        pass  # 静默忽略，不影响核心扫描逻辑
+    except Exception as e:
+        logger.debug("Failed to send scanStart notification: %s", e)
 
     # 记录扫描开始时的文档版本（若有）
     version_before: int | None = None
     try:
         doc = server.workspace.get_text_document(uri)
         version_before = doc.version
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to get document version: %s", e)
 
-    findings = scan_document(source, file_path)
+    # 可选：从 initializationOptions.rules_dirs 解析额外规则目录
+    extra_rule_dirs: list[Path] | None = None
+    rules_allowed_root: Path | None = None
+    try:
+        root_str = getattr(_workspace_ctx, "_project_path", None)
+        rules_allowed_root = Path(root_str) if root_str else Path(file_path).parent
+        raw_dirs = _workspace_ctx._init_options.get("rules_dirs") or []
+        if raw_dirs:
+            extra_rule_dirs = []
+            for d in raw_dirs:
+                p = Path(d) if not isinstance(d, Path) else Path(str(d))
+                if not p.is_absolute() and rules_allowed_root:
+                    p = rules_allowed_root / p
+                p = p.resolve()
+                if p.is_dir():
+                    try:
+                        if rules_allowed_root:
+                            p.relative_to(rules_allowed_root)
+                        extra_rule_dirs.append(p)
+                    except ValueError:
+                        logger.debug("Skip rules_dir outside workspace: %s", p)
+    except Exception as e:
+        logger.debug("Resolving rules_dirs: %s", e)
+
+    # P1-3：单次扫描超时，避免巨型或复杂文件拖死
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                scan_document,
+                source,
+                file_path,
+                extra_rule_dirs,
+                rules_allowed_root,
+            )
+            findings = future.result(timeout=SCAN_TIMEOUT_SECONDS)
+    except concurrent.futures.TimeoutError:
+        logger.warning(
+            "Scan timed out after %.0fs for %s",
+            SCAN_TIMEOUT_SECONDS,
+            file_path,
+        )
+        findings = []
+    except ScanError as e:
+        logger.warning("Scan error for %s: %s", file_path, e)
+        try:
+            server.send_notification(
+                NOTIFICATION_SCAN_ERROR,
+                {"uri": uri, "message": str(e)},
+            )
+        except Exception as send_err:
+            logger.debug("Failed to send scanError notification: %s", send_err)
+        server.text_document_publish_diagnostics(
+            lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[])
+        )
+        return
 
     # 合并跨文件分析结果
     cross_file_findings = _workspace_ctx.get_cross_file_findings(file_path)
@@ -918,11 +1064,11 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
             server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
             try:
                 server.send_notification("aegis/scanEnd", {"uri": uri, "issueCount": 0})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to send scanEnd notification: %s", e)
             return
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to check document version: %s", e)
 
     diagnostics = [finding_to_diagnostic(f, uri, source_code=source, file_path=file_path) for f in findings]
     issue_count = len(diagnostics)
@@ -937,8 +1083,8 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
     # ── 通知前端：扫描结束（含问题数量，驱动 Status Bar 更新）─────────────
     try:
         server.send_notification("aegis/scanEnd", {"uri": uri, "issueCount": issue_count})
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to send scanEnd notification: %s", e)
 
     # ── B3：后台预缓存 Critical/High 的 AI 修复结果，Code Action 时即显 ──
     def _precache_ai() -> None:
@@ -980,10 +1126,10 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
                     )
                     if result:
                         cache[key] = result
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as e:
+                    logger.warning("AI precache failed for %s: %s", key, e)
+        except Exception as e:
+            logger.warning("AI precache thread failed: %s", e)
 
     t = threading.Thread(target=_precache_ai, daemon=True)
     t.start()

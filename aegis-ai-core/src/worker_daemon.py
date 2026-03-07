@@ -65,8 +65,6 @@ def main() -> None:
     sock.bind(("127.0.0.1", args.port))
     port = sock.getsockname()[1]
     sock.listen(1)
-    # 供父进程读取端口
-    print(port, flush=True)
     logger.info(
         "Worker daemon listening on 127.0.0.1:%s (max_requests=%s, max_memory_mb=%s)",
         port,
@@ -119,8 +117,8 @@ def main() -> None:
             logger.exception("Request error: %s", e)
             try:
                 conn.sendall(json.dumps({"findings": [], "error": str(e)}).encode("utf-8") + b"\n")
-            except Exception:
-                pass
+            except Exception as send_err:
+                logger.debug("Failed to send error response to client: %s", send_err)
 
     sock.close()
     logger.info("Worker daemon exited (request_count=%s)", request_count)

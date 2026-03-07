@@ -4,6 +4,7 @@
 支持 Git diff 集成，只扫描变更的文件
 """
 
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -26,20 +27,29 @@ class IncrementalScanner:
     支持 Git diff 集成
     """
 
-    def __init__(self, project_path: str, base_ref: str | None = None):
+    def __init__(
+        self,
+        project_path: str,
+        base_ref: str | None = None,
+        extra_rule_dirs: list[Path] | None = None,
+    ):
         """
         初始化增量扫描器
 
         Args:
             project_path: 项目根目录路径
             base_ref: Git 基准引用（如 'main', 'HEAD~1', 'abc123'），默认为 None（扫描未提交的更改）
+            extra_rule_dirs: 额外 DSL 规则目录（与 ProjectScanner 一致）
         """
         self.project_path = Path(project_path).resolve()
         if not self.project_path.exists():
             raise ValueError(f"项目路径不存在: {project_path}")
 
         self.base_ref = base_ref
-        self.scanner = ProjectScanner(str(self.project_path))
+        self.scanner = ProjectScanner(
+            str(self.project_path),
+            extra_rule_dirs=extra_rule_dirs,
+        )
 
     def get_changed_files(self) -> set[Path]:
         """
@@ -97,6 +107,44 @@ class IncrementalScanner:
 
         return changed_files
 
+    def get_changed_lines(self, file_path: Path) -> set[int]:
+        """
+        获取指定文件在 diff 中变更的行号（1-based）。
+        用于仅报告变更行上的 findings。
+
+        Returns:
+            变更行号集合；非 Git 或出错时返回空集合。
+        """
+        if not self._is_git_repo():
+            return set()
+        try:
+            if self.base_ref:
+                cmd = ["git", "diff", "-U0", "--no-color", self.base_ref, "HEAD", "--", str(file_path)]
+            else:
+                cmd = ["git", "diff", "-U0", "--no-color", "HEAD", "--", str(file_path)]
+            result = subprocess.run(
+                cmd,
+                cwd=self.project_path,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                return set()
+            lines: set[int] = set()
+            for raw in result.stdout.splitlines():
+                if raw.startswith("@@ "):
+                    # @@ -old_start,old_count +new_start,new_count @@
+                    m = re.search(r"\+(\d+)(?:,(\d+))?", raw)
+                    if m:
+                        start = int(m.group(1))
+                        span = int(m.group(2)) if m.group(2) else 1
+                        for i in range(start, start + span):
+                            lines.add(i)
+            return lines
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired, ValueError):
+            return set()
+
     def scan_incremental(self, verbose: bool = False) -> dict[str, list[dict]]:
         """
         执行增量扫描
@@ -133,12 +181,12 @@ class IncrementalScanner:
                 continue
 
             try:
-                # 使用 ProjectScanner 的 scan_file 方法
                 findings = self.scanner.scan_file(file_path)
-
+                changed_lines = self.get_changed_lines(file_path)
+                if changed_lines:
+                    findings = [f for f in findings if f.get("line") in changed_lines]
                 if findings:
-                    # 转换为相对路径作为 key
-                    rel_path = str(file_path.relative_to(self.project_path))
+                    rel_path = str(file_path.relative_to(self.project_path)).replace("\\", "/")
                     results[rel_path] = findings
 
             except Exception as e:

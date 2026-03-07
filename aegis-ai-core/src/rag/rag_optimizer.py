@@ -6,8 +6,11 @@
 3. 上下文融合与去重
 """
 
+import logging
 import re
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 def keyword_match_score(query: str, document: str) -> float:
@@ -125,8 +128,9 @@ def freshness_score(date_str: str = None) -> float:
             return 0.5
         else:
             return 0.3
-    except:
-        return 0.5  # 解析失败返回默认值
+    except Exception as e:
+        logger.debug("日期解析失败，使用默认权重: %s", e)
+        return 0.5
 
 
 def rerank_results(query: str, candidates: list[dict]) -> list[tuple[dict, float]]:

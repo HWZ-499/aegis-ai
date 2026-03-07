@@ -17,10 +17,13 @@ source_sink_registry.py - 污点源/汇点注册表
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
 from re import Pattern
+
+logger = logging.getLogger(__name__)
 
 
 class VulnCategory(Enum):
@@ -180,7 +183,7 @@ class SourceSinkRegistry:
         # 检查是否是 Sink
         sink = registry.find_sink("eval(data)", "javascript")
         if sink:
-            print(f"Found sink: {sink.category}")
+            logger.info("Found sink: %s", sink.category)
     """
 
     def __init__(self):
