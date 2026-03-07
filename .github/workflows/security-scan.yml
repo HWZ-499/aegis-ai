@@ -79,7 +79,7 @@ jobs:
         run: |
           cd aegis-ai-core
           pip install -r requirements.txt
-          pip install pytest-cov
+          pip install pytest pytest-cov pytest-benchmark pyyaml pydantic-settings
 
       - name: Run tests with coverage
         run: |
@@ -102,10 +102,20 @@ jobs:
           cd aegis-ai-core
           python -m pytest tests/test_acceptance_benchmark.py -v
 
+      - name: DSL vs AST comparison
+        run: |
+          cd aegis-ai-core
+          python -m pytest tests/test_dsl_vs_ast.py -v
+
+      - name: Performance benchmark (pytest-benchmark)
+        run: |
+          cd aegis-ai-core
+          python -m pytest tests/test_performance_benchmark.py -v --benchmark-only
+
       - name: Generate benchmark report
         run: |
           cd aegis-ai-core
-          python scripts/run_benchmark_report.py
+          python scripts/benchmark/run_benchmark_report.py
 
       - name: Upload benchmark report
         uses: actions/upload-artifact@v4
@@ -131,7 +141,7 @@ jobs:
         if: always()
         run: |
           cd aegis-ai-core
-          python -m src.scanner.cli . --format html --output scan-report.html
+          python -m src.scanner.cli . --format html --output scan-report.html --no-fail-on-findings
 
       - name: Upload HTML report
         if: always()

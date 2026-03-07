@@ -91,6 +91,12 @@ def main():
         "--cross-file", action="store_true", help="启用跨文件分析：追踪模块间依赖和数据流（P4 高级功能）"
     )
 
+    parser.add_argument(
+        "--no-fail-on-findings",
+        action="store_true",
+        help="发现漏洞时仍返回退出码 0（用于 CI 报告生成，不阻断流水线）",
+    )
+
     args = parser.parse_args()
 
     # 验证项目路径
@@ -375,11 +381,12 @@ def main():
                         emoji = {"Critical": "🔴", "High": "🟠", "Medium": "🟡", "Low": "🟢"}.get(severity, "⚪")
                         print(f"  {emoji} {severity}: {count}")
 
-        # 根据问题数量设置退出码
+        # 根据问题数量设置退出码（--no-fail-on-findings 时始终返回 0）
+        if getattr(args, "no_fail_on_findings", False):
+            sys.exit(0)
         if stats["total_issues"] > 0:
             sys.exit(1)  # 有问题，返回非零退出码
-        else:
-            sys.exit(0)  # 无问题，返回零退出码
+        sys.exit(0)  # 无问题，返回零退出码
 
     except KeyboardInterrupt:
         print("\n\n⚠️ 扫描被用户中断")
