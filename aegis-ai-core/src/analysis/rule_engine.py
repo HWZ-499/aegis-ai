@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Any, Type
+from typing import Any
 
 from .analyzers.go_analyzer import GoAnalyzer
 from .analyzers.java_analyzer import JavaAnalyzer
@@ -185,7 +185,7 @@ def get_default_rules_for_language(
     return []
 
 
-_LANGUAGE_ANALYZER_MAP: dict[str, Type[Any]] = {
+_LANGUAGE_ANALYZER_MAP: dict[str, type[Any]] = {
     "python": PythonAnalyzer,
     "javascript": JavaScriptAnalyzer,
     "typescript": JavaScriptAnalyzer,
