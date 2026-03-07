@@ -236,7 +236,10 @@ def analyze_python(
 ) -> list[dict]:
     """使用新规则引擎分析单个 Python 文件。TDD 10.1：异常时返回空列表。"""
     return _analyze_with(
-        "python", code, file_path, include_dsl,
+        "python",
+        code,
+        file_path,
+        include_dsl,
         extra_rule_dirs=extra_rule_dirs,
         rules_allowed_root=rules_allowed_root,
     )
@@ -252,7 +255,10 @@ def analyze_javascript(
 ) -> list[dict]:
     """使用新规则引擎分析单个 JavaScript/TypeScript 文件。TDD 10.1：异常时返回空列表。"""
     return _analyze_with(
-        language, code, file_path, include_dsl,
+        language,
+        code,
+        file_path,
+        include_dsl,
         extra_rule_dirs=extra_rule_dirs,
         rules_allowed_root=rules_allowed_root,
     )
@@ -267,7 +273,10 @@ def analyze_java(
 ) -> list[dict]:
     """使用新规则引擎分析单个 Java 文件。TDD 10.1：异常时返回空列表。"""
     return _analyze_with(
-        "java", code, file_path, include_dsl,
+        "java",
+        code,
+        file_path,
+        include_dsl,
         extra_rule_dirs=extra_rule_dirs,
         rules_allowed_root=rules_allowed_root,
     )
@@ -282,7 +291,10 @@ def analyze_go(
 ) -> list[dict]:
     """使用新规则引擎分析单个 Go 文件。异常时返回空列表。"""
     return _analyze_with(
-        "go", code, file_path, include_dsl,
+        "go",
+        code,
+        file_path,
+        include_dsl,
         extra_rule_dirs=extra_rule_dirs,
         rules_allowed_root=rules_allowed_root,
     )

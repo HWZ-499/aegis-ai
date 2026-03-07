@@ -553,13 +553,16 @@ def scan_document(
     try:
         if language == "python":
             return analyze_python(
-                source, file_path,
+                source,
+                file_path,
                 extra_rule_dirs=extra_rule_dirs,
                 rules_allowed_root=rules_allowed_root,
             )
         elif language in ("javascript", "typescript"):
             return analyze_javascript(
-                source, file_path, language=language,
+                source,
+                file_path,
+                language=language,
                 extra_rule_dirs=extra_rule_dirs,
                 rules_allowed_root=rules_allowed_root,
             )
@@ -567,13 +570,15 @@ def scan_document(
             return analyze_php(source, file_path)
         elif language == "java":
             return analyze_java(
-                source, file_path,
+                source,
+                file_path,
                 extra_rule_dirs=extra_rule_dirs,
                 rules_allowed_root=rules_allowed_root,
             )
         elif language == "go":
             return analyze_go(
-                source, file_path,
+                source,
+                file_path,
                 extra_rule_dirs=extra_rule_dirs,
                 rules_allowed_root=rules_allowed_root,
             )
@@ -953,9 +958,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
                 fpath.stat().st_size,
                 file_path,
             )
-            server.text_document_publish_diagnostics(
-                lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[])
-            )
+            server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
             return
     except OSError:
         pass
@@ -1025,9 +1028,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
             )
         except Exception as send_err:
             logger.debug("Failed to send scanError notification: %s", send_err)
-        server.text_document_publish_diagnostics(
-            lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[])
-        )
+        server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
         return
 
     # 合并跨文件分析结果

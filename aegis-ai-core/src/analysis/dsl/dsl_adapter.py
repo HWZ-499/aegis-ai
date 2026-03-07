@@ -41,6 +41,7 @@ def _safe_extra_dirs(extra_dirs: list[Path] | None, allowed_root: Path | None) -
             logger.debug("跳过规则目录 %s: %s", p, e)
     return out
 
+
 _SEVERITY_MAP: dict[str, str] = {
     "INFO": "Info",
     "LOW": "Low",

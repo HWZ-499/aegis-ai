@@ -452,25 +452,34 @@ class ProjectScanner:
             root = self.project_path
             if language == "python" and self.engine == "new":
                 merged_findings = analyze_python_new(
-                    code, file_path_str,
-                    extra_rule_dirs=extra, rules_allowed_root=root,
+                    code,
+                    file_path_str,
+                    extra_rule_dirs=extra,
+                    rules_allowed_root=root,
                 )
             elif language in ("javascript", "typescript") and self.engine == "new":
                 merged_findings = analyze_javascript_new(
-                    code, file_path_str, language=language,
-                    extra_rule_dirs=extra, rules_allowed_root=root,
+                    code,
+                    file_path_str,
+                    language=language,
+                    extra_rule_dirs=extra,
+                    rules_allowed_root=root,
                 )
             elif language == "php" and self.engine == "new":
                 merged_findings = analyze_php_new(code, file_path_str)
             elif language == "java" and self.engine == "new":
                 merged_findings = analyze_java_new(
-                    code, file_path_str,
-                    extra_rule_dirs=extra, rules_allowed_root=root,
+                    code,
+                    file_path_str,
+                    extra_rule_dirs=extra,
+                    rules_allowed_root=root,
                 )
             elif language == "go" and self.engine == "new":
                 merged_findings = analyze_go_new(
-                    code, file_path_str,
-                    extra_rule_dirs=extra, rules_allowed_root=root,
+                    code,
+                    file_path_str,
+                    extra_rule_dirs=extra,
+                    rules_allowed_root=root,
                 )
             else:
                 if language == "python":

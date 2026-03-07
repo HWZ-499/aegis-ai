@@ -362,7 +362,9 @@ def main():
         # Baseline：先更新再过滤（仅输出新增）
         baseline_path: Path | None = None
         if args.baseline:
-            baseline_path = (project_path / args.baseline) if not Path(args.baseline).is_absolute() else Path(args.baseline)
+            baseline_path = (
+                (project_path / args.baseline) if not Path(args.baseline).is_absolute() else Path(args.baseline)
+            )
         elif getattr(args, "update_baseline", False):
             baseline_path = project_path / ".aegis-baseline.json"
 
