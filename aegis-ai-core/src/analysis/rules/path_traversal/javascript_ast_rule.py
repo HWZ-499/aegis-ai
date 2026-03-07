@@ -71,7 +71,7 @@ class JavaScriptPathTraversalAstRule(SecurityRule):
         for child in node.children:
             if child.type == "arguments":
                 for arg in child.children:
-                    if arg.type not in (",", ")"):
+                    if arg.type not in ("(", ",", ")"):
                         path_arg = arg
                         break
                 break
@@ -88,8 +88,8 @@ class JavaScriptPathTraversalAstRule(SecurityRule):
                 finding = self._make_finding(line_no, object_name, method_name)
                 context.add_finding(finding)
                 return
-            if identifiers:
-                return  # 已追踪但未污染，不报
+            # 若 identifiers 存在但未追踪到污点，继续降级到结构化检测
+            # （孤立片段如 fs.readFile(req.query.path) 中 req 可能未被 collector 标记）
         # 降级：结构化用户输入检测
         if self._looks_like_user_input(path_arg, context):
             line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
