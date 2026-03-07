@@ -11,38 +11,35 @@ taint - 完整污点分析模块
 
 使用方式：
     from analysis.taint import TaintAnalyzer
-    
+
     analyzer = TaintAnalyzer(language="javascript")
     analyzer.analyze_code(code, file_path)
     paths = analyzer.find_taint_paths()
 """
 
-from .taint_graph import (
-    TaintNode,
-    TaintEdge,
-    TaintGraph,
-    TaintPath,
-    NodeType,
-    EdgeType,
+from .cross_file_analyzer import (
+    CrossFileAnalyzer,
+    CrossFileTaintPath,
+    ExportType,
+    FunctionCall,
+    ModuleExport,
+    ModuleImport,
 )
-
 from .source_sink_registry import (
-    SourcePattern,
-    SinkPattern,
     SanitizerPattern,
+    SinkPattern,
+    SourcePattern,
     SourceSinkRegistry,
     get_default_registry,
 )
-
 from .taint_analyzer import TaintAnalyzer
-
-from .cross_file_analyzer import (
-    CrossFileAnalyzer,
-    ModuleExport,
-    ModuleImport,
-    FunctionCall,
-    CrossFileTaintPath,
-    ExportType,
+from .taint_graph import (
+    EdgeType,
+    NodeType,
+    TaintEdge,
+    TaintGraph,
+    TaintNode,
+    TaintPath,
 )
 
 __all__ = [

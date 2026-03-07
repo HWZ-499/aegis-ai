@@ -19,51 +19,80 @@ Python XSS 风险 AST 规则（污点感知版）。
 from __future__ import annotations
 
 import ast
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
 
-
 # XSS Sink 函数（直接输出到 HTTP 响应/模板，不含 print/write——后者不向 HTTP 输出）
-_DIRECT_OUTPUT_FUNCS = frozenset([
-    # Flask
-    "render_template_string",
-    # Django
-    "mark_safe",
-])
+_DIRECT_OUTPUT_FUNCS = frozenset(
+    [
+        # Flask
+        "render_template_string",
+        # Django
+        "mark_safe",
+    ]
+)
 
 # XSS Sink 方法名（obj.method 形式）
-_OUTPUT_METHODS = frozenset([
-    "write", "send", "render", "response", "output",
-    "emit",
-])
+_OUTPUT_METHODS = frozenset(
+    [
+        "write",
+        "send",
+        "render",
+        "response",
+        "output",
+        "emit",
+    ]
+)
 
 # 确定属于 HTTP 响应对象的 receiver 名称白名单。
 # "write" 需要额外检查 receiver，避免将文件 IO write() 误判为 XSS 输出点。
-_HTTP_RESPONSE_NAMES = frozenset([
-    "response", "resp", "res",
-    "HttpResponse", "JsonResponse", "StreamingHttpResponse",
-    "FileResponse", "make_response", "wfile",
-])
+_HTTP_RESPONSE_NAMES = frozenset(
+    [
+        "response",
+        "resp",
+        "res",
+        "HttpResponse",
+        "JsonResponse",
+        "StreamingHttpResponse",
+        "FileResponse",
+        "make_response",
+        "wfile",
+    ]
+)
 
 # XSS 安全净化函数（调用后视为已净化）
-_SANITIZE_FUNCS = frozenset([
-    "escape",         # html.escape / markupsafe.escape
-    "quote",          # urllib.parse.quote
-    "htmlspecialchars",  # 若有 Python 实现
-    "bleach_clean",
-])
+_SANITIZE_FUNCS = frozenset(
+    [
+        "escape",  # html.escape / markupsafe.escape
+        "quote",  # urllib.parse.quote
+        "htmlspecialchars",  # 若有 Python 实现
+        "bleach_clean",
+    ]
+)
 _SANITIZE_MODULES = frozenset(["html", "markupsafe", "bleach"])
 
 # Python 用户输入访问模式
-_USER_INPUT_ATTRS = frozenset([
-    "form", "args", "json", "data", "values", "cookies", "headers",
-    "GET", "POST", "FILES", "params", "query_params",
-])
+_USER_INPUT_ATTRS = frozenset(
+    [
+        "form",
+        "args",
+        "json",
+        "data",
+        "values",
+        "cookies",
+        "headers",
+        "GET",
+        "POST",
+        "FILES",
+        "params",
+        "query_params",
+    ]
+)
 _USER_INPUT_OBJS = frozenset(["request", "req"])
 
 
-def _collect_names(node: ast.AST) -> List[str]:
+def _collect_names(node: ast.AST) -> list[str]:
     """收集节点子树中所有 Name.id。"""
     return [n.id for n in ast.walk(node) if isinstance(n, ast.Name)]
 
@@ -91,7 +120,7 @@ def _is_sanitized_node(node: ast.AST) -> bool:
     return False
 
 
-def _is_user_input_node(node: ast.AST, context: Optional[AnalysisContext] = None) -> bool:
+def _is_user_input_node(node: ast.AST, context: AnalysisContext | None = None) -> bool:
     """
     判断节点是否来自用户输入。
 
@@ -119,13 +148,14 @@ def _is_user_input_node(node: ast.AST, context: Optional[AnalysisContext] = None
     # - 要求变量名以这些词**开头或结尾**（词边界），而非任意子串。
     if isinstance(node, ast.Name):
         import re
+
         lname = node.id.lower()
         # 只有变量名以 req/request 开头或以 _input/_payload 结尾才认为是用户输入
         _FALLBACK_PATTERNS = (
-            r"^req(?:uest)?",      # req_xxx / request_xxx
-            r"_input$",            # xxx_input
-            r"_payload$",          # xxx_payload
-            r"^raw_",              # raw_xxx（未处理的原始数据）
+            r"^req(?:uest)?",  # req_xxx / request_xxx
+            r"_input$",  # xxx_input
+            r"_payload$",  # xxx_payload
+            r"^raw_",  # raw_xxx（未处理的原始数据）
         )
         if any(re.search(pat, lname) for pat in _FALLBACK_PATTERNS):
             return True
@@ -154,6 +184,7 @@ class PythonXSSAstRule(SecurityRule):
             return
         try:
             import ast as _ast
+
             tree = _ast.parse(source)
         except SyntaxError:
             return
@@ -211,9 +242,7 @@ class PythonXSSAstRule(SecurityRule):
     # ------------------------------------------------------------------
     # 参数检查
     # ------------------------------------------------------------------
-    def _check_args(
-        self, node: ast.Call, context: AnalysisContext, func_name: str
-    ) -> None:
+    def _check_args(self, node: ast.Call, context: AnalysisContext, func_name: str) -> None:
         """检查调用参数是否含未净化的用户输入。"""
         all_args = list(node.args) + [kw.value for kw in node.keywords]
         if not all_args:
@@ -226,14 +255,13 @@ class PythonXSSAstRule(SecurityRule):
 
             # Sanitizer 感知（TaintGraph）
             names = _collect_names(arg)
-            if names and context is not None and all(
-                context.is_var_sanitized(n) for n in names
-            ):
+            if names and context is not None and all(context.is_var_sanitized(n) for n in names):
                 continue
 
             if _is_user_input_node(arg, context):
                 self._add_finding(
-                    context, node,
+                    context,
+                    node,
                     details=(
                         f"发现 {func_name}() 调用参数含疑似用户输入且未经 HTML 转义，"
                         f"存在 XSS 风险。建议使用 html.escape() 或模板自动转义。"
@@ -241,11 +269,9 @@ class PythonXSSAstRule(SecurityRule):
                 )
                 return  # 同一调用节点只报一次
 
-    def _add_finding(
-        self, context: AnalysisContext, node: ast.AST, details: str
-    ) -> None:
+    def _add_finding(self, context: AnalysisContext, node: ast.AST, details: str) -> None:
         line_no = getattr(node, "lineno", 0) or 0
-        finding: Dict[str, Any] = {
+        finding: dict[str, Any] = {
             "type": "XSS_RISK",
             "rule_id": self.rule_id,
             "severity": self.severity,

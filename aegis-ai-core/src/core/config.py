@@ -11,7 +11,6 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import List
 
 from pydantic import Field
 
@@ -32,7 +31,7 @@ def _resolve_env_file() -> str:
     按优先级查找 .env 文件路径。
 
     Returns:
-        找到的 .env 路径，或空字符串（pydantic-settings 会忽略空路径）。
+        找到的 .env 路径，或 ".env"（pydantic-settings 会忽略不存在的文件）。
     """
     candidates = [
         Path.cwd() / ".env",
@@ -83,12 +82,8 @@ class AegisSettings(BaseSettings):
     rate_limit_audit_per_min: int = Field(default=10)
 
     # ── CORS ─────────────────────────────────────────────────────
-    cors_allow_origins: List[str] = Field(
-        default_factory=lambda: [
-            o.strip()
-            for o in os.getenv("CORS_ALLOW_ORIGINS", "*").split(",")
-            if o.strip()
-        ],
+    cors_allow_origins: list[str] = Field(
+        default_factory=lambda: [o.strip() for o in os.getenv("CORS_ALLOW_ORIGINS", "*").split(",") if o.strip()],
         description="Allowed CORS origins (comma-separated in env var)",
     )
 

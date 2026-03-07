@@ -11,7 +11,7 @@ JavaScript/TypeScript 反序列化风险 AST 规则。
 from __future__ import annotations
 
 import re
-from typing import Any, Dict
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
 from ...base.user_input_detector import is_user_input_node
@@ -19,6 +19,7 @@ from ...base.user_input_detector import is_user_input_node
 # Tree-sitter Node 类型
 try:
     from tree_sitter import Node
+
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
@@ -142,7 +143,7 @@ class JavaScriptDeserializationAstRule(SecurityRule):
     # ------------------------------------------------------------------
     # 辅助方法
     # ------------------------------------------------------------------
-    def _make_finding(self, line_no: int) -> Dict[str, Any]:
+    def _make_finding(self, line_no: int) -> dict[str, Any]:
         """构建 DESERIALIZATION finding。"""
         return {
             "type": "DESERIALIZATION",
@@ -163,19 +164,19 @@ class JavaScriptDeserializationAstRule(SecurityRule):
     def _is_simple_url_param(node: Node) -> bool:
         """
         判断是否是简单的 URL 参数（req.params.*, req.query.*）。
-        
+
         这些参数通常是字符串类型，JSON.parse 对字符串参数通常是安全的
         （除非是复杂的对象，但这种情况较少）。
-        
+
         Args:
             node: Tree-sitter Node（通常是 member_expression 或 identifier）
-        
+
         Returns:
             True 如果是简单的 URL 参数，False 否则
         """
         text = _get_node_text(node) or ""
         text_lower = text.lower()
-        
+
         # 匹配 req.params.*, req.query.* 模式
         # 这些是简单的 URL 参数，通常是字符串
         simple_url_param_patterns = [
@@ -184,11 +185,11 @@ class JavaScriptDeserializationAstRule(SecurityRule):
             r"request\.params\.",
             r"request\.query\.",
         ]
-        
+
         for pattern in simple_url_param_patterns:
             if re.search(pattern, text_lower):
                 return True
-        
+
         return False
 
 

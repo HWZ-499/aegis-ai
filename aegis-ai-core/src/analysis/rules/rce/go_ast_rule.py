@@ -10,7 +10,7 @@ Go RCE / 命令执行 AST/污点规则。
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Set
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
 
@@ -36,10 +36,10 @@ class GoRCEAstRule(SecurityRule):
         if graph is None:
             return
 
-        reported_sinks: Set[str] = set()
+        reported_sinks: set[str] = set()
 
         try:
-            paths: List[Any] = graph.find_paths_to_sinks()
+            paths: list[Any] = graph.find_paths_to_sinks()
         except Exception:
             return
 
@@ -71,7 +71,7 @@ class GoRCEAstRule(SecurityRule):
                 "存在命令注入风险，建议使用固定命令白名单或严格校验参数。"
             )
 
-            finding: Dict[str, Any] = {
+            finding: dict[str, Any] = {
                 "type": "RCE_COMMAND_EXEC",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
@@ -84,4 +84,3 @@ class GoRCEAstRule(SecurityRule):
 
 
 __all__ = ["GoRCEAstRule"]
-

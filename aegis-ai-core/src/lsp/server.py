@@ -17,8 +17,8 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from typing import Dict, List, Optional, Any
-from urllib.parse import unquote, urlparse, quote
+from typing import Any
+from urllib.parse import quote, unquote, urlparse
 
 from lsprotocol import types as lsp
 from pygls.lsp.server import LanguageServer
@@ -28,9 +28,11 @@ logger = logging.getLogger(__name__)
 # M1：内置修复建议（与 rag_enhancer 结构一致，避免 LSP 层依赖 scanner）
 from ..scanner.rag_enhancer import BUILTIN_REMEDIATION
 from ..scanner.smart_remediation import generate_smart_remediation
+
 # A：AI 修复建议（可选），与 CLI 共享 AIAnalyzer 实现
 try:
     from ..scanner.ai_analyzer import AIAnalyzer
+
     AI_ANALYZER_AVAILABLE = True
 except Exception:  # ImportError 或 openai 未安装等
     AI_ANALYZER_AVAILABLE = False
@@ -41,7 +43,7 @@ except Exception:  # ImportError 或 openai 未安装等
 # ---------------------------------------------------------------------------
 
 #: 文件扩展名 -> 分析语言
-EXTENSION_LANGUAGE_MAP: Dict[str, str] = {
+EXTENSION_LANGUAGE_MAP: dict[str, str] = {
     ".js": "javascript",
     ".jsx": "javascript",
     ".ts": "typescript",
@@ -58,7 +60,7 @@ EXTENSION_LANGUAGE_MAP: Dict[str, str] = {
 }
 
 #: Scanner severity -> LSP DiagnosticSeverity
-SEVERITY_MAP: Dict[str, lsp.DiagnosticSeverity] = {
+SEVERITY_MAP: dict[str, lsp.DiagnosticSeverity] = {
     "Critical": lsp.DiagnosticSeverity.Error,
     "critical": lsp.DiagnosticSeverity.Error,
     "High": lsp.DiagnosticSeverity.Error,
@@ -73,7 +75,7 @@ SEVERITY_MAP: Dict[str, lsp.DiagnosticSeverity] = {
 
 # M2：didChange 防抖（秒）；同一 URI 仅保留最新一次待执行验证
 DEBOUNCE_SECONDS: float = 0.4
-_pending_validation: Dict[str, threading.Timer] = {}
+_pending_validation: dict[str, threading.Timer] = {}
 _pending_lock: threading.Lock = threading.Lock()
 
 
@@ -91,18 +93,18 @@ class WorkspaceContext:
     """
 
     def __init__(self) -> None:
-        self._analyzer: Optional[Any] = None
-        self._project_path: Optional[str] = None
+        self._analyzer: Any | None = None
+        self._project_path: str | None = None
         self._building: bool = False
         self._lock = threading.Lock()
-        self._init_options: Dict[str, Any] = {}
+        self._init_options: dict[str, Any] = {}
 
-    def configure(self, init_options: Dict[str, Any]) -> None:
+    def configure(self, init_options: dict[str, Any]) -> None:
         """存储客户端传入的初始化配置。"""
         self._init_options = init_options or {}
 
     @property
-    def disabled_rules(self) -> List[str]:
+    def disabled_rules(self) -> list[str]:
         return self._init_options.get("disabled_rules", [])
 
     @property
@@ -128,13 +130,12 @@ class WorkspaceContext:
         def _build() -> None:
             try:
                 from ..analysis.taint.cross_file_analyzer import CrossFileAnalyzer
+
                 analyzer = CrossFileAnalyzer(Path(project_path))
                 analyzer.scan_project()
                 with self._lock:
                     self._analyzer = analyzer
-                logger.info(
-                    "Cross-file dependency graph built for %s", project_path
-                )
+                logger.info("Cross-file dependency graph built for %s", project_path)
             except Exception:
                 logger.exception("Failed to build cross-file graph")
             finally:
@@ -144,7 +145,7 @@ class WorkspaceContext:
         t = threading.Thread(target=_build, daemon=True)
         t.start()
 
-    def get_cross_file_findings(self, file_path: str) -> List[Dict]:
+    def get_cross_file_findings(self, file_path: str) -> list[dict]:
         """
         获取与 ``file_path`` 相关的跨文件污点发现。
 
@@ -157,26 +158,28 @@ class WorkspaceContext:
             return []
         try:
             paths = analyzer.find_cross_file_taint_paths()
-            results: List[Dict] = []
+            results: list[dict] = []
             for p in paths:
                 d = p.to_dict()
                 if d["sink"]["file"] == file_path or d["source"]["file"] == file_path:
-                    results.append({
-                        "type": d.get("vuln_type", "CROSS_FILE_TAINT"),
-                        "severity": d.get("severity", "High"),
-                        "line": d["sink"]["line"],
-                        "details": d.get("description", "Cross-file taint path detected"),
-                        "file_path": d["sink"]["file"],
-                        "source": "CrossFileAnalyzer",
-                        "related_locations": [
-                            {
-                                "file_path": step["file"],
-                                "start_line": step["line"],
-                                "message": step.get("expr", ""),
-                            }
-                            for step in d.get("path", [])
-                        ],
-                    })
+                    results.append(
+                        {
+                            "type": d.get("vuln_type", "CROSS_FILE_TAINT"),
+                            "severity": d.get("severity", "High"),
+                            "line": d["sink"]["line"],
+                            "details": d.get("description", "Cross-file taint path detected"),
+                            "file_path": d["sink"]["file"],
+                            "source": "CrossFileAnalyzer",
+                            "related_locations": [
+                                {
+                                    "file_path": step["file"],
+                                    "start_line": step["line"],
+                                    "message": step.get("expr", ""),
+                                }
+                                for step in d.get("path", [])
+                            ],
+                        }
+                    )
             return results
         except Exception:
             logger.debug("Cross-file findings retrieval failed", exc_info=True)
@@ -196,7 +199,7 @@ _workspace_ctx = WorkspaceContext()
 # ---------------------------------------------------------------------------
 
 
-def detect_language(file_path: str) -> Optional[str]:
+def detect_language(file_path: str) -> str | None:
     """
     根据文件扩展名检测编程语言。
 
@@ -242,10 +245,10 @@ def _filepath_to_uri(file_path: str) -> str:
 
 
 def finding_to_diagnostic(
-    finding: Dict,
+    finding: dict,
     document_uri: str,
-    source_code: Optional[str] = None,
-    file_path: Optional[str] = None,
+    source_code: str | None = None,
+    file_path: str | None = None,
 ) -> lsp.Diagnostic:
     """
     将 rule_engine 的 finding dict 转换为 LSP Diagnostic。
@@ -279,16 +282,12 @@ def finding_to_diagnostic(
     # 将 source 行号和变量名直接嵌入消息，悬停即可看到完整流向
     finding_source = finding.get("source", "")
     if finding_source == "PHP-TaintGraph" and finding.get("taint_var"):
-        taint_var  = finding["taint_var"]
-        src_line   = finding.get("taint_source_line", 0)
-        sink_line  = finding.get("line", 0)
+        taint_var = finding["taint_var"]
+        src_line = finding.get("taint_source_line", 0)
+        sink_line = finding.get("line", 0)
         confidence = finding.get("confidence", "")
-        cwe        = finding.get("cwe", "")
-        chain_info = (
-            f"\n\n[污点链] {taint_var}"
-            f" (第 {src_line} 行 Source"
-            f" → 第 {sink_line} 行 Sink)"
-        )
+        cwe = finding.get("cwe", "")
+        chain_info = f"\n\n[污点链] {taint_var} (第 {src_line} 行 Source → 第 {sink_line} 行 Sink)"
         if cwe:
             chain_info += f"  {cwe}"
         if confidence == "low":
@@ -311,7 +310,11 @@ def finding_to_diagnostic(
     if not (source_code and fp) or not message.count("建议修复代码"):
         remediation = _get_remediation_for_rule(str(code).strip())
         if remediation and (remediation.get("remediation") or remediation.get("description")):
-            first_tip = (remediation.get("remediation") or [])[0] if remediation.get("remediation") else remediation.get("description", "")
+            first_tip = (
+                (remediation.get("remediation") or [])[0]
+                if remediation.get("remediation")
+                else remediation.get("description", "")
+            )
             if first_tip and "修复建议:" not in message:
                 message = message.rstrip()
                 if not message.endswith("。"):
@@ -323,16 +326,14 @@ def finding_to_diagnostic(
                     if php_code:
                         message += "\n建议修复代码 (PHP):\n" + php_code.strip()
                 else:
-                    framework_code = _pick_framework_suggested_code(
-                        remediation, fp or finding.get("file", "")
-                    )
+                    framework_code = _pick_framework_suggested_code(remediation, fp or finding.get("file", ""))
                     if framework_code:
                         message += "\n建议修复代码:\n" + framework_code.strip()
                     elif remediation.get("suggested_code"):
                         message += "\n建议修复代码:\n" + remediation["suggested_code"].strip()
 
     # related_locations -> Diagnostic.relatedInformation（TDD 7.2）
-    related: List[lsp.DiagnosticRelatedInformation] = []
+    related: list[lsp.DiagnosticRelatedInformation] = []
     for loc in finding.get("related_locations") or []:
         if not isinstance(loc, dict):
             continue
@@ -365,7 +366,7 @@ def finding_to_diagnostic(
     )
 
 
-def _get_remediation_for_rule(rule_id: str) -> Dict[str, Any]:
+def _get_remediation_for_rule(rule_id: str) -> dict[str, Any]:
     """
     根据规则类型（如 NOSQL_INJECTION）返回内置修复建议。
     M1：供 Code Action 使用，与 rag_enhancer.BUILTIN_REMEDIATION 一致。
@@ -374,7 +375,7 @@ def _get_remediation_for_rule(rule_id: str) -> Dict[str, Any]:
 
 
 # PHP 专属修复示例代码（TaintGraph finding 时使用，替代 rag_enhancer 里的 JS 示例）
-_PHP_REMEDIATION_CODE: Dict[str, str] = {
+_PHP_REMEDIATION_CODE: dict[str, str] = {
     "SQL_INJECTION": (
         "// PHP 参数化查询（PDO）\n"
         "$stmt = $pdo->prepare('SELECT * FROM users WHERE id = :id');\n"
@@ -389,8 +390,7 @@ _PHP_REMEDIATION_CODE: Dict[str, str] = {
         "}"
     ),
     "XSS_RISK": (
-        "// PHP XSS 防御：使用 htmlspecialchars 转义输出\n"
-        "echo htmlspecialchars($user_input, ENT_QUOTES, 'UTF-8');"
+        "// PHP XSS 防御：使用 htmlspecialchars 转义输出\necho htmlspecialchars($user_input, ENT_QUOTES, 'UTF-8');"
     ),
     "OPEN_REDIRECT": (
         "// PHP 开放重定向防御：使用白名单验证目标 URL\n"
@@ -404,7 +404,7 @@ _PHP_REMEDIATION_CODE: Dict[str, str] = {
 }
 
 
-def _pick_framework_suggested_code(remediation: Dict[str, Any], file_path: str) -> Optional[str]:
+def _pick_framework_suggested_code(remediation: dict[str, Any], file_path: str) -> str | None:
     """
     从 BUILTIN_REMEDIATION 条目中选取与当前文件框架匹配的专用示例代码。
 
@@ -418,7 +418,7 @@ def _pick_framework_suggested_code(remediation: Dict[str, Any], file_path: str) 
     Returns:
         框架专用示例代码字符串或 None
     """
-    framework_code_map: Dict[str, str] = remediation.get("framework_suggested_code") or {}
+    framework_code_map: dict[str, str] = remediation.get("framework_suggested_code") or {}
     if not framework_code_map:
         return None
 
@@ -437,9 +437,18 @@ def _pick_framework_suggested_code(remediation: Dict[str, Any], file_path: str) 
 
     # 按优先级匹配
     priority = [
-        "mysql2", "mysql", "sequelize", "knex", "typeorm", "prisma",
-        "pymysql", "psycopg2", "sqlalchemy", "django-orm",
-        "mongoose", "mongodb",
+        "mysql2",
+        "mysql",
+        "sequelize",
+        "knex",
+        "typeorm",
+        "prisma",
+        "pymysql",
+        "psycopg2",
+        "sqlalchemy",
+        "django-orm",
+        "mongoose",
+        "mongodb",
     ]
     for fw in priority:
         if fw in header_lower and fw in framework_code_map:
@@ -493,7 +502,7 @@ def _extract_code_context(
     return snippet, ctx_start + 1
 
 
-def scan_document(source: str, file_path: str) -> List[Dict]:
+def scan_document(source: str, file_path: str) -> list[dict]:
     """
     调用 rule_engine 对源代码执行安全扫描。
 
@@ -604,26 +613,27 @@ def create_server() -> LanguageServer:
         lsp.TEXT_DOCUMENT_CODE_ACTION,
         lsp.CodeActionOptions(code_action_kinds=[lsp.CodeActionKind.QuickFix]),
     )
-    def code_action(params: lsp.CodeActionParams) -> List[lsp.CodeAction]:
+    def code_action(params: lsp.CodeActionParams) -> list[lsp.CodeAction]:
         """
         M1：对 Aegis AI 的 Diagnostic 提供 Code Action。
         仅处理 context.diagnostics 中 source 为 "Aegis AI" 的项。
         """
-        actions: List[lsp.CodeAction] = []
+        actions: list[lsp.CodeAction] = []
         uri = params.text_document.uri
         aegis_diagnostics = [
-            d for d in (params.context.diagnostics or [])
+            d
+            for d in (params.context.diagnostics or [])
             if (getattr(d, "source", None) or "").strip().lower() == "aegis ai"
         ]
         if not aegis_diagnostics:
             return actions
 
         # 懒加载 AI 分析器（仅在需要 AI 修复建议时创建）
-        ai_analyzer: Optional[Any] = getattr(server, "_ai_analyzer", None)
+        ai_analyzer: Any | None = getattr(server, "_ai_analyzer", None)
         if AI_ANALYZER_AVAILABLE and ai_analyzer is None:
             try:
                 ai_analyzer = AIAnalyzer()
-                setattr(server, "_ai_analyzer", ai_analyzer)
+                server._ai_analyzer = ai_analyzer
             except Exception:
                 ai_analyzer = None
 
@@ -696,7 +706,7 @@ def create_server() -> LanguageServer:
                 file_path_str = uri_to_filepath(uri)
                 lang = detect_language(file_path_str)
 
-                finding_like: Dict[str, Any] = {
+                finding_like: dict[str, Any] = {
                     "type": rule_id,
                     "severity": severity_str,
                     "file": file_path_str,
@@ -712,11 +722,11 @@ def create_server() -> LanguageServer:
                         cache_key = (uri, rule_id, diag_start_line)
                         ai_cache = getattr(server, "_ai_cache", None)
                         if ai_cache is None:
-                            setattr(server, "_ai_cache", {})
+                            server._ai_cache = {}
                             ai_cache = getattr(server, "_ai_cache", {})
                         result = ai_cache.get(cache_key) if ai_cache else None
                         if result is None:
-                            doc_source: Optional[str] = None
+                            doc_source: str | None = None
                             try:
                                 doc = server.workspace.get_text_document(uri)
                                 doc_source = doc.source
@@ -732,11 +742,7 @@ def create_server() -> LanguageServer:
 
                         if result:
                             # ── 高置信度（>= 0.75）且有修复代码：直接替换漏洞行 ──
-                            if (
-                                result.fixed_code
-                                and result.confidence >= 0.75
-                                and not result.requires_review
-                            ):
+                            if result.fixed_code and result.confidence >= 0.75 and not result.requires_review:
                                 # 替换整个漏洞 range（保留缩进：从 result.fixed_code 原样写入）
                                 replace_range = lsp.Range(
                                     start=lsp.Position(line=diag.range.start.line, character=0),
@@ -799,7 +805,9 @@ def create_server() -> LanguageServer:
                                         ]
                                     }
                                 )
-                                preview = (result.fixed_code or result.fix_suggestion or "").strip().replace("\n", " ")[:40]
+                                preview = (
+                                    (result.fixed_code or result.fix_suggestion or "").strip().replace("\n", " ")[:40]
+                                )
                                 if preview and len((result.fixed_code or result.fix_suggestion or "").strip()) > 40:
                                     preview += "…"
                                 title = f"Aegis: 插入 AI 修复建议（{rule_id}）"
@@ -840,9 +848,7 @@ def _debounced_validate(server: LanguageServer, uri: str) -> None:
         doc = server.workspace.get_text_document(uri)
         source = doc.source
     except Exception:
-        server.text_document_publish_diagnostics(
-            lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[])
-        )
+        server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
         return
     _validate_document(server, uri, source)
 
@@ -859,9 +865,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
     language = detect_language(file_path)
 
     if language is None:
-        server.text_document_publish_diagnostics(
-            lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[])
-        )
+        server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
         return
 
     # ── 通知前端：扫描开始 ───────────────────────────────────────────────────
@@ -871,7 +875,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
         pass  # 静默忽略，不影响核心扫描逻辑
 
     # 记录扫描开始时的文档版本（若有）
-    version_before: Optional[int] = None
+    version_before: int | None = None
     try:
         doc = server.workspace.get_text_document(uri)
         version_before = doc.version
@@ -886,25 +890,20 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
         findings = findings + cross_file_findings
         logger.info(
             "Merged %d cross-file findings for %s",
-            len(cross_file_findings), file_path,
+            len(cross_file_findings),
+            file_path,
         )
 
     # 过滤已禁用的规则
     disabled = set(_workspace_ctx.disabled_rules)
     if disabled:
-        findings = [
-            f for f in findings
-            if f.get("type", f.get("rule_id", "")) not in disabled
-        ]
+        findings = [f for f in findings if f.get("type", f.get("rule_id", "")) not in disabled]
 
     # 过滤低于最低严重度的发现
     _severity_order = {"Critical": 4, "High": 3, "Medium": 2, "Low": 1}
     min_sev = _severity_order.get(_workspace_ctx.severity_minimum, 1)
     if min_sev > 1:
-        findings = [
-            f for f in findings
-            if _severity_order.get(f.get("severity", "Medium"), 2) >= min_sev
-        ]
+        findings = [f for f in findings if _severity_order.get(f.get("severity", "Medium"), 2) >= min_sev]
 
     # 发布前再次读取版本；若文档已被用户修改，丢弃本次结果并清空诊断
     try:
@@ -912,11 +911,11 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
         if version_before is not None and doc.version != version_before:
             logger.info(
                 "Document %s version changed (%s -> %s), skipping publish",
-                uri, version_before, doc.version,
+                uri,
+                version_before,
+                doc.version,
             )
-            server.text_document_publish_diagnostics(
-                lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[])
-            )
+            server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
             try:
                 server.send_notification("aegis/scanEnd", {"uri": uri, "issueCount": 0})
             except Exception:
@@ -925,10 +924,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
     except Exception:
         pass
 
-    diagnostics = [
-        finding_to_diagnostic(f, uri, source_code=source, file_path=file_path)
-        for f in findings
-    ]
+    diagnostics = [finding_to_diagnostic(f, uri, source_code=source, file_path=file_path) for f in findings]
     issue_count = len(diagnostics)
     logger.info(
         "Published %d diagnostics for %s (%s)",
@@ -936,9 +932,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
         file_path,
         language,
     )
-    server.text_document_publish_diagnostics(
-        lsp.PublishDiagnosticsParams(uri=uri, diagnostics=diagnostics)
-    )
+    server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=diagnostics))
 
     # ── 通知前端：扫描结束（含问题数量，驱动 Status Bar 更新）─────────────
     try:
@@ -956,7 +950,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
                 return
             cache = getattr(server, "_ai_cache", None)
             if cache is None:
-                setattr(server, "_ai_cache", {})
+                server._ai_cache = {}
                 cache = getattr(server, "_ai_cache", {})
             for f in findings:
                 if f.get("severity") not in ("Critical", "High"):

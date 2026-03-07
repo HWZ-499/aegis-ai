@@ -1,7 +1,7 @@
 # aegis_shell.py - 最终分流版 (DeepSeek 直连 + 证书修复)
 import os
-import sys
-import certifi 
+
+import certifi
 
 _current_file = os.path.abspath(__file__)
 _current_dir = os.path.dirname(_current_file)  # src/server
@@ -27,10 +27,9 @@ except ImportError:
     # 如果没有安装 python-dotenv，只使用系统环境变量
     pass
 
-import httpx
+
 import chromadb
-import json
-import time
+import httpx
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -44,6 +43,7 @@ API_URL = os.getenv("DEEPSEEK_API_URL", "https://api.deepseek.com/chat/completio
 print("\n🔌 [System] 正在挂载本地向量数据库...")
 client = chromadb.PersistentClient(path="./data/aegis_db")
 collection = client.get_collection(name="cve_core")
+
 
 def ask_deepseek_rag(user_query, context_text):
     if not DEEPSEEK_API_KEY or "sk-xxxx" in (DEEPSEEK_API_KEY or ""):
@@ -72,7 +72,7 @@ def ask_deepseek_rag(user_query, context_text):
     """
 
     print("   🤖 [DeepSeek] 正在进行二次语义校验...", end="", flush=True)
-    
+
     try:
         with httpx.Client(
             timeout=30.0,
@@ -101,13 +101,14 @@ def ask_deepseek_rag(user_query, context_text):
     except httpx.HTTPError as e:
         return f"❌ 网络错误: {e}"
 
+
 # 1. 新增一个“纯聊天”函数 (放在 ask_deepseek_rag 后面)
 def ask_deepseek_pure_chat(user_query):
     print("   🤖 [DeepSeek] 数据库无相关资料，切换为【纯聊天模式】...", end="", flush=True)
-    
+
     # 这里不需要 system_prompt 那么复杂，就让它自由发挥
     pure_prompt = "你是一个黑客风格的AI助手。用户在跟你闲聊，请用简练、酷酷的语气回应。"
-    
+
     try:
         with httpx.Client(
             timeout=30.0,
@@ -133,46 +134,49 @@ def ask_deepseek_pure_chat(user_query):
     except httpx.HTTPError as e:
         return f"❌ 网络错误: {e}"
 
+
 print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-print(f"🛡️  Aegis-AI RAG Terminal (Direct Mode)")
+print("🛡️  Aegis-AI RAG Terminal (Direct Mode)")
 print(f"📂  本地情报库: {collection.count()} 条")
 print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 while True:
     try:
         user_query = input("\n🕵️  Human > ").strip()
-        if not user_query: continue
-        if user_query.lower() in ['exit', 'quit']: break
+        if not user_query:
+            continue
+        if user_query.lower() in ["exit", "quit"]:
+            break
 
-        print(f"   🔍 优化的 RAG 检索（Top-5 → 重排序 → Top-3）...")
-        
+        print("   🔍 优化的 RAG 检索（Top-5 → 重排序 → Top-3）...")
+
         # === 🔥 使用优化的 RAG 检索流程 ===
         from rag_optimizer import optimized_rag_retrieval
-        
+
         rag_result = optimized_rag_retrieval(
             collection=collection,
             query=user_query,
             top_k=5,  # 初始检索 5 条
-            return_top_n=3  # 返回前 3 条
+            return_top_n=3,  # 返回前 3 条
         )
-        
-        distance = rag_result['distance']
+
+        distance = rag_result["distance"]
         print(f"   📏 [最佳距离] {distance:.4f}")
         print(f"   📊 [候选数] {rag_result['total_candidates']}, [返回数] {len(rag_result['ranked_results'])}")
 
-        if rag_result['has_match']:
+        if rag_result["has_match"]:
             # 情况 A: 搜到了专业资料 -> 专家模式（RAG）
-            print(f"   ✅ [HIT] 命中情报，使用 RAG 模式")
-            if rag_result['ranked_results']:
+            print("   ✅ [HIT] 命中情报，使用 RAG 模式")
+            if rag_result["ranked_results"]:
                 print(f"   📋 使用 {len(rag_result['ranked_results'])} 条相关参考")
-                for i, (candidate, score) in enumerate(rag_result['ranked_results'], 1):
+                for i, (candidate, score) in enumerate(rag_result["ranked_results"], 1):
                     print(f"      [{i}] {candidate['id']} (相关度: {score:.2f})")
-            
+
             # 使用融合后的上下文
-            answer = ask_deepseek_rag(user_query, rag_result['context'])
+            answer = ask_deepseek_rag(user_query, rag_result["context"])
         else:
             # 情况 B: 搜到了但距离太远 -> 兜底陪聊模式
-            print(f"   ⚠️ [MISS] 距离过远，判断为闲聊模式")
+            print("   ⚠️ [MISS] 距离过远，判断为闲聊模式")
             answer = ask_deepseek_pure_chat(user_query)
 
         print("\n🤖 Aegis 回复:")

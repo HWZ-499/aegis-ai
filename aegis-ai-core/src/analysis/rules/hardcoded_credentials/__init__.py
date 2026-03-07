@@ -10,9 +10,13 @@ hardcoded_credentials 规则子包。
 """
 
 from .ast_rule import PythonHardcodedCredentialsAstRule
-from .javascript_ast_rule import JavaScriptHardcodedCredentialsAstRule
-from .java_ast_rule import JavaHardcodedCredentialsAstRule
 from .go_ast_rule import GoHardcodedCredentialsAstRule
+from .java_ast_rule import JavaHardcodedCredentialsAstRule
+from .javascript_ast_rule import JavaScriptHardcodedCredentialsAstRule
 
-__all__ = ["PythonHardcodedCredentialsAstRule", "JavaScriptHardcodedCredentialsAstRule", "JavaHardcodedCredentialsAstRule", "GoHardcodedCredentialsAstRule"]
-
+__all__ = [
+    "PythonHardcodedCredentialsAstRule",
+    "JavaScriptHardcodedCredentialsAstRule",
+    "JavaHardcodedCredentialsAstRule",
+    "GoHardcodedCredentialsAstRule",
+]

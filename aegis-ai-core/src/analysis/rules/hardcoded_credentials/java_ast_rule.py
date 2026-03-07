@@ -10,7 +10,7 @@ Java 硬编码凭证 AST 规则。
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
 
@@ -84,7 +84,7 @@ class JavaHardcodedCredentialsAstRule(SecurityRule):
             value_str = self._get_node_text(value_node)
             if value_str and not self._is_placeholder(value_str):
                 line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                finding: Dict[str, Any] = {
+                finding: dict[str, Any] = {
                     "type": "HARDCODED_CREDENTIALS",
                     "rule_id": self.rule_id,
                     "severity": self.severity,
@@ -129,7 +129,7 @@ class JavaHardcodedCredentialsAstRule(SecurityRule):
         value_str = self._get_node_text(right_node)
         if value_str and not self._is_placeholder(value_str):
             line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-            finding: Dict[str, Any] = {
+            finding: dict[str, Any] = {
                 "type": "HARDCODED_CREDENTIALS",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
@@ -271,4 +271,3 @@ class JavaHardcodedCredentialsAstRule(SecurityRule):
 
 
 __all__ = ["JavaHardcodedCredentialsAstRule"]
-

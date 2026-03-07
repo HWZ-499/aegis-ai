@@ -10,7 +10,7 @@ Java 反序列化风险 AST/污点规则。
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Set
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
 
@@ -36,11 +36,11 @@ class JavaDeserializationAstRule(SecurityRule):
         if graph is None:
             return
 
-        reported_sinks: Set[str] = set()
+        reported_sinks: set[str] = set()
 
         # 优先使用完整污点路径（若存在）
         try:
-            paths: List[Any] = graph.find_paths_to_sinks()
+            paths: list[Any] = graph.find_paths_to_sinks()
         except Exception:
             paths = []
 
@@ -72,7 +72,7 @@ class JavaDeserializationAstRule(SecurityRule):
                 "可能导致任意代码执行或敏感对象加载，建议改用安全数据格式（JSON）或加入类型白名单校验。"
             )
 
-            finding: Dict[str, Any] = {
+            finding: dict[str, Any] = {
                 "type": "DESERIALIZATION",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
@@ -88,8 +88,8 @@ class JavaDeserializationAstRule(SecurityRule):
             return
 
         try:
-            source_ids: Set[str] = getattr(graph, "_sources", set())
-            sink_ids: Set[str] = getattr(graph, "_sinks", set())
+            source_ids: set[str] = getattr(graph, "_sources", set())
+            sink_ids: set[str] = getattr(graph, "_sinks", set())
         except Exception:
             return
 
@@ -110,7 +110,7 @@ class JavaDeserializationAstRule(SecurityRule):
                 "检测到 Java 代码中存在 ObjectInputStream.readObject 调用，且同一文件中存在用户输入来源，"
                 "建议确认反序列化的数据是否经过严格验证或改用 JSON 等安全格式。"
             )
-            finding: Dict[str, Any] = {
+            finding: dict[str, Any] = {
                 "type": "DESERIALIZATION",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
@@ -122,4 +122,3 @@ class JavaDeserializationAstRule(SecurityRule):
 
 
 __all__ = ["JavaDeserializationAstRule"]
-

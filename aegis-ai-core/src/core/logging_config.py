@@ -49,9 +49,7 @@ def setup_logging(
             )
         except ImportError:
             handler.setFormatter(logging.Formatter(_DEFAULT_FORMAT, datefmt=_DEFAULT_DATEFMT))
-            logging.getLogger(__name__).warning(
-                "python-json-logger not installed, falling back to text format"
-            )
+            logging.getLogger(__name__).warning("python-json-logger not installed, falling back to text format")
     else:
         handler.setFormatter(logging.Formatter(_DEFAULT_FORMAT, datefmt=_DEFAULT_DATEFMT))
 

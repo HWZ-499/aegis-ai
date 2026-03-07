@@ -1,11 +1,11 @@
 """
-deserialization.go_ast_rule
+open_redirect.javascript_ast_rule
 
-Go 反序列化风险 AST/污点规则。
+JavaScript/TypeScript Open Redirect AST/污点规则。
 
 检测目标：
-- 用户可控输入流入 json.Unmarshal 等反序列化 API；
-- 依赖统一污点图 TaintGraph 与 Go Sink 注册（DESERIALIZATION 类别）。
+- 用户可控输入流入 res.redirect() / location.href / location.assign()；
+- 依赖统一污点图 TaintGraph 与 JS Sink 注册（OPEN_REDIRECT 类别）。
 """
 
 from __future__ import annotations
@@ -15,20 +15,20 @@ from typing import Any
 from ...base import AnalysisContext, SecurityRule
 
 
-class GoDeserializationAstRule(SecurityRule):
+class JavaScriptOpenRedirectAstRule(SecurityRule):
     """
-    基于 TaintGraph 的 Go 反序列化风险检测规则。
+    基于 TaintGraph 的 JavaScript/TypeScript Open Redirect 检测规则。
     """
 
     def __init__(self) -> None:
         super().__init__(
-            rule_id="DESERIALIZATION_GO_TAINT",
-            severity="High",
-            languages=["go"],
+            rule_id="OPEN_REDIRECT_JS_TAINT",
+            severity="Medium",
+            languages=["javascript", "typescript"],
         )
 
     def visit(self, node: Any, context: AnalysisContext) -> None:
-        """反序列化规则仅在 after_file 中读取 TaintGraph。"""
+        """Open Redirect 规则仅在 after_file 中读取 TaintGraph。"""
         return
 
     def after_file(self, context: AnalysisContext) -> None:
@@ -41,7 +41,7 @@ class GoDeserializationAstRule(SecurityRule):
         try:
             paths: list[Any] = graph.find_paths_to_sinks()
         except Exception:
-            paths = []
+            return
 
         for path in paths:
             if getattr(path, "is_sanitized", False):
@@ -57,7 +57,7 @@ class GoDeserializationAstRule(SecurityRule):
                 continue
 
             category = (sink.extras or {}).get("category") if hasattr(sink, "extras") else None
-            if category != "deserialization":
+            if category != "open_redirect":
                 continue
 
             reported_sinks.add(sink_id)
@@ -67,12 +67,12 @@ class GoDeserializationAstRule(SecurityRule):
             sink_expr = getattr(sink, "name", "") or getattr(sink, "code_snippet", "")
 
             details = (
-                "检测到 Go 代码中对不可信数据执行 json.Unmarshal 反序列化，"
-                "建议在反序列化前对输入进行严格验证，或使用结构体字段白名单。"
+                "检测到 JavaScript/TypeScript 代码中用户可控输入直接用于重定向目标（res.redirect/location 等），"
+                "可能导致 Open Redirect 漏洞，建议使用域名白名单或固定路径映射。"
             )
 
             finding: dict[str, Any] = {
-                "type": "DESERIALIZATION",
+                "type": "OPEN_REDIRECT",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
                 "line": line_no,
@@ -83,4 +83,4 @@ class GoDeserializationAstRule(SecurityRule):
             context.add_finding(finding)
 
 
-__all__ = ["GoDeserializationAstRule"]
+__all__ = ["JavaScriptOpenRedirectAstRule"]

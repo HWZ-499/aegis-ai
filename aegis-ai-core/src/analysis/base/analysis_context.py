@@ -6,7 +6,7 @@ analysis_context.py - 分析上下文对象（阶段二增强版）
 - 符号表、数据流图等可扩展分析状态
 - 数据流追踪器（用于污点分析）
 - Sanitizer 感知查询
-- 一个集中存放扫描结果的 findings 列表
+- 一个集中存放扫描结果的 findings 列表（内部为 Finding Pydantic 模型）
 """
 
 from __future__ import annotations
@@ -14,20 +14,22 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from src.core.models import Finding
+
     from .dataflow_tracker import DataFlowTracker
 
 
 def make_related_location(
     file_path: str,
     start_line: int,
-    end_line: Optional[int] = None,
+    end_line: int | None = None,
     message: str = "",
     start_character: int = 0,
     end_character: int = 999,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     构建 TDD 7.1 规定的 related_locations 中单条 Location 字典。
 
@@ -43,7 +45,7 @@ def make_related_location(
     }
 
 
-def tree_sitter_node_to_range(node: Any) -> Dict[str, int]:
+def tree_sitter_node_to_range(node: Any) -> dict[str, int]:
     """
     从 Tree-sitter 节点提取 TDD 7.1 规定的精确定位字段。
 
@@ -87,46 +89,74 @@ class AnalysisContext:
     language: str
 
     # 技术栈 / 框架等高层信息（例如 "django" / "express" / "spring-boot"）
-    framework: Optional[str] = None
+    framework: str | None = None
 
     # 预留：符号表、数据流图等将来做污点分析时会用到
-    symbol_table: Dict[str, Any] = field(default_factory=dict)
+    symbol_table: dict[str, Any] = field(default_factory=dict)
     dataflow_graph: Any = None
 
     # 数据流追踪器（用于污点分析 + Sanitizer 感知）
-    dataflow_tracker: Optional["DataFlowTracker"] = None
+    dataflow_tracker: DataFlowTracker | None = None
 
     # 污点图（2.1 统一污点系统：优先于 dataflow_tracker，规则通过本图查询）
     taint_graph: Any = None
 
-    # 当前文件中已发现的问题列表
-    findings: List[Dict[str, Any]] = field(default_factory=list)
+    # 当前文件中已发现的问题列表（内部存储 Finding 模型）
+    _findings: list[Any] = field(default_factory=list, repr=False)
 
     # 其他可扩展的上下文信息
-    extras: Dict[str, Any] = field(default_factory=dict)
+    extras: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """初始化后处理：自动创建数据流追踪器。"""
         if self.dataflow_tracker is None:
             from .dataflow_tracker import DataFlowTracker
+
             self.dataflow_tracker = DataFlowTracker(language=self.language)
 
     # ──────────────────────────────────────────────
     # Finding 管理
     # ──────────────────────────────────────────────
 
-    def add_finding(self, finding: Dict[str, Any]) -> None:
+    @property
+    def findings(self) -> list[dict[str, Any]]:
+        """
+        返回 findings 的 dict 列表（向后兼容）。
+
+        内部存储为 Finding Pydantic 模型，此处转换为 legacy dict 供下游消费。
+        """
+
+        result: list[dict[str, Any]] = []
+        for f in self._findings:
+            if isinstance(f, dict):
+                result.append(f)
+            elif hasattr(f, "to_legacy_dict"):
+                d = f.to_legacy_dict()
+                d.setdefault("file", str(self.file_path))
+                d.setdefault("language", self.language)
+                result.append(d)
+            else:
+                result.append(f)
+        return result
+
+    def add_finding(self, finding: dict[str, Any] | Finding) -> None:
         """
         向上下文中追加一条扫描结果。
 
-        要求至少包含: type, severity, line 等字段。
+        接受 dict 或 Finding 模型，内部统一存储为 Finding。
         """
-        if not isinstance(finding, dict):
-            raise TypeError("finding 必须是 dict")
+        from src.core.models import Finding
 
-        finding.setdefault("file", str(self.file_path))
-        finding.setdefault("language", self.language)
-        self.findings.append(finding)
+        if isinstance(finding, dict):
+            finding = finding.copy()
+            finding.setdefault("file", str(self.file_path))
+            finding.setdefault("file_path", str(self.file_path))
+            finding.setdefault("language", self.language)
+            self._findings.append(Finding.from_legacy_dict(finding))
+        elif hasattr(finding, "model_dump"):
+            self._findings.append(finding)
+        else:
+            raise TypeError("finding 必须是 dict 或 Finding 模型")
 
     # ──────────────────────────────────────────────
     # 污点查询便捷方法
@@ -148,7 +178,7 @@ class AnalysisContext:
             return self.dataflow_tracker.is_sanitized(var_name)
         return False
 
-    def get_sanitizer_name(self, var_name: str) -> Optional[str]:
+    def get_sanitizer_name(self, var_name: str) -> str | None:
         """获取变量经过的净化器名称（如 ``"parseInt"``）。优先查 taint_graph。"""
         if self.taint_graph is not None:
             return self.taint_graph.get_sanitizer_name(var_name)
@@ -164,7 +194,7 @@ class AnalysisContext:
             return self.dataflow_tracker.has_tracked_var(var_name)
         return False
 
-    def get_taint_source(self, var_name: str) -> Optional[Any]:
+    def get_taint_source(self, var_name: str) -> Any | None:
         """
         获取变量的污点来源信息（规则层兼容）。
         返回具有 .source_expr / .source_type / .line 的对象，无则 None。

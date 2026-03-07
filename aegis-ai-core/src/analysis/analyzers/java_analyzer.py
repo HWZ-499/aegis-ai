@@ -11,14 +11,14 @@ java_analyzer.py - Java 专用分析器（统一污点系统版）
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, List
 
 from ..base import AnalysisContext, SecurityRule
 
 # Tree-sitter 导入
 try:
-    from tree_sitter import Parser, Node
+    from tree_sitter import Node, Parser
     from tree_sitter_languages import get_language
 
     _TREE_SITTER_AVAILABLE = True
@@ -40,9 +40,7 @@ class JavaAnalyzer:
             rules: SecurityRule 规则集合
         """
         # 只保留支持 java 的规则
-        self.rules: List[SecurityRule] = [
-            r for r in rules if r.supports("java") or not r.languages
-        ]
+        self.rules: list[SecurityRule] = [r for r in rules if r.supports("java") or not r.languages]
 
         # 初始化 Tree-sitter parser（Java 语言）
         self._parser: Parser | None = None
@@ -54,7 +52,7 @@ class JavaAnalyzer:
             except Exception:
                 self._parser = None
 
-    def analyze(self, code: str, file_path: Path) -> List[dict]:
+    def analyze(self, code: str, file_path: Path) -> list[dict]:
         """
         对单个 Java 文件执行分析。
 
@@ -122,4 +120,3 @@ class JavaAnalyzer:
 
 
 __all__ = ["JavaAnalyzer"]
-

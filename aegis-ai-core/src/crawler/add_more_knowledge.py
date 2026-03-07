@@ -9,6 +9,7 @@ add_more_knowledge.py - 添加更多高价值安全知识
 
 import os
 import sys
+
 import chromadb
 
 # 添加项目路径
@@ -45,7 +46,7 @@ NOSQL_INJECTION_KNOWLEDGE = [
 - 禁用或白名单 $where 操作符
 - 使用 mongo-sanitize 等库
 """,
-        "metadata": {"type": "NOSQL_INJECTION", "source": "OWASP", "severity": "High"}
+        "metadata": {"type": "NOSQL_INJECTION", "source": "OWASP", "severity": "High"},
     },
     {
         "id": "NOSQLI-MONGO-002",
@@ -75,7 +76,7 @@ $function - 执行 JavaScript 函数
 正则:
 $regex  - 正则匹配，可用于数据提取
 """,
-        "metadata": {"type": "NOSQL_INJECTION", "source": "OWASP", "severity": "High"}
+        "metadata": {"type": "NOSQL_INJECTION", "source": "OWASP", "severity": "High"},
     },
     {
         "id": "NOSQLI-PREVENTION-001",
@@ -114,7 +115,7 @@ function validateQuery(obj) {
     return !dangerous.some(op => str.includes(op));
 }
 """,
-        "metadata": {"type": "NOSQL_INJECTION", "source": "OWASP", "severity": "High"}
+        "metadata": {"type": "NOSQL_INJECTION", "source": "OWASP", "severity": "High"},
     },
 ]
 
@@ -147,7 +148,7 @@ JSON.parse(data);  // 原型污染
 3. 使用 Content-Security-Policy 禁止 eval
 4. 使用 vm2 等沙箱执行不可信代码
 """,
-        "metadata": {"type": "RCE_COMMAND_EXEC", "source": "OWASP", "severity": "Critical"}
+        "metadata": {"type": "RCE_COMMAND_EXEC", "source": "OWASP", "severity": "Critical"},
     },
     {
         "id": "JS-PROTO-001",
@@ -184,7 +185,7 @@ JSON.parse(data);  // 原型污染
 3. 验证 __proto__, constructor, prototype 键
 4. 使用 Object.freeze(Object.prototype)
 """,
-        "metadata": {"type": "RCE_COMMAND_EXEC", "source": "OWASP", "severity": "High"}
+        "metadata": {"type": "RCE_COMMAND_EXEC", "source": "OWASP", "severity": "High"},
     },
 ]
 
@@ -228,7 +229,7 @@ import hmac
 if hmac.compare_digest(signature, expected):
     data = pickle.loads(user_data)
 """,
-        "metadata": {"type": "DESERIALIZATION", "source": "OWASP", "severity": "Critical"}
+        "metadata": {"type": "DESERIALIZATION", "source": "OWASP", "severity": "Critical"},
     },
     {
         "id": "PY-SUBPROCESS-001",
@@ -263,7 +264,7 @@ if not re.match(r'^[a-zA-Z0-9_.-]+$', filename):
 from pathlib import Path
 content = Path(filename).read_text()
 """,
-        "metadata": {"type": "RCE_COMMAND_EXEC", "source": "OWASP", "severity": "Critical"}
+        "metadata": {"type": "RCE_COMMAND_EXEC", "source": "OWASP", "severity": "Critical"},
     },
 ]
 
@@ -299,7 +300,7 @@ ${${lower:j}${lower:n}${lower:d}${lower:i}:...}  (绕过WAF)
 - 搜索 log4j-core-2.*.jar
 - 使用 log4shell 扫描工具
 """,
-        "metadata": {"type": "RCE_COMMAND_EXEC", "source": "NVD", "severity": "Critical", "cve": "CVE-2021-44228"}
+        "metadata": {"type": "RCE_COMMAND_EXEC", "source": "NVD", "severity": "Critical", "cve": "CVE-2021-44228"},
     },
     {
         "id": "CVE-2023-44487-详解",
@@ -329,7 +330,7 @@ HTTP/2 协议允许客户端快速发送和取消请求（RST_STREAM），
 2. 更新 Web 服务器到最新版本
 3. 配置连接数和请求数限制
 """,
-        "metadata": {"type": "GENERAL", "source": "NVD", "severity": "High", "cve": "CVE-2023-44487"}
+        "metadata": {"type": "GENERAL", "source": "NVD", "severity": "High", "cve": "CVE-2023-44487"},
     },
 ]
 
@@ -338,31 +339,22 @@ def add_knowledge_to_db():
     """添加知识到数据库"""
     client = chromadb.PersistentClient(path="./data/aegis_db")
     collection = client.get_or_create_collection(name="cve_core")
-    
+
     print(f"📊 当前记录数: {collection.count()}")
-    
-    all_knowledge = (
-        NOSQL_INJECTION_KNOWLEDGE +
-        JS_SECURITY_KNOWLEDGE +
-        PYTHON_SECURITY_KNOWLEDGE +
-        REAL_WORLD_CVES
-    )
-    
+
+    all_knowledge = NOSQL_INJECTION_KNOWLEDGE + JS_SECURITY_KNOWLEDGE + PYTHON_SECURITY_KNOWLEDGE + REAL_WORLD_CVES
+
     added = 0
     for item in all_knowledge:
         existing = collection.get(ids=[item["id"]])
         if existing["ids"]:
             print(f"⏭️ 跳过: {item['id']}")
             continue
-        
-        collection.add(
-            ids=[item["id"]],
-            documents=[item["document"]],
-            metadatas=[item["metadata"]]
-        )
+
+        collection.add(ids=[item["id"]], documents=[item["document"]], metadatas=[item["metadata"]])
         added += 1
         print(f"✅ 添加: {item['id']}")
-    
+
     print(f"\n📈 新增: {added} 条")
     print(f"📊 更新后记录数: {collection.count()}")
 

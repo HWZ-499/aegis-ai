@@ -14,13 +14,14 @@ JavaScript/TypeScript 硬编码凭证 AST 规则。
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
 
 # Tree-sitter Node 类型
 try:
     from tree_sitter import Node
+
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
@@ -89,7 +90,7 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
         if not value_str or self._is_placeholder(value_str):
             return
         line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-        finding: Dict[str, Any] = {
+        finding: dict[str, Any] = {
             "type": "HARDCODED_CREDENTIALS",
             "rule_id": self.rule_id,
             "severity": self.severity,
@@ -121,7 +122,7 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
         value_str = self._get_node_text(value_node)
         if value_str and not self._is_placeholder(value_str):
             line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-            finding: Dict[str, Any] = {
+            finding: dict[str, Any] = {
                 "type": "HARDCODED_CREDENTIALS",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
@@ -157,7 +158,7 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
         value_str = self._get_node_text(right_node)
         if value_str and not self._is_placeholder(value_str):
             line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-            finding: Dict[str, Any] = {
+            finding: dict[str, Any] = {
                 "type": "HARDCODED_CREDENTIALS",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
@@ -170,10 +171,21 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
     # 辅助方法
     # ------------------------------------------------------------------
     # 已知误报：变量名含 key/Keyboard 等但非凭证（降低误报）
-    CREDENTIAL_FALSE_POSITIVES = frozenset({
-        "keypanspeed", "keyboard", "keycode", "keydown", "keyup", "keyevent",
-        "hotkey", "shortcutkey", "keypress", "keybinding", "keystroke",
-    })
+    CREDENTIAL_FALSE_POSITIVES = frozenset(
+        {
+            "keypanspeed",
+            "keyboard",
+            "keycode",
+            "keydown",
+            "keyup",
+            "keyevent",
+            "hotkey",
+            "shortcutkey",
+            "keypress",
+            "keybinding",
+            "keystroke",
+        }
+    )
 
     @staticmethod
     def _looks_like_secret_name(name: str) -> bool:
@@ -194,7 +206,12 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
 
         # 明确凭证关键词（子串匹配）
         keywords_substring = [
-            "password", "passwd", "pwd", "secret", "token", "apisecret",
+            "password",
+            "passwd",
+            "pwd",
+            "secret",
+            "token",
+            "apisecret",
         ]
         if any(k in name_lower for k in keywords_substring):
             return True
@@ -229,17 +246,33 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
         5. 仅由字母数字和下划线组成且全大写（如 ``YOUR_SECRET_KEY``）
         """
         stripped = value.strip()
-        if (stripped.startswith("'") and stripped.endswith("'")) or \
-           (stripped.startswith('"') and stripped.endswith('"')):
+        if (stripped.startswith("'") and stripped.endswith("'")) or (
+            stripped.startswith('"') and stripped.endswith('"')
+        ):
             stripped = stripped[1:-1]
         s_lower = stripped.lower()
 
         # 精确匹配
-        placeholders = frozenset({
-            "", "your_key", "your_password", "placeholder", "xxx", "***",
-            "changeme", "change_me", "change_this", "replace_me", "replace_this",
-            "secret", "mysecret", "mypassword", "mykey", "topsecret",
-        })
+        placeholders = frozenset(
+            {
+                "",
+                "your_key",
+                "your_password",
+                "placeholder",
+                "xxx",
+                "***",
+                "changeme",
+                "change_me",
+                "change_this",
+                "replace_me",
+                "replace_this",
+                "secret",
+                "mysecret",
+                "mypassword",
+                "mykey",
+                "topsecret",
+            }
+        )
         if s_lower in placeholders:
             return True
 
@@ -258,6 +291,7 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
 
         # 全大写下划线格式（如 YOUR_SECRET_KEY、MY_API_KEY_HERE）
         import re
+
         if re.match(r"^[A-Z][A-Z0-9_]*$", stripped) and len(stripped) >= 6:
             return True
 

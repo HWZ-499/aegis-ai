@@ -19,31 +19,52 @@ Python SQL 注入 AST 规则（污点感知版）。
 from __future__ import annotations
 
 import ast
-from typing import Any, Dict, List
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
 
-
 # SQL 关键词（用于识别 SQL 字符串）
-_SQL_KEYWORDS = frozenset(
-    ["select", "insert", "update", "delete", "drop", "create", "alter", "where"]
-)
+_SQL_KEYWORDS = frozenset(["select", "insert", "update", "delete", "drop", "create", "alter", "where"])
 
 # cursor 方法（sink）
 _CURSOR_METHODS = frozenset(["execute", "executemany", "executescript"])
 
 # 明确属于非数据库对象的 receiver 名称（排除误报）。
 # 例如：task.execute(cmd)、workflow.execute()，receiver 不是 DB cursor。
-_NON_DB_RECEIVERS = frozenset([
-    "task", "workflow", "executor", "runner", "cmd", "command",
-    "process", "proc", "job", "handler", "action", "step",
-])
+_NON_DB_RECEIVERS = frozenset(
+    [
+        "task",
+        "workflow",
+        "executor",
+        "runner",
+        "cmd",
+        "command",
+        "process",
+        "proc",
+        "job",
+        "handler",
+        "action",
+        "step",
+    ]
+)
 
 # Python 用户输入访问模式（结构化，不做子串匹配）
-_USER_INPUT_ATTRS = frozenset([
-    "form", "args", "json", "data", "values", "cookies", "headers",
-    "GET", "POST", "FILES", "params", "query_params",
-])
+_USER_INPUT_ATTRS = frozenset(
+    [
+        "form",
+        "args",
+        "json",
+        "data",
+        "values",
+        "cookies",
+        "headers",
+        "GET",
+        "POST",
+        "FILES",
+        "params",
+        "query_params",
+    ]
+)
 _USER_INPUT_OBJS = frozenset(["request", "req"])
 
 
@@ -114,9 +135,9 @@ def _is_sqlalchemy_text_bindparams(node: ast.AST) -> bool:
     return False
 
 
-def _collect_names(node: ast.AST) -> List[str]:
+def _collect_names(node: ast.AST) -> list[str]:
     """从节点子树中收集所有 Name.id。"""
-    names: List[str] = []
+    names: list[str] = []
     for n in ast.walk(node):
         if isinstance(n, ast.Name):
             names.append(n.id)
@@ -170,8 +191,7 @@ def _is_user_input_node(node: ast.AST, context: AnalysisContext | None = None) -
     # ── 3. 退化启发式（变量名关键词） ──
     if isinstance(node, ast.Name):
         lname = node.id.lower()
-        for kw in ("uid", "user_id", "user", "query", "param", "input",
-                   "data", "payload", "form", "arg"):
+        for kw in ("uid", "user_id", "user", "query", "param", "input", "data", "payload", "form", "arg"):
             if kw in lname:
                 return True
 
@@ -234,13 +254,15 @@ class PythonSQLInjectionAstRule(SecurityRule):
         if isinstance(node.func, ast.Attribute) and node.func.attr == "raw" and node.args:
             if _is_user_input_node(node.args[0], context):
                 line_no = getattr(node, "lineno", 0) or 0
-                context.add_finding({
-                    "type": "SQL_INJECTION",
-                    "rule_id": self.rule_id,
-                    "severity": "Critical",
-                    "line": line_no,
-                    "details": "Django Model.objects.raw() 使用用户输入作为 SQL，存在严重 SQL 注入风险，请使用 ORM 或参数化查询。",
-                })
+                context.add_finding(
+                    {
+                        "type": "SQL_INJECTION",
+                        "rule_id": self.rule_id,
+                        "severity": "Critical",
+                        "line": line_no,
+                        "details": "Django Model.objects.raw() 使用用户输入作为 SQL，存在严重 SQL 注入风险，请使用 ORM 或参数化查询。",
+                    }
+                )
                 return
         self._check_execute_call(node, context)
 
@@ -273,9 +295,7 @@ class PythonSQLInjectionAstRule(SecurityRule):
         first_arg = node.args[0]
         self._check_sql_arg(first_arg, node, context)
 
-    def _check_sql_arg(
-        self, arg: ast.AST, call_node: ast.Call, context: AnalysisContext
-    ) -> None:
+    def _check_sql_arg(self, arg: ast.AST, call_node: ast.Call, context: AnalysisContext) -> None:
         """分析 execute() 第一个参数是否存在注入风险。"""
         # SQLAlchemy text().bindparams() 为安全模式
         if _is_sqlalchemy_text_bindparams(arg):
@@ -291,25 +311,29 @@ class PythonSQLInjectionAstRule(SecurityRule):
                     input_parts = [p for p in parts if _is_user_input_node(p, context)]
                     if all(_is_internal_config_node(p) for p in input_parts):
                         return
-                    self._report(arg, context,
-                                 "检测到 execute() 参数中存在 SQL 字符串拼接且含用户输入，"
-                                 "存在 SQL 注入风险，建议使用参数化查询。")
+                    self._report(
+                        arg,
+                        context,
+                        "检测到 execute() 参数中存在 SQL 字符串拼接且含用户输入，"
+                        "存在 SQL 注入风险，建议使用参数化查询。",
+                    )
 
         # JoinedStr：f-string（`f"SELECT...{uid}"`）
         elif isinstance(arg, ast.JoinedStr):
             # 提取 f-string 中的所有插值变量
             identifiers = [n.id for n in ast.walk(arg) if isinstance(n, ast.Name)]
             # 检查污点或启发式
-            has_input = any(_is_user_input_node(ast.Name(id=n, ctx=ast.Load()), context)
-                            for n in identifiers)
+            has_input = any(_is_user_input_node(ast.Name(id=n, ctx=ast.Load()), context) for n in identifiers)
             # Sanitizer 感知
             if has_input and context is not None:
                 if all(context.is_var_sanitized(n) for n in identifiers if n):
                     return
             if has_input:
-                self._report(arg, context,
-                             "检测到 execute() 参数中使用 f-string 包含变量插值，"
-                             "存在 SQL 注入风险，建议使用参数化查询。")
+                self._report(
+                    arg,
+                    context,
+                    "检测到 execute() 参数中使用 f-string 包含变量插值，存在 SQL 注入风险，建议使用参数化查询。",
+                )
 
     def _check_raw_concat(self, node: ast.AST, context: AnalysisContext) -> None:
         """检测裸 BinOp/JoinedStr（不在 execute 调用内），启发式报告。"""
@@ -318,16 +342,15 @@ class PythonSQLInjectionAstRule(SecurityRule):
             has_sql = any(_is_sql_str(p) for p in parts)
             has_input = any(_is_user_input_node(p, context) for p in parts)
             if has_sql and has_input:
-                self._report(node, context,
-                             "检测到 SQL 字符串拼接且含疑似用户输入，存在 SQL 注入风险。")
+                self._report(node, context, "检测到 SQL 字符串拼接且含疑似用户输入，存在 SQL 注入风险。")
 
     # ------------------------------------------------------------------
     # 辅助
     # ------------------------------------------------------------------
     @staticmethod
-    def _flatten_binop(node: ast.BinOp) -> List[ast.AST]:
+    def _flatten_binop(node: ast.BinOp) -> list[ast.AST]:
         """展开连续的 + 拼接，返回所有叶节点。"""
-        result: List[ast.AST] = []
+        result: list[ast.AST] = []
         stack = [node]
         while stack:
             cur = stack.pop()
@@ -340,7 +363,7 @@ class PythonSQLInjectionAstRule(SecurityRule):
 
     def _report(self, node: ast.AST, context: AnalysisContext, details: str) -> None:
         line_no = getattr(node, "lineno", 0) or 0
-        finding: Dict[str, Any] = {
+        finding: dict[str, Any] = {
             "type": "SQL_INJECTION",
             "rule_id": self.rule_id,
             "severity": self.severity,

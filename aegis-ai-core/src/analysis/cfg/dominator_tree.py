@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +45,11 @@ class BasicBlock:
     """块结束行号（1-based，含）"""
 
     # 节点引用（可选，用于调试）
-    ast_nodes: List[Any] = field(default_factory=list)
+    ast_nodes: list[Any] = field(default_factory=list)
 
     # 后继和前驱
-    successors: List[int] = field(default_factory=list)
-    predecessors: List[int] = field(default_factory=list)
+    successors: list[int] = field(default_factory=list)
+    predecessors: list[int] = field(default_factory=list)
 
     # 是否是退出块（含 return / throw / raise / die）
     is_exit: bool = False
@@ -58,7 +58,7 @@ class BasicBlock:
     is_guard: bool = False
 
     # 被此块守护的变量（经过验证后续代码中认为已净化）
-    guarded_vars: Set[str] = field(default_factory=set)
+    guarded_vars: set[str] = field(default_factory=set)
 
     def __repr__(self) -> str:
         return f"BB{self.block_id}[{self.start_line}-{self.end_line}]"
@@ -83,9 +83,9 @@ class CFG:
     """
 
     def __init__(self) -> None:
-        self._blocks: Dict[int, BasicBlock] = {}
-        self._entry: Optional[BasicBlock] = None
-        self._exit: Optional[BasicBlock] = None
+        self._blocks: dict[int, BasicBlock] = {}
+        self._entry: BasicBlock | None = None
+        self._exit: BasicBlock | None = None
         self._next_id: int = 1
 
     def add_block(
@@ -94,7 +94,7 @@ class CFG:
         end_line: int = 0,
         is_exit: bool = False,
         is_guard: bool = False,
-        guarded_vars: Optional[Set[str]] = None,
+        guarded_vars: set[str] | None = None,
     ) -> BasicBlock:
         """创建并注册一个新基础块。"""
         block_id = EXIT_ID if is_exit else self._next_id
@@ -131,31 +131,31 @@ class CFG:
         if from_id not in dst.predecessors:
             dst.predecessors.append(from_id)
 
-    def get_block(self, block_id: int) -> Optional[BasicBlock]:
+    def get_block(self, block_id: int) -> BasicBlock | None:
         """按 ID 获取基础块。"""
         return self._blocks.get(block_id)
 
     @property
-    def entry(self) -> Optional[BasicBlock]:
+    def entry(self) -> BasicBlock | None:
         return self._entry
 
     @property
-    def exit(self) -> Optional[BasicBlock]:
+    def exit(self) -> BasicBlock | None:
         return self._exit
 
     @property
-    def blocks(self) -> List[BasicBlock]:
+    def blocks(self) -> list[BasicBlock]:
         """返回所有基础块（按 ID 排序）。"""
         return sorted(self._blocks.values(), key=lambda b: b.block_id)
 
-    def get_all_block_ids(self) -> List[int]:
+    def get_all_block_ids(self) -> list[int]:
         """返回所有块 ID（按后序 RPO 顺序，用于支配树算法）。"""
         if self._entry is None:
             return list(self._blocks.keys())
         # BFS 从 entry 出发，收集可达块
-        visited: List[int] = []
-        queue: List[int] = [self._entry.block_id]
-        seen: Set[int] = set()
+        visited: list[int] = []
+        queue: list[int] = [self._entry.block_id]
+        seen: set[int] = set()
         while queue:
             bid = queue.pop(0)
             if bid in seen:
@@ -191,11 +191,11 @@ class DominatorTree:
     def __init__(self, cfg: CFG) -> None:
         self._cfg = cfg
         # idom[b] = b 的直接支配者 ID（Entry 的 idom 是自己）
-        self._idom: Dict[int, int] = {}
+        self._idom: dict[int, int] = {}
         # RPO 编号：rpo_order[i] = 第 i 个块的 ID（按逆后序）
-        self._rpo_order: List[int] = []
+        self._rpo_order: list[int] = []
         # 块 ID → RPO 编号
-        self._rpo_num: Dict[int, int] = {}
+        self._rpo_num: dict[int, int] = {}
 
         self._compute()
 
@@ -225,10 +225,7 @@ class DominatorTree:
                 if block is None:
                     continue
                 # 从已定义 idom 的前驱中选择第一个
-                defined_preds = [
-                    p for p in block.predecessors
-                    if p in self._idom
-                ]
+                defined_preds = [p for p in block.predecessors if p in self._idom]
                 if not defined_preds:
                     continue
                 new_idom = defined_preds[0]
@@ -240,17 +237,18 @@ class DominatorTree:
 
         logger.debug(
             "支配树计算完成: %d 个块, %d 个 idom 条目",
-            len(self._rpo_order), len(self._idom),
+            len(self._rpo_order),
+            len(self._idom),
         )
 
-    def _compute_rpo(self, entry_id: int) -> List[int]:
+    def _compute_rpo(self, entry_id: int) -> list[int]:
         """
         计算从 entry_id 出发的逆后序（RPO）。
 
         RPO = 后序的逆序，保证支配者总在被支配者之前处理。
         """
-        post_order: List[int] = []
-        visited: Set[int] = set()
+        post_order: list[int] = []
+        visited: set[int] = set()
 
         def dfs(bid: int) -> None:
             if bid in visited:
@@ -300,7 +298,7 @@ class DominatorTree:
             return True
         # 沿 b 的 idom 链向上查找，看是否经过 a
         current = b_id
-        visited: Set[int] = set()
+        visited: set[int] = set()
         while current != a_id:
             if current in visited:
                 return False  # 防止环路
@@ -317,7 +315,7 @@ class DominatorTree:
         """
         return a_id != b_id and self.dominates(a_id, b_id)
 
-    def get_dominated_blocks(self, block_id: int) -> List[int]:
+    def get_dominated_blocks(self, block_id: int) -> list[int]:
         """
         获取被 block_id 严格支配的所有块 ID。
 
@@ -330,17 +328,14 @@ class DominatorTree:
         Returns:
             严格被支配的块 ID 列表
         """
-        return [
-            bid for bid in self._rpo_order
-            if self.strictly_dominates(block_id, bid)
-        ]
+        return [bid for bid in self._rpo_order if self.strictly_dominates(block_id, bid)]
 
-    def get_idom(self, block_id: int) -> Optional[int]:
+    def get_idom(self, block_id: int) -> int | None:
         """获取块的直接支配者 ID。"""
         idom = self._idom.get(block_id)
         return idom if idom != block_id else None
 
-    def get_dominance_frontier(self, block_id: int) -> List[int]:
+    def get_dominance_frontier(self, block_id: int) -> list[int]:
         """
         计算 block_id 的支配边界（Dominance Frontier）。
 
@@ -352,7 +347,7 @@ class DominatorTree:
         Returns:
             支配边界块 ID 列表
         """
-        df: List[int] = []
+        df: list[int] = []
         dominated = set(self.get_dominated_blocks(block_id)) | {block_id}
         for bid in dominated:
             block = self._cfg.get_block(bid)
@@ -364,7 +359,7 @@ class DominatorTree:
                         df.append(succ)
         return df
 
-    def get_guard_protected_range(self, guard_block_id: int) -> List[int]:
+    def get_guard_protected_range(self, guard_block_id: int) -> list[int]:
         """
         获取 Guard Clause 块保护的基础块范围。
 
@@ -385,12 +380,14 @@ class DominatorTree:
         # 1. 早返回分支（指向 Exit）
         # 2. 正常继续分支（指向下一个块）
         normal_successors = [
-            s for s in guard_block.successors
-            if s != EXIT_ID and self._cfg.get_block(s) is not None
+            s
+            for s in guard_block.successors
+            if s != EXIT_ID
+            and self._cfg.get_block(s) is not None
             and not (self._cfg.get_block(s) and self._cfg.get_block(s).is_exit)
         ]
 
-        protected: List[int] = []
+        protected: list[int] = []
         for succ_id in normal_successors:
             # 正常分支后的所有被支配块都处于 Guard 保护范围内
             protected.append(succ_id)
@@ -399,7 +396,7 @@ class DominatorTree:
         return list(set(protected))
 
 
-def build_cfg_from_taint_graph(taint_graph: Any) -> Optional[CFG]:
+def build_cfg_from_taint_graph(taint_graph: Any) -> CFG | None:
     """
     从 TaintGraph 构建轻量级 CFG（用于已有污点图的场景）。
 
@@ -426,7 +423,7 @@ def build_cfg_from_taint_graph(taint_graph: Any) -> Optional[CFG]:
         cfg.set_exit(exit_block)
 
         # 将污点图节点按行号映射到基础块
-        nodes_by_line: Dict[int, List[Any]] = {}
+        nodes_by_line: dict[int, list[Any]] = {}
         for node_id, node in getattr(taint_graph, "_nodes", {}).items():
             line = getattr(node, "line", 0) or 0
             if line not in nodes_by_line:
@@ -437,8 +434,8 @@ def build_cfg_from_taint_graph(taint_graph: Any) -> Optional[CFG]:
             return None
 
         # 为每行创建一个基础块
-        prev_block_id: Optional[int] = ENTRY_ID
-        block_by_line: Dict[int, int] = {}
+        prev_block_id: int | None = ENTRY_ID
+        block_by_line: dict[int, int] = {}
 
         for line in sorted(nodes_by_line.keys()):
             block = cfg.add_block(start_line=line, end_line=line)
@@ -459,9 +456,9 @@ def build_cfg_from_taint_graph(taint_graph: Any) -> Optional[CFG]:
 
 
 def build_cfg_from_ast_if_statements(
-    if_nodes: List[Any],
-    line_range: Optional[tuple] = None,
-) -> Optional["CFG"]:
+    if_nodes: list[Any],
+    line_range: tuple | None = None,
+) -> CFG | None:
     """
     从 if 语句节点列表构建轻量级 CFG，专用于 Guard Clause 分析。
 
@@ -492,14 +489,8 @@ def build_cfg_from_ast_if_statements(
         prev_id = ENTRY_ID
 
         for if_node in if_nodes:
-            start_line = (
-                if_node.start_point[0] + 1
-                if hasattr(if_node, "start_point") else 0
-            )
-            end_line = (
-                if_node.end_point[0] + 1
-                if hasattr(if_node, "end_point") else start_line
-            )
+            start_line = if_node.start_point[0] + 1 if hasattr(if_node, "start_point") else 0
+            end_line = if_node.end_point[0] + 1 if hasattr(if_node, "end_point") else start_line
 
             # 创建 Guard 块
             guard_block = cfg.add_block(

@@ -15,13 +15,14 @@ PHP 安全规则子包。
 """
 
 from .php_taint_rules import (
-    PhpSQLInjectionRule,
-    PhpRCERule,
-    PhpXSSRule,
-    PhpOpenRedirectRule,
-    PhpPathTraversalRule,
     PhpDeserializationRule,
     PhpHardcodedCredentialsRule,
+    PhpNoSQLInjectionRule,
+    PhpOpenRedirectRule,
+    PhpPathTraversalRule,
+    PhpRCERule,
+    PhpSQLInjectionRule,
+    PhpXSSRule,
 )
 
 __all__ = [
@@ -31,5 +32,6 @@ __all__ = [
     "PhpOpenRedirectRule",
     "PhpPathTraversalRule",
     "PhpDeserializationRule",
+    "PhpNoSQLInjectionRule",
     "PhpHardcodedCredentialsRule",
 ]

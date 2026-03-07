@@ -7,44 +7,55 @@ analysis.rules
 - php/ 子包提供基于 PhpTaintGraph 的精确 PHP 规则。
 """
 
-from .sql_injection import (
-    SQLInjectionRegexRule,
-    PythonSQLInjectionAstRule,
-    JavaScriptSQLInjectionAstRule,
-    JavaSQLInjectionAstRule,
-    GoSQLInjectionAstRule,
-)
-from .rce import PythonRCEAstRule, JavaScriptRCEAstRule, JavaRCEAstRule, GoRCEAstRule
-from .xss import PythonXSSAstRule, JavaScriptXSSAstRule, JavaXSSAstRule, GoXSSAstRule
-from .path_traversal import (
-    PythonPathTraversalAstRule,
-    JavaScriptPathTraversalAstRule,
-    JavaPathTraversalAstRule,
-    GoPathTraversalAstRule,
+from .deserialization import (
+    GoDeserializationAstRule,
+    JavaDeserializationAstRule,
+    JavaScriptDeserializationAstRule,
+    PythonDeserializationAstRule,
 )
 from .hardcoded_credentials import (
-    PythonHardcodedCredentialsAstRule,
-    JavaScriptHardcodedCredentialsAstRule,
-    JavaHardcodedCredentialsAstRule,
     GoHardcodedCredentialsAstRule,
+    JavaHardcodedCredentialsAstRule,
+    JavaScriptHardcodedCredentialsAstRule,
+    PythonHardcodedCredentialsAstRule,
 )
-from .deserialization import (
-    PythonDeserializationAstRule,
-    JavaScriptDeserializationAstRule,
-    JavaDeserializationAstRule,
-    GoDeserializationAstRule,
+from .nosql_injection import (
+    GoNoSQLInjectionAstRule,
+    JavaNoSQLInjectionAstRule,
+    JavaScriptNoSQLInjectionAstRule,
+    PythonNoSQLInjectionAstRule,
 )
-from .nosql_injection import JavaScriptNoSQLInjectionAstRule, PythonNoSQLInjectionAstRule
-from .open_redirect import JavaOpenRedirectAstRule, GoOpenRedirectAstRule
+from .open_redirect import (
+    GoOpenRedirectAstRule,
+    JavaOpenRedirectAstRule,
+    JavaScriptOpenRedirectAstRule,
+    PythonOpenRedirectAstRule,
+)
+from .path_traversal import (
+    GoPathTraversalAstRule,
+    JavaPathTraversalAstRule,
+    JavaScriptPathTraversalAstRule,
+    PythonPathTraversalAstRule,
+)
 from .php import (
-    PhpSQLInjectionRule,
-    PhpRCERule,
-    PhpXSSRule,
-    PhpOpenRedirectRule,
-    PhpPathTraversalRule,
     PhpDeserializationRule,
     PhpHardcodedCredentialsRule,
+    PhpNoSQLInjectionRule,
+    PhpOpenRedirectRule,
+    PhpPathTraversalRule,
+    PhpRCERule,
+    PhpSQLInjectionRule,
+    PhpXSSRule,
 )
+from .rce import GoRCEAstRule, JavaRCEAstRule, JavaScriptRCEAstRule, PythonRCEAstRule
+from .sql_injection import (
+    GoSQLInjectionAstRule,
+    JavaScriptSQLInjectionAstRule,
+    JavaSQLInjectionAstRule,
+    PythonSQLInjectionAstRule,
+    SQLInjectionRegexRule,
+)
+from .xss import GoXSSAstRule, JavaScriptXSSAstRule, JavaXSSAstRule, PythonXSSAstRule
 
 __all__ = [
     "SQLInjectionRegexRule",
@@ -74,6 +85,10 @@ __all__ = [
     "GoDeserializationAstRule",
     "JavaScriptNoSQLInjectionAstRule",
     "PythonNoSQLInjectionAstRule",
+    "JavaNoSQLInjectionAstRule",
+    "GoNoSQLInjectionAstRule",
+    "PythonOpenRedirectAstRule",
+    "JavaScriptOpenRedirectAstRule",
     "JavaOpenRedirectAstRule",
     "GoOpenRedirectAstRule",
     # PHP TaintGraph 规则
@@ -83,7 +98,6 @@ __all__ = [
     "PhpOpenRedirectRule",
     "PhpPathTraversalRule",
     "PhpDeserializationRule",
+    "PhpNoSQLInjectionRule",
     "PhpHardcodedCredentialsRule",
 ]
-
-

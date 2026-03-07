@@ -15,7 +15,7 @@ JavaScript/TypeScript SQL 注入 AST 规则（新规则架构）。
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from ...base import (
     AnalysisContext,
@@ -29,6 +29,7 @@ from ...base.user_input_detector import is_user_input_node
 # Tree-sitter Node 类型（运行时检查）
 try:
     from tree_sitter import Node
+
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
@@ -119,7 +120,7 @@ class JavaScriptSQLInjectionAstRule(SecurityRule):
                 return
 
         line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-        finding: Dict[str, Any] = {
+        finding: dict[str, Any] = {
             "type": "SQL_INJECTION",
             "rule_id": self.rule_id,
             "severity": self.severity,
@@ -154,7 +155,7 @@ class JavaScriptSQLInjectionAstRule(SecurityRule):
                 return
             if any(context.is_var_tainted(v) for v in identifiers):
                 line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                finding: Dict[str, Any] = {
+                finding: dict[str, Any] = {
                     "type": "SQL_INJECTION",
                     "rule_id": self.rule_id,
                     "severity": self.severity,
@@ -181,7 +182,7 @@ class JavaScriptSQLInjectionAstRule(SecurityRule):
                 return
         # 无 tracker、无法解析出标识符、或存在未追踪变量时保留原逻辑（保守报出）
         line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-        finding: Dict[str, Any] = {
+        finding: dict[str, Any] = {
             "type": "SQL_INJECTION",
             "rule_id": self.rule_id,
             "severity": self.severity,
@@ -221,7 +222,7 @@ class JavaScriptSQLInjectionAstRule(SecurityRule):
                                 if rhs_ids and all(context.is_var_sanitized(v) for v in rhs_ids):
                                     return
                             line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                            finding: Dict[str, Any] = {
+                            finding: dict[str, Any] = {
                                 "type": "SQL_INJECTION",
                                 "rule_id": self.rule_id,
                                 "severity": self.severity,
@@ -266,7 +267,7 @@ class JavaScriptSQLInjectionAstRule(SecurityRule):
         return None
 
     @staticmethod
-    def _looks_like_user_input(node: Node, context: "AnalysisContext | None" = None) -> bool:
+    def _looks_like_user_input(node: Node, context: AnalysisContext | None = None) -> bool:
         """
         判断节点是否来自用户输入（结构化检测）。
 

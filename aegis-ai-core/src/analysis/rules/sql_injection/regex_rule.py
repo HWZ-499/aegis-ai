@@ -11,7 +11,8 @@ sql_injection.regex_rule
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Iterable, List
+from collections.abc import Iterable
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
 
@@ -82,7 +83,7 @@ class SQLInjectionRegexRule(SecurityRule):
 
             for regex in self._compiled:
                 if regex.search(code):
-                    finding: Dict[str, Any] = {
+                    finding: dict[str, Any] = {
                         "type": "SQL_INJECTION",
                         "rule_id": self.rule_id,
                         "severity": self.severity,
@@ -93,4 +94,3 @@ class SQLInjectionRegexRule(SecurityRule):
                     context.add_finding(finding)
                     # 一行命中一个模式就足够了，避免重复噪音
                     break
-

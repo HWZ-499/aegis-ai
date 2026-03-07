@@ -9,7 +9,7 @@ Go 硬编码凭证 AST 规则。
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
 
@@ -41,7 +41,7 @@ class GoHardcodedCredentialsAstRule(SecurityRule):
 
         for idx, raw_line in enumerate(source.split("\n"), start=1):
             line = raw_line.strip()
-            if "\"" not in line:
+            if '"' not in line:
                 continue
 
             if ":=" in line:
@@ -61,23 +61,20 @@ class GoHardcodedCredentialsAstRule(SecurityRule):
 
             lower_name = name.lower()
             if not any(
-                key in lower_name
-                for key in ("password", "passwd", "pwd", "secret", "token", "api_key", "apikey")
+                key in lower_name for key in ("password", "passwd", "pwd", "secret", "token", "api_key", "apikey")
             ):
                 continue
 
-            first_quote = right.find("\"")
-            last_quote = right.rfind("\"")
+            first_quote = right.find('"')
+            last_quote = right.rfind('"')
             if first_quote == -1 or last_quote <= first_quote:
                 continue
-            value = right[first_quote + 1:last_quote]
+            value = right[first_quote + 1 : last_quote]
             if self._is_placeholder(value):
                 continue
 
-            details = (
-                f"发现 Go 代码中疑似硬编码凭证变量 '{name}'，建议改为从环境变量或安全配置加载。"
-            )
-            finding: Dict[str, Any] = {
+            details = f"发现 Go 代码中疑似硬编码凭证变量 '{name}'，建议改为从环境变量或安全配置加载。"
+            finding: dict[str, Any] = {
                 "type": "HARDCODED_CREDENTIALS",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
@@ -111,4 +108,3 @@ class GoHardcodedCredentialsAstRule(SecurityRule):
 
 
 __all__ = ["GoHardcodedCredentialsAstRule"]
-

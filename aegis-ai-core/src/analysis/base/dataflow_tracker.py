@@ -17,39 +17,41 @@ dataflow_tracker.py - 数据流追踪器（阶段二增强版）
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
 
 
 class TaintLevel(Enum):
     """污点级别"""
-    CLEAN = 0       # 干净数据
-    LOW = 1         # 低风险（如配置文件）
-    MEDIUM = 2      # 中风险（如环境变量）
-    HIGH = 3        # 高风险（如用户输入）
-    CRITICAL = 4    # 极高风险（如直接的 req.body）
+
+    CLEAN = 0  # 干净数据
+    LOW = 1  # 低风险（如配置文件）
+    MEDIUM = 2  # 中风险（如环境变量）
+    HIGH = 3  # 高风险（如用户输入）
+    CRITICAL = 4  # 极高风险（如直接的 req.body）
 
 
 @dataclass
 class TaintSource:
     """污点来源信息"""
-    source_type: str        # 来源类型：user_input, config, env, route_param, etc.
-    source_expr: str        # 来源表达式：req.body, req.query, etc.
-    line: int               # 定义所在行
+
+    source_type: str  # 来源类型：user_input, config, env, route_param, etc.
+    source_expr: str  # 来源表达式：req.body, req.query, etc.
+    line: int  # 定义所在行
     taint_level: TaintLevel = TaintLevel.HIGH
 
 
 @dataclass
 class VariableInfo:
     """变量信息"""
-    name: str               # 变量名
-    defined_line: int       # 定义行号
-    taint_source: Optional[TaintSource] = None  # 污点来源（如果有）
+
+    name: str  # 变量名
+    defined_line: int  # 定义行号
+    taint_source: TaintSource | None = None  # 污点来源（如果有）
     is_tainted: bool = False  # 是否被污染
     is_sanitized: bool = False  # 是否经过净化器
-    sanitized_by: Optional[str] = None  # 净化器名称
-    assigned_from: Optional[str] = None  # 赋值来源表达式
+    sanitized_by: str | None = None  # 净化器名称
+    assigned_from: str | None = None  # 赋值来源表达式
 
 
 class DataFlowTracker:
@@ -84,9 +86,9 @@ class DataFlowTracker:
         "request.body",
         "request.query",
         "request.params",
-        "ctx.request.body",   # Koa
-        "ctx.query",          # Koa
-        "ctx.params",         # Koa
+        "ctx.request.body",  # Koa
+        "ctx.query",  # Koa
+        "ctx.params",  # Koa
     ]
 
     USER_INPUT_PATTERNS_PY = [
@@ -97,9 +99,9 @@ class DataFlowTracker:
         "request.values",
         "request.cookies",
         "request.headers",
-        "request.GET",        # Django
-        "request.POST",       # Django
-        "request.FILES",      # Django
+        "request.GET",  # Django
+        "request.POST",  # Django
+        "request.FILES",  # Django
     ]
 
     # ──────────────────────────────────────────────
@@ -107,24 +109,38 @@ class DataFlowTracker:
     # ──────────────────────────────────────────────
     SANITIZER_FUNCTIONS_JS = {
         # 数值转换 → 净化 SQLi / NoSQLi
-        "parseInt", "parseFloat", "Number",
+        "parseInt",
+        "parseFloat",
+        "Number",
         # HTML 转义 → 净化 XSS
-        "escapeHtml", "DOMPurify.sanitize", "xss",
+        "escapeHtml",
+        "DOMPurify.sanitize",
+        "xss",
         # MongoDB 净化
-        "mongo-sanitize", "mongoSanitize",
+        "mongo-sanitize",
+        "mongoSanitize",
         # 路径净化
-        "path.normalize", "path.resolve", "path.basename",
+        "path.normalize",
+        "path.resolve",
+        "path.basename",
         # 类型强制
-        "String", "Boolean",
+        "String",
+        "Boolean",
         # 验证库
-        "validator.escape", "validator.isEmail",
+        "validator.escape",
+        "validator.isEmail",
     }
 
     SANITIZER_FUNCTIONS_PY = {
-        "int", "float", "str",
-        "html.escape", "cgi.escape", "markupsafe.escape",
+        "int",
+        "float",
+        "str",
+        "html.escape",
+        "cgi.escape",
+        "markupsafe.escape",
         "shlex.quote",
-        "os.path.basename", "os.path.normpath",
+        "os.path.basename",
+        "os.path.normpath",
         "bleach.clean",
     }
 
@@ -136,9 +152,9 @@ class DataFlowTracker:
             language: 目标语言，用于选择合适的 Source / Sanitizer 模式。
         """
         self.language = language
-        self._variables: Dict[str, VariableInfo] = {}
-        self._tainted_vars: Set[str] = set()
-        self._sanitized_vars: Set[str] = set()
+        self._variables: dict[str, VariableInfo] = {}
+        self._tainted_vars: set[str] = set()
+        self._sanitized_vars: set[str] = set()
 
         # 根据语言选择模式
         if language in ("javascript", "typescript"):
@@ -148,12 +164,8 @@ class DataFlowTracker:
             self._user_input_patterns = self.USER_INPUT_PATTERNS_PY
             self._sanitizer_functions = self.SANITIZER_FUNCTIONS_PY
         else:
-            self._user_input_patterns = (
-                self.USER_INPUT_PATTERNS_JS + self.USER_INPUT_PATTERNS_PY
-            )
-            self._sanitizer_functions = (
-                self.SANITIZER_FUNCTIONS_JS | self.SANITIZER_FUNCTIONS_PY
-            )
+            self._user_input_patterns = self.USER_INPUT_PATTERNS_JS + self.USER_INPUT_PATTERNS_PY
+            self._sanitizer_functions = self.SANITIZER_FUNCTIONS_JS | self.SANITIZER_FUNCTIONS_PY
 
     def reset(self) -> None:
         """重置追踪器状态（切换文件时调用）。"""
@@ -270,7 +282,7 @@ class DataFlowTracker:
 
     def track_destructuring(
         self,
-        properties: List[str],
+        properties: list[str],
         source_expr: str,
         line: int,
     ) -> None:
@@ -286,10 +298,7 @@ class DataFlowTracker:
             line: 行号
         """
         # 判断源是否被污染
-        source_tainted = (
-            self.is_user_input_expr(source_expr)
-            or source_expr in self._tainted_vars
-        )
+        source_tainted = self.is_user_input_expr(source_expr) or source_expr in self._tainted_vars
 
         for prop in properties:
             if source_tainted:
@@ -358,23 +367,23 @@ class DataFlowTracker:
         """检查变量是否经过净化。"""
         return var_name in self._sanitized_vars
 
-    def get_sanitizer_name(self, var_name: str) -> Optional[str]:
+    def get_sanitizer_name(self, var_name: str) -> str | None:
         """获取变量经过的净化器名称。"""
         info = self._variables.get(var_name)
         return info.sanitized_by if info else None
 
-    def get_taint_source(self, var_name: str) -> Optional[TaintSource]:
+    def get_taint_source(self, var_name: str) -> TaintSource | None:
         """获取变量的污点来源。"""
         var_info = self._variables.get(var_name)
         if var_info:
             return var_info.taint_source
         return None
 
-    def get_variable_info(self, var_name: str) -> Optional[VariableInfo]:
+    def get_variable_info(self, var_name: str) -> VariableInfo | None:
         """获取变量的完整信息。"""
         return self._variables.get(var_name)
 
-    def get_all_tainted_vars(self) -> Set[str]:
+    def get_all_tainted_vars(self) -> set[str]:
         """获取所有被污染的变量名。"""
         return self._tainted_vars.copy()
 
@@ -391,7 +400,7 @@ class DataFlowTracker:
                 return True
         return False
 
-    def check_expr_taint(self, expr: str) -> tuple[bool, Optional[TaintSource]]:
+    def check_expr_taint(self, expr: str) -> tuple[bool, TaintSource | None]:
         """
         综合检查表达式是否被污染。
 
@@ -421,7 +430,7 @@ class DataFlowTracker:
     # 内部方法
     # ──────────────────────────────────────────────
 
-    def _check_taint_source(self, expr: str, line: int) -> Optional[TaintSource]:
+    def _check_taint_source(self, expr: str, line: int) -> TaintSource | None:
         """检查表达式是否来自用户输入。"""
         expr_lower = expr.lower()
         for pattern in self._user_input_patterns:
@@ -434,7 +443,7 @@ class DataFlowTracker:
                 )
         return None
 
-    def _detect_sanitizer_call(self, expr: str) -> Optional[str]:
+    def _detect_sanitizer_call(self, expr: str) -> str | None:
         """
         检测表达式是否是 Sanitizer 调用的返回值。
 

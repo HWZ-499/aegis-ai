@@ -17,14 +17,15 @@ source_sink_registry.py - 污点源/汇点注册表
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from enum import Enum, auto
-from typing import Dict, List, Optional, Set, Pattern
 import re
+from dataclasses import dataclass, field
+from enum import Enum
+from re import Pattern
 
 
 class VulnCategory(Enum):
     """漏洞类型"""
+
     SQL_INJECTION = "sql_injection"
     NOSQL_INJECTION = "nosql_injection"
     RCE = "rce"
@@ -39,41 +40,43 @@ class VulnCategory(Enum):
 
 class TaintLevel(Enum):
     """污点级别"""
-    CRITICAL = 4    # 极高风险（直接用户输入）
-    HIGH = 3        # 高风险
-    MEDIUM = 2      # 中风险
-    LOW = 1         # 低风险
-    CLEAN = 0       # 干净
+
+    CRITICAL = 4  # 极高风险（直接用户输入）
+    HIGH = 3  # 高风险
+    MEDIUM = 2  # 中风险
+    LOW = 1  # 低风险
+    CLEAN = 0  # 干净
 
 
 @dataclass
 class SourcePattern:
     """
     污点源模式。
-    
+
     定义用户可控的输入点。
     """
+
     # 基本信息
-    name: str                           # 模式名称
-    pattern: str                        # 匹配模式（正则或字符串）
-    is_regex: bool = False              # 是否使用正则
-    
+    name: str  # 模式名称
+    pattern: str  # 匹配模式（正则或字符串）
+    is_regex: bool = False  # 是否使用正则
+
     # 分类
-    languages: List[str] = field(default_factory=list)  # 适用语言
+    languages: list[str] = field(default_factory=list)  # 适用语言
     taint_level: TaintLevel = TaintLevel.HIGH
-    
+
     # 描述
-    description: str = ""               # 描述
-    example: str = ""                   # 示例
-    
+    description: str = ""  # 描述
+    example: str = ""  # 示例
+
     # 编译后的正则（内部使用）
-    _compiled: Optional[Pattern] = field(default=None, repr=False)
-    
+    _compiled: Pattern | None = field(default=None, repr=False)
+
     def __post_init__(self):
         """编译正则表达式"""
         if self.is_regex and self._compiled is None:
             self._compiled = re.compile(self.pattern, re.IGNORECASE)
-    
+
     def matches(self, text: str) -> bool:
         """检查文本是否匹配此模式"""
         if self.is_regex:
@@ -88,34 +91,35 @@ class SourcePattern:
 class SinkPattern:
     """
     汇点模式。
-    
+
     定义敏感操作点。
     """
+
     # 基本信息
-    name: str                           # 模式名称
-    pattern: str                        # 匹配模式（正则或字符串）
-    is_regex: bool = False              # 是否使用正则
-    
+    name: str  # 模式名称
+    pattern: str  # 匹配模式（正则或字符串）
+    is_regex: bool = False  # 是否使用正则
+
     # 分类
     category: VulnCategory = VulnCategory.RCE  # 漏洞类型
-    languages: List[str] = field(default_factory=list)  # 适用语言
-    severity: str = "High"              # 严重级别
-    
+    languages: list[str] = field(default_factory=list)  # 适用语言
+    severity: str = "High"  # 严重级别
+
     # 参数信息
-    dangerous_arg_indices: List[int] = field(default_factory=list)  # 危险参数位置
-    
+    dangerous_arg_indices: list[int] = field(default_factory=list)  # 危险参数位置
+
     # 描述
-    description: str = ""               # 描述
-    cwe: str = ""                       # CWE 编号
-    
+    description: str = ""  # 描述
+    cwe: str = ""  # CWE 编号
+
     # 编译后的正则（内部使用）
-    _compiled: Optional[Pattern] = field(default=None, repr=False)
-    
+    _compiled: Pattern | None = field(default=None, repr=False)
+
     def __post_init__(self):
         """编译正则表达式"""
         if self.is_regex and self._compiled is None:
             self._compiled = re.compile(self.pattern, re.IGNORECASE)
-    
+
     def matches(self, text: str) -> bool:
         """检查文本是否匹配此模式"""
         if self.is_regex:
@@ -130,24 +134,25 @@ class SinkPattern:
 class SanitizerPattern:
     """
     净化器模式。
-    
+
     定义清理污点的函数。
     """
+
     # 基本信息
-    name: str                           # 模式名称
-    pattern: str                        # 匹配模式
-    is_regex: bool = False              # 是否使用正则
-    
+    name: str  # 模式名称
+    pattern: str  # 匹配模式
+    is_regex: bool = False  # 是否使用正则
+
     # 分类
-    sanitizes_categories: List[VulnCategory] = field(default_factory=list)  # 净化的漏洞类型
-    languages: List[str] = field(default_factory=list)  # 适用语言
-    
+    sanitizes_categories: list[VulnCategory] = field(default_factory=list)  # 净化的漏洞类型
+    languages: list[str] = field(default_factory=list)  # 适用语言
+
     # 描述
-    description: str = ""               # 描述
-    
+    description: str = ""  # 描述
+
     # 编译后的正则（内部使用）
-    _compiled: Optional[Pattern] = field(default=None, repr=False)
-    
+    _compiled: Pattern | None = field(default=None, repr=False)
+
     def matches(self, text: str) -> bool:
         """检查文本是否匹配此模式"""
         if self.is_regex:
@@ -161,34 +166,34 @@ class SanitizerPattern:
 class SourceSinkRegistry:
     """
     污点源/汇点注册表。
-    
+
     管理所有 Source、Sink、Sanitizer 模式。
-    
+
     使用示例：
         registry = SourceSinkRegistry()
         registry.load_defaults()
-        
+
         # 检查是否是 Source
         if registry.is_source("req.body", "javascript"):
             ...
-        
+
         # 检查是否是 Sink
         sink = registry.find_sink("eval(data)", "javascript")
         if sink:
             print(f"Found sink: {sink.category}")
     """
-    
+
     def __init__(self):
         """初始化空的注册表"""
-        self._sources: List[SourcePattern] = []
-        self._sinks: List[SinkPattern] = []
-        self._sanitizers: List[SanitizerPattern] = []
-        
+        self._sources: list[SourcePattern] = []
+        self._sinks: list[SinkPattern] = []
+        self._sanitizers: list[SanitizerPattern] = []
+
         # 按语言索引
-        self._sources_by_lang: Dict[str, List[SourcePattern]] = {}
-        self._sinks_by_lang: Dict[str, List[SinkPattern]] = {}
-        self._sanitizers_by_lang: Dict[str, List[SanitizerPattern]] = {}
-    
+        self._sources_by_lang: dict[str, list[SourcePattern]] = {}
+        self._sinks_by_lang: dict[str, list[SinkPattern]] = {}
+        self._sanitizers_by_lang: dict[str, list[SanitizerPattern]] = {}
+
     def register_source(self, source: SourcePattern) -> None:
         """注册 Source 模式"""
         self._sources.append(source)
@@ -196,7 +201,7 @@ class SourceSinkRegistry:
             if lang not in self._sources_by_lang:
                 self._sources_by_lang[lang] = []
             self._sources_by_lang[lang].append(source)
-    
+
     def register_sink(self, sink: SinkPattern) -> None:
         """注册 Sink 模式"""
         self._sinks.append(sink)
@@ -204,7 +209,7 @@ class SourceSinkRegistry:
             if lang not in self._sinks_by_lang:
                 self._sinks_by_lang[lang] = []
             self._sinks_by_lang[lang].append(sink)
-    
+
     def register_sanitizer(self, sanitizer: SanitizerPattern) -> None:
         """注册 Sanitizer 模式"""
         self._sanitizers.append(sanitizer)
@@ -212,48 +217,44 @@ class SourceSinkRegistry:
             if lang not in self._sanitizers_by_lang:
                 self._sanitizers_by_lang[lang] = []
             self._sanitizers_by_lang[lang].append(sanitizer)
-    
+
     def is_source(self, text: str, language: str = "*") -> bool:
         """检查文本是否匹配任何 Source 模式"""
         return self.find_source(text, language) is not None
-    
-    def find_source(self, text: str, language: str = "*") -> Optional[SourcePattern]:
+
+    def find_source(self, text: str, language: str = "*") -> SourcePattern | None:
         """查找匹配的 Source 模式"""
         # 检查特定语言的模式
         for source in self._sources_by_lang.get(language, []):
             if source.matches(text):
                 return source
-        
+
         # 检查通用模式
         for source in self._sources_by_lang.get("*", []):
             if source.matches(text):
                 return source
-        
+
         return None
-    
+
     def is_sink(self, text: str, language: str = "*") -> bool:
         """检查文本是否匹配任何 Sink 模式"""
         return self.find_sink(text, language) is not None
-    
-    def find_sink(self, text: str, language: str = "*") -> Optional[SinkPattern]:
+
+    def find_sink(self, text: str, language: str = "*") -> SinkPattern | None:
         """查找匹配的 Sink 模式"""
         # 检查特定语言的模式
         for sink in self._sinks_by_lang.get(language, []):
             if sink.matches(text):
                 return sink
-        
+
         # 检查通用模式
         for sink in self._sinks_by_lang.get("*", []):
             if sink.matches(text):
                 return sink
-        
+
         return None
-    
-    def find_sinks_by_category(
-        self,
-        category: VulnCategory,
-        language: str = "*"
-    ) -> List[SinkPattern]:
+
+    def find_sinks_by_category(self, category: VulnCategory, language: str = "*") -> list[SinkPattern]:
         """按漏洞类型查找 Sink 模式"""
         result = []
         for sink in self._sinks_by_lang.get(language, []):
@@ -263,12 +264,12 @@ class SourceSinkRegistry:
             if sink.category == category:
                 result.append(sink)
         return result
-    
+
     def is_sanitizer(self, text: str, language: str = "*") -> bool:
         """检查文本是否匹配任何 Sanitizer 模式"""
         return self.find_sanitizer(text, language) is not None
-    
-    def find_sanitizer(self, text: str, language: str = "*") -> Optional[SanitizerPattern]:
+
+    def find_sanitizer(self, text: str, language: str = "*") -> SanitizerPattern | None:
         """查找匹配的 Sanitizer 模式"""
         for sanitizer in self._sanitizers_by_lang.get(language, []):
             if sanitizer.matches(text):
@@ -277,7 +278,7 @@ class SourceSinkRegistry:
             if sanitizer.matches(text):
                 return sanitizer
         return None
-    
+
     def load_defaults(self) -> None:
         """加载默认的 Source/Sink/Sanitizer 模式"""
         self._load_javascript_sources()
@@ -294,7 +295,7 @@ class SourceSinkRegistry:
         self._load_php_sanitizers()
         self._load_java_sanitizers()
         self._load_go_sanitizers()
-    
+
     def _load_javascript_sources(self) -> None:
         """加载 JavaScript/TypeScript 的 Source 模式"""
         js_sources = [
@@ -339,7 +340,6 @@ class SourceSinkRegistry:
                 description="Express 请求头",
                 example="req.headers['x-forwarded-for']",
             ),
-            
             # Koa.js
             SourcePattern(
                 name="koa_ctx_request_body",
@@ -355,7 +355,6 @@ class SourceSinkRegistry:
                 taint_level=TaintLevel.CRITICAL,
                 description="Koa 查询参数",
             ),
-            
             # 浏览器 API
             SourcePattern(
                 name="location_search",
@@ -386,7 +385,6 @@ class SourceSinkRegistry:
                 taint_level=TaintLevel.MEDIUM,
                 description="LocalStorage",
             ),
-            
             # Node.js
             SourcePattern(
                 name="process_argv",
@@ -403,10 +401,10 @@ class SourceSinkRegistry:
                 description="环境变量",
             ),
         ]
-        
+
         for source in js_sources:
             self.register_source(source)
-    
+
     def _load_python_sources(self) -> None:
         """加载 Python 的 Source 模式"""
         py_sources = [
@@ -453,7 +451,6 @@ class SourceSinkRegistry:
                 taint_level=TaintLevel.HIGH,
                 description="Flask Cookie",
             ),
-            
             # Django
             SourcePattern(
                 name="django_request_get",
@@ -476,7 +473,6 @@ class SourceSinkRegistry:
                 taint_level=TaintLevel.CRITICAL,
                 description="Django 文件上传",
             ),
-            
             # 标准库
             SourcePattern(
                 name="sys_argv",
@@ -502,7 +498,7 @@ class SourceSinkRegistry:
                 description="标准输入",
             ),
         ]
-        
+
         for source in py_sources:
             self.register_source(source)
 
@@ -606,7 +602,6 @@ class SourceSinkRegistry:
                 taint_level=TaintLevel.HIGH,
                 description="HttpServletRequest.getCookies / request.getCookies",
             ),
-
             # Spring MVC Annotations（主要为规则层提供上下文）
             SourcePattern(
                 name="java_spring_request_param",
@@ -622,7 +617,6 @@ class SourceSinkRegistry:
                 taint_level=TaintLevel.CRITICAL,
                 description="Spring @RequestBody 注解",
             ),
-
             # 标准输入
             SourcePattern(
                 name="java_scanner_stdin",
@@ -682,7 +676,7 @@ class SourceSinkRegistry:
         ]
         for source in go_sources:
             self.register_source(source)
-    
+
     def _load_javascript_sinks(self) -> None:
         """加载 JavaScript/TypeScript 的 Sink 模式"""
         js_sinks = [
@@ -734,7 +728,6 @@ class SourceSinkRegistry:
                 description="不安全反序列化",
                 cwe="CWE-502",
             ),
-            
             # SQL Injection
             # execute( 加词边界，且要求调用者是已知 DB driver 对象（connection/db/pool/client/cursor）
             # 避免 promise.execute() / workflow.execute() 等非数据库操作误报
@@ -748,7 +741,6 @@ class SourceSinkRegistry:
                 description="SQL 查询",
                 cwe="CWE-89",
             ),
-            
             # NoSQL Injection
             SinkPattern(
                 name="mongo_find",
@@ -790,7 +782,6 @@ class SourceSinkRegistry:
                 description="MongoDB 聚合",
                 cwe="CWE-943",
             ),
-            
             # XSS
             SinkPattern(
                 name="inner_html",
@@ -820,7 +811,6 @@ class SourceSinkRegistry:
                 description="Angular 安全绕过",
                 cwe="CWE-79",
             ),
-            
             # Path Traversal
             SinkPattern(
                 name="fs_read",
@@ -842,7 +832,6 @@ class SourceSinkRegistry:
                 description="文件写入",
                 cwe="CWE-22",
             ),
-            
             # SSRF
             SinkPattern(
                 name="http_request",
@@ -854,7 +843,6 @@ class SourceSinkRegistry:
                 description="HTTP 请求",
                 cwe="CWE-918",
             ),
-            
             # Open Redirect
             SinkPattern(
                 name="redirect",
@@ -867,10 +855,10 @@ class SourceSinkRegistry:
                 cwe="CWE-601",
             ),
         ]
-        
+
         for sink in js_sinks:
             self.register_sink(sink)
-    
+
     def _load_python_sinks(self) -> None:
         """加载 Python 的 Sink 模式"""
         py_sinks = [
@@ -921,7 +909,6 @@ class SourceSinkRegistry:
                 description="子进程执行",
                 cwe="CWE-78",
             ),
-            
             # Deserialization
             SinkPattern(
                 name="pickle_loads",
@@ -941,7 +928,6 @@ class SourceSinkRegistry:
                 description="YAML 反序列化",
                 cwe="CWE-502",
             ),
-            
             # SQL Injection
             # 用 \w+ 匹配任意变量名（cur / cursor / conn / db_cursor 等），
             # 避免只匹配字面量 "cursor" 而漏掉 cur.execute / db.execute 等常见写法。
@@ -955,7 +941,6 @@ class SourceSinkRegistry:
                 description="SQL 执行",
                 cwe="CWE-89",
             ),
-            
             # Path Traversal
             SinkPattern(
                 name="open_file",
@@ -976,7 +961,6 @@ class SourceSinkRegistry:
                 description="路径操作",
                 cwe="CWE-22",
             ),
-            
             # XSS (模板)
             SinkPattern(
                 name="render_template_string",
@@ -987,7 +971,6 @@ class SourceSinkRegistry:
                 description="模板注入",
                 cwe="CWE-79",
             ),
-            
             # SSRF
             SinkPattern(
                 name="requests",
@@ -1009,8 +992,29 @@ class SourceSinkRegistry:
                 description="URL 请求",
                 cwe="CWE-918",
             ),
+            # Open Redirect
+            SinkPattern(
+                name="redirect",
+                pattern=r"\bredirect\s*\(",
+                is_regex=True,
+                category=VulnCategory.OPEN_REDIRECT,
+                languages=["python"],
+                severity="Medium",
+                description="Flask/Django redirect",
+                cwe="CWE-601",
+            ),
+            SinkPattern(
+                name="http_response_redirect",
+                pattern=r"HttpResponseRedirect\s*\(",
+                is_regex=True,
+                category=VulnCategory.OPEN_REDIRECT,
+                languages=["python"],
+                severity="Medium",
+                description="Django HttpResponseRedirect",
+                cwe="CWE-601",
+            ),
         ]
-        
+
         for sink in py_sinks:
             self.register_sink(sink)
 
@@ -1201,7 +1205,6 @@ class SourceSinkRegistry:
                 description="创建非参数化 Statement",
                 cwe="CWE-89",
             ),
-
             # RCE / 命令执行
             SinkPattern(
                 name="java_runtime_exec",
@@ -1223,7 +1226,6 @@ class SourceSinkRegistry:
                 description="ProcessBuilder.start 命令执行",
                 cwe="CWE-78",
             ),
-
             # XSS
             SinkPattern(
                 name="java_response_writer_write",
@@ -1235,7 +1237,6 @@ class SourceSinkRegistry:
                 description="Servlet 响应直接写入",
                 cwe="CWE-79",
             ),
-
             # Open Redirect
             SinkPattern(
                 name="java_response_send_redirect",
@@ -1247,7 +1248,6 @@ class SourceSinkRegistry:
                 description="Servlet 重定向",
                 cwe="CWE-601",
             ),
-
             # Deserialization
             SinkPattern(
                 name="java_object_input_stream_read_object",
@@ -1259,7 +1259,6 @@ class SourceSinkRegistry:
                 description="ObjectInputStream.readObject 反序列化",
                 cwe="CWE-502",
             ),
-
             # Path Traversal
             SinkPattern(
                 name="java_file_new",
@@ -1299,7 +1298,6 @@ class SourceSinkRegistry:
                 description="database/sql 查询 / 执行",
                 cwe="CWE-89",
             ),
-
             # RCE / 命令执行
             SinkPattern(
                 name="go_exec_command",
@@ -1311,7 +1309,6 @@ class SourceSinkRegistry:
                 description="os/exec.Command 命令执行",
                 cwe="CWE-78",
             ),
-
             # XSS（HTTP 响应输出）
             SinkPattern(
                 name="go_fmt_fprintf",
@@ -1323,7 +1320,6 @@ class SourceSinkRegistry:
                 description="fmt.Fprintf 向 ResponseWriter 输出",
                 cwe="CWE-79",
             ),
-
             # Open Redirect
             SinkPattern(
                 name="go_http_redirect",
@@ -1335,7 +1331,6 @@ class SourceSinkRegistry:
                 description="net/http Redirect 重定向",
                 cwe="CWE-601",
             ),
-
             # Path Traversal
             SinkPattern(
                 name="go_os_open",
@@ -1357,7 +1352,6 @@ class SourceSinkRegistry:
                 description="os.OpenFile 文件访问",
                 cwe="CWE-22",
             ),
-
             # Deserialization
             SinkPattern(
                 name="go_json_unmarshal",
@@ -1372,7 +1366,7 @@ class SourceSinkRegistry:
         ]
         for sink in go_sinks:
             self.register_sink(sink)
-    
+
     def _load_sanitizers(self) -> None:
         """
         加载 Sanitizer 模式。
@@ -1383,7 +1377,6 @@ class SourceSinkRegistry:
         """
         sanitizers = [
             # ── JavaScript / TypeScript ──
-
             # XSS Sanitizer
             SanitizerPattern(
                 name="escape_html_func",
@@ -1415,7 +1408,6 @@ class SourceSinkRegistry:
                 languages=["javascript", "typescript"],
                 description="validator.escape() 转义",
             ),
-
             # 数值转换 Sanitizer（净化 SQLi / NoSQLi）
             SanitizerPattern(
                 name="parse_int",
@@ -1447,7 +1439,6 @@ class SourceSinkRegistry:
                 languages=["javascript", "typescript"],
                 description="Number() 数值转换",
             ),
-
             # MongoDB Sanitizer
             SanitizerPattern(
                 name="mongo_sanitize",
@@ -1456,7 +1447,6 @@ class SourceSinkRegistry:
                 languages=["javascript", "typescript"],
                 description="mongo-sanitize 净化",
             ),
-
             # 路径 Sanitizer（path.basename / normalize / resolve 作为净化感知，降低告警或跳过）
             SanitizerPattern(
                 name="path_basename",
@@ -1482,9 +1472,7 @@ class SourceSinkRegistry:
                 languages=["javascript", "typescript"],
                 description="path.resolve() 解析为绝对路径",
             ),
-
             # ── Python ──
-
             # XSS Sanitizer
             SanitizerPattern(
                 name="html_escape_py",
@@ -1509,7 +1497,6 @@ class SourceSinkRegistry:
                 languages=["python"],
                 description="bleach.clean() 净化",
             ),
-
             # 数值转换 Sanitizer
             SanitizerPattern(
                 name="int_cast_py",
@@ -1521,7 +1508,6 @@ class SourceSinkRegistry:
                 languages=["python"],
                 description="int() 整数转换",
             ),
-
             # RCE Sanitizer
             SanitizerPattern(
                 name="shlex_quote",
@@ -1530,7 +1516,6 @@ class SourceSinkRegistry:
                 languages=["python"],
                 description="shlex.quote() Shell 转义",
             ),
-
             # 路径 Sanitizer
             SanitizerPattern(
                 name="os_path_basename_py",
@@ -1650,7 +1635,6 @@ class SourceSinkRegistry:
                 languages=["java"],
                 description="JDBC PreparedStatement 参数化查询",
             ),
-
             # XSS
             SanitizerPattern(
                 name="java_html_utils_html_escape",
@@ -1668,7 +1652,6 @@ class SourceSinkRegistry:
                 languages=["java"],
                 description="OWASP ESAPI encoder 编码输出",
             ),
-
             # 数值转换
             SanitizerPattern(
                 name="java_integer_parse_int",
@@ -1678,7 +1661,6 @@ class SourceSinkRegistry:
                 languages=["java"],
                 description="Integer.parseInt 数值转换",
             ),
-
             # 路径规范化
             SanitizerPattern(
                 name="java_paths_get_normalize",
@@ -1704,7 +1686,6 @@ class SourceSinkRegistry:
                 languages=["go"],
                 description="html/template.HTMLEscapeString XSS 转义",
             ),
-
             # 路径规范化
             SanitizerPattern(
                 name="go_filepath_clean",
@@ -1714,7 +1695,6 @@ class SourceSinkRegistry:
                 languages=["go"],
                 description="filepath.Clean() 路径规范化",
             ),
-
             # 数值转换（端口/ID 等）
             SanitizerPattern(
                 name="go_strconv_atoi",
@@ -1730,8 +1710,8 @@ class SourceSinkRegistry:
         ]
         for sanitizer in go_sanitizers:
             self.register_sanitizer(sanitizer)
-    
-    def get_stats(self) -> Dict[str, int]:
+
+    def get_stats(self) -> dict[str, int]:
         """获取统计信息"""
         return {
             "sources": len(self._sources),
@@ -1741,7 +1721,7 @@ class SourceSinkRegistry:
 
 
 # 全局注册表实例
-_default_registry: Optional[SourceSinkRegistry] = None
+_default_registry: SourceSinkRegistry | None = None
 
 
 def get_default_registry() -> SourceSinkRegistry:

@@ -16,59 +16,56 @@ expand_knowledge_base.py - 扩展 CVE 知识库
 """
 
 import os
-import sys
 import time
-import json
-from typing import List, Dict, Optional
-from datetime import datetime
 
 # 环境变量处理
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
 
-import httpx
+import certifi
 import chromadb
-
+import httpx
 
 # 漏洞类型与 CWE 映射
 VULN_TYPE_CWE_MAP = {
     "SQL_INJECTION": {
         "cwe_ids": ["CWE-89", "CWE-564"],
         "keywords": ["sql injection", "sqli", "database injection"],
-        "description": "SQL 注入漏洞"
+        "description": "SQL 注入漏洞",
     },
     "NOSQL_INJECTION": {
         "cwe_ids": ["CWE-943", "CWE-1286"],
         "keywords": ["nosql injection", "mongodb injection", "document injection"],
-        "description": "NoSQL 注入漏洞"
+        "description": "NoSQL 注入漏洞",
     },
     "RCE_COMMAND_EXEC": {
         "cwe_ids": ["CWE-78", "CWE-94", "CWE-77"],
         "keywords": ["command injection", "code execution", "rce", "remote code execution"],
-        "description": "远程代码执行/命令注入漏洞"
+        "description": "远程代码执行/命令注入漏洞",
     },
     "XSS": {
         "cwe_ids": ["CWE-79"],
         "keywords": ["cross-site scripting", "xss", "script injection"],
-        "description": "跨站脚本漏洞"
+        "description": "跨站脚本漏洞",
     },
     "PATH_TRAVERSAL": {
         "cwe_ids": ["CWE-22", "CWE-23", "CWE-36"],
         "keywords": ["path traversal", "directory traversal", "file inclusion"],
-        "description": "路径穿越漏洞"
+        "description": "路径穿越漏洞",
     },
     "DESERIALIZATION": {
         "cwe_ids": ["CWE-502", "CWE-915"],
         "keywords": ["deserialization", "insecure deserialization", "object injection"],
-        "description": "不安全反序列化漏洞"
+        "description": "不安全反序列化漏洞",
     },
     "HARDCODED_CREDENTIALS": {
         "cwe_ids": ["CWE-798", "CWE-259", "CWE-321"],
         "keywords": ["hardcoded password", "hardcoded credentials", "embedded credentials"],
-        "description": "硬编码凭证漏洞"
+        "description": "硬编码凭证漏洞",
     },
 }
 
@@ -103,9 +100,8 @@ cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")
 # 安全
 cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
 """,
-        "metadata": {"type": "SQL_INJECTION", "source": "OWASP", "severity": "Critical"}
+        "metadata": {"type": "SQL_INJECTION", "source": "OWASP", "severity": "Critical"},
     },
-    
     # NoSQL 注入
     {
         "id": "OWASP-NOSQLI-001",
@@ -136,9 +132,8 @@ const user = String(req.body.user);
 const pass = String(req.body.pass);
 db.users.findOne({ user: user, pass: pass })
 """,
-        "metadata": {"type": "NOSQL_INJECTION", "source": "OWASP", "severity": "High"}
+        "metadata": {"type": "NOSQL_INJECTION", "source": "OWASP", "severity": "High"},
     },
-    
     # RCE/命令注入
     {
         "id": "OWASP-RCE-001",
@@ -173,9 +168,8 @@ os.system(f"ping {user_input}")
 import shlex
 subprocess.run(["ping", "-c", "1", shlex.quote(user_input)])
 """,
-        "metadata": {"type": "RCE_COMMAND_EXEC", "source": "OWASP", "severity": "Critical"}
+        "metadata": {"type": "RCE_COMMAND_EXEC", "source": "OWASP", "severity": "Critical"},
     },
-    
     # XSS
     {
         "id": "OWASP-XSS-001",
@@ -208,9 +202,8 @@ element.textContent = userInput;
 // 或使用 DOMPurify
 element.innerHTML = DOMPurify.sanitize(userInput);
 """,
-        "metadata": {"type": "XSS", "source": "OWASP", "severity": "High"}
+        "metadata": {"type": "XSS", "source": "OWASP", "severity": "High"},
     },
-    
     # 路径穿越
     {
         "id": "OWASP-PT-001",
@@ -243,9 +236,8 @@ file_path = os.path.normpath(os.path.join(base_dir, filename))
 if not file_path.startswith(base_dir):
     raise ValueError("Invalid path")
 """,
-        "metadata": {"type": "PATH_TRAVERSAL", "source": "OWASP", "severity": "High"}
+        "metadata": {"type": "PATH_TRAVERSAL", "source": "OWASP", "severity": "High"},
     },
-    
     # 反序列化
     {
         "id": "OWASP-DESER-001",
@@ -278,9 +270,8 @@ import json
 data = json.loads(user_input)
 # 或使用 HMAC 签名验证
 """,
-        "metadata": {"type": "DESERIALIZATION", "source": "OWASP", "severity": "Critical"}
+        "metadata": {"type": "DESERIALIZATION", "source": "OWASP", "severity": "Critical"},
     },
-    
     # 硬编码凭证
     {
         "id": "OWASP-HC-001",
@@ -312,9 +303,8 @@ import os
 password = os.environ.get("DB_PASSWORD")
 db.connect(password=password)
 """,
-        "metadata": {"type": "HARDCODED_CREDENTIALS", "source": "OWASP", "severity": "High"}
+        "metadata": {"type": "HARDCODED_CREDENTIALS", "source": "OWASP", "severity": "High"},
     },
-    
     # 更多通用安全知识
     {
         "id": "SEC-INPUT-001",
@@ -333,9 +323,8 @@ db.connect(password=password)
 - URL 上下文: URL 编码
 - CSS 上下文: CSS 编码
 """,
-        "metadata": {"type": "GENERAL", "source": "OWASP", "severity": "Info"}
+        "metadata": {"type": "GENERAL", "source": "OWASP", "severity": "Info"},
     },
-    
     {
         "id": "SEC-AUTH-001",
         "document": """【认证安全最佳实践】
@@ -354,151 +343,136 @@ db.connect(password=password)
 - 结合密码 + OTP/硬件令牌
 - 使用 TOTP（时间一次性密码）
 """,
-        "metadata": {"type": "GENERAL", "source": "OWASP", "severity": "Info"}
+        "metadata": {"type": "GENERAL", "source": "OWASP", "severity": "Info"},
     },
 ]
 
 
 class KnowledgeBaseExpander:
     """知识库扩展器"""
-    
+
     def __init__(self, db_path: str = "./data/aegis_db", collection_name: str = "cve_core"):
         self.db_path = db_path
         self.collection_name = collection_name
-        
+
         # 初始化 ChromaDB
         self.client = chromadb.PersistentClient(path=db_path)
         self.collection = self.client.get_or_create_collection(name=collection_name)
-        
+
         print(f"✅ 连接到知识库: {db_path}")
         print(f"📊 当前记录数: {self.collection.count()}")
-    
+
     def add_builtin_knowledge(self) -> int:
         """添加内置安全知识"""
         added = 0
-        
+
         for item in BUILTIN_SECURITY_KNOWLEDGE:
             # 检查是否已存在
             existing = self.collection.get(ids=[item["id"]])
             if existing["ids"]:
                 print(f"⏭️ 跳过已存在: {item['id']}")
                 continue
-            
+
             # 添加到知识库
-            self.collection.add(
-                ids=[item["id"]],
-                documents=[item["document"]],
-                metadatas=[item["metadata"]]
-            )
+            self.collection.add(ids=[item["id"]], documents=[item["document"]], metadatas=[item["metadata"]])
             added += 1
             print(f"✅ 添加: {item['id']}")
-        
+
         return added
-    
-    def fetch_cves_by_cwe(self, cwe_id: str, max_results: int = 50) -> List[Dict]:
+
+    def fetch_cves_by_cwe(self, cwe_id: str, max_results: int = 50) -> list[dict]:
         """
         通过 CWE ID 从 NVD 获取相关 CVE
-        
+
         需要 NVD API Key: https://nvd.nist.gov/developers/request-an-api-key
         """
         api_key = os.getenv("NVD_API_KEY")
         if not api_key:
             print(f"⚠️ 未设置 NVD_API_KEY，跳过 {cwe_id} 的 CVE 获取")
             return []
-        
+
         url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
         headers = {"apiKey": api_key}
-        params = {
-            "cweId": cwe_id,
-            "resultsPerPage": min(max_results, 100)
-        }
-        
+        params = {"cweId": cwe_id, "resultsPerPage": min(max_results, 100)}
+
         try:
-            response = httpx.get(url, headers=headers, params=params, timeout=30.0, verify=valid_cert_path)
+            response = httpx.get(url, headers=headers, params=params, timeout=30.0, verify=certifi.where())
             response.raise_for_status()
 
             data = response.json()
             vulnerabilities = data.get("vulnerabilities", [])
-            
+
             cves = []
             for vuln in vulnerabilities:
                 cve = vuln.get("cve", {})
                 cve_id = cve.get("id", "")
                 descriptions = cve.get("descriptions", [])
-                
+
                 # 获取英文描述
                 desc = ""
                 for d in descriptions:
                     if d.get("lang") == "en":
                         desc = d.get("value", "")
                         break
-                
+
                 if cve_id and desc:
-                    cves.append({
-                        "id": cve_id,
-                        "description": desc,
-                        "cwe": cwe_id
-                    })
-            
+                    cves.append({"id": cve_id, "description": desc, "cwe": cwe_id})
+
             return cves
-            
+
         except Exception as e:
             print(f"❌ 获取 {cwe_id} 的 CVE 失败: {e}")
             return []
-    
+
     def expand_by_vuln_type(self, vuln_type: str, max_cves: int = 30) -> int:
         """按漏洞类型扩展知识库"""
         config = VULN_TYPE_CWE_MAP.get(vuln_type)
         if not config:
             print(f"❌ 未知漏洞类型: {vuln_type}")
             return 0
-        
+
         added = 0
         print(f"\n📂 扩展 {vuln_type} ({config['description']})...")
-        
+
         for cwe_id in config["cwe_ids"]:
             print(f"  🔍 获取 {cwe_id} 相关 CVE...")
             cves = self.fetch_cves_by_cwe(cwe_id, max_results=max_cves)
-            
+
             for cve in cves:
                 # 检查是否已存在
                 existing = self.collection.get(ids=[cve["id"]])
                 if existing["ids"]:
                     continue
-                
+
                 # 构建文档
-                document = f"""漏洞编号: {cve['id']}
-类型: {config['description']}
-CWE: {cve['cwe']}
-描述: {cve['description']}
+                document = f"""漏洞编号: {cve["id"]}
+类型: {config["description"]}
+CWE: {cve["cwe"]}
+描述: {cve["description"]}
 """
-                
+
                 # 添加到知识库
                 self.collection.add(
                     ids=[cve["id"]],
                     documents=[document],
-                    metadatas={
-                        "type": vuln_type,
-                        "cwe": cve["cwe"],
-                        "source": "NVD"
-                    }
+                    metadatas={"type": vuln_type, "cwe": cve["cwe"], "source": "NVD"},
                 )
                 added += 1
                 print(f"    ✅ 添加: {cve['id']}")
-            
+
             # API 限流
             time.sleep(1)
-        
+
         return added
-    
-    def expand_all(self, max_cves_per_type: int = 30) -> Dict[str, int]:
+
+    def expand_all(self, max_cves_per_type: int = 30) -> dict[str, int]:
         """扩展所有漏洞类型"""
         results = {}
-        
+
         # 1. 添加内置知识
         print("\n📚 添加内置安全知识...")
         results["builtin"] = self.add_builtin_knowledge()
-        
+
         # 2. 按漏洞类型获取 CVE
         api_key = os.getenv("NVD_API_KEY")
         if api_key:
@@ -507,26 +481,23 @@ CWE: {cve['cwe']}
         else:
             print("\n⚠️ 未设置 NVD_API_KEY，跳过 NVD CVE 获取")
             print("   获取 API Key: https://nvd.nist.gov/developers/request-an-api-key")
-        
+
         return results
-    
-    def get_stats(self) -> Dict[str, int]:
+
+    def get_stats(self) -> dict[str, int]:
         """获取知识库统计"""
         total = self.collection.count()
-        
+
         # 按类型统计
         by_type = {}
         results = self.collection.get(include=["metadatas"])
-        
+
         for metadata in results.get("metadatas", []):
             if metadata:
                 vuln_type = metadata.get("type", "UNKNOWN")
                 by_type[vuln_type] = by_type.get(vuln_type, 0) + 1
-        
-        return {
-            "total": total,
-            "by_type": by_type
-        }
+
+        return {"total": total, "by_type": by_type}
 
 
 def main():
@@ -534,25 +505,25 @@ def main():
     print("=" * 60)
     print("🚀 Aegis AI 知识库扩展工具")
     print("=" * 60)
-    
+
     # 初始化
     expander = KnowledgeBaseExpander()
-    
+
     # 扩展知识库
     results = expander.expand_all(max_cves_per_type=30)
-    
+
     # 显示结果
     print("\n" + "=" * 60)
     print("📊 扩展结果:")
     print("=" * 60)
-    
+
     total_added = 0
     for category, count in results.items():
         print(f"  {category}: +{count} 条")
         total_added += count
-    
+
     print(f"\n  总计新增: {total_added} 条")
-    
+
     # 显示统计
     stats = expander.get_stats()
     print("\n📈 知识库统计:")

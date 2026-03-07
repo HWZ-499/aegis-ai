@@ -12,8 +12,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .rag_enhancer import BUILTIN_REMEDIATION
 
@@ -24,8 +23,8 @@ class SmartRemediation:
 
     message: str
     suggested_code: str
-    framework: Optional[str] = None
-    replacements: Optional[Dict[str, str]] = None
+    framework: str | None = None
+    replacements: dict[str, str] | None = None
 
 
 # 模板中常见占位符 → 替换时使用的键（与下面提取逻辑对应）
@@ -59,14 +58,14 @@ def _extract_line_context(source_code: str, line_one_based: int) -> str:
     return "\n".join(lines[start:end])
 
 
-def _extract_variable_candidates(context: str) -> List[str]:
+def _extract_variable_candidates(context: str) -> list[str]:
     """
     从上下文中提取疑似「用户输入」变量/表达式，用于替换模板占位符。
 
     匹配：req.body.xxx, req.query.xxx, request.args.get('x'), request.json,
           $var, user_id, userId, filename 等。
     """
-    candidates: List[str] = []
+    candidates: list[str] = []
     # req.body.xxx / req.query.xxx / request.args / request.json
     for m in re.finditer(
         r"\b(?:req|request)\.(?:body|query|params)\.(\w+)|"
@@ -93,10 +92,10 @@ def _extract_variable_candidates(context: str) -> List[str]:
     ):
         if m.group(0) not in candidates:
             candidates.append(m.group(0))
-    return candidates[: 5]
+    return candidates[:5]
 
 
-def _infer_framework_from_source(source_code: str, file_path: str) -> Optional[str]:
+def _infer_framework_from_source(source_code: str, file_path: str) -> str | None:
     """从源码头部和文件路径推断框架。"""
     header = source_code.split("\n")[:60]
     header_text = "\n".join(header).lower()
@@ -135,7 +134,7 @@ def _infer_framework_from_source(source_code: str, file_path: str) -> Optional[s
     return None
 
 
-def _apply_replacements(text: str, replacements: Dict[str, str]) -> str:
+def _apply_replacements(text: str, replacements: dict[str, str]) -> str:
     """将模板中的占位符替换为真实变量名（大小写不敏感匹配常见占位符）。"""
     result = text
     for placeholder, value in replacements.items():
@@ -149,7 +148,7 @@ def _apply_replacements(text: str, replacements: Dict[str, str]) -> str:
 
 
 def generate_smart_remediation(
-    finding: Dict[str, Any],
+    finding: dict[str, Any],
     source_code: str,
     file_path: str,
 ) -> SmartRemediation:
@@ -179,7 +178,7 @@ def generate_smart_remediation(
     context = _extract_line_context(source_code, line_no)
     candidates = _extract_variable_candidates(context)
     primary = candidates[0] if candidates else "user_input"
-    replacements: Dict[str, str] = {ph: primary for ph in _PLACEHOLDERS}
+    replacements: dict[str, str] = {ph: primary for ph in _PLACEHOLDERS}
     for i, c in enumerate(candidates):
         if i < len(_PLACEHOLDERS):
             replacements[_PLACEHOLDERS[i]] = c

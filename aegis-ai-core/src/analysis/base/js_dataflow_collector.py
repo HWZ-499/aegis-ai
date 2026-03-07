@@ -18,14 +18,15 @@ js_dataflow_collector.py - JavaScript/TypeScript 数据流收集器（阶段二�
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from .security_rule import SecurityRule
 from .analysis_context import AnalysisContext
+from .security_rule import SecurityRule
 
 # Tree-sitter Node 类型
 try:
     from tree_sitter import Node
+
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
@@ -33,13 +34,23 @@ except ImportError:
 
 # Express / Koa 路由方法
 _ROUTE_METHODS = {
-    "get", "post", "put", "delete", "patch", "all", "use",
-    "options", "head",
+    "get",
+    "post",
+    "put",
+    "delete",
+    "patch",
+    "all",
+    "use",
+    "options",
+    "head",
 }
 
 # 可能是 Express app / router 的对象名
 _ROUTE_OBJECTS = {
-    "app", "router", "route", "server",
+    "app",
+    "router",
+    "route",
+    "server",
 }
 
 
@@ -126,13 +137,13 @@ class JavaScriptDataFlowCollector(SecurityRule):
                 if var_name and value_text:
                     context.track_assignment(var_name, value_text, line)
 
-    def _extract_destructured_properties(self, pattern_node: Node) -> List[str]:
+    def _extract_destructured_properties(self, pattern_node: Node) -> list[str]:
         """
         从 object_pattern 节点提取属性名。
 
         ``{ name, email, age: userAge }`` → ``["name", "email", "userAge"]``
         """
-        props: List[str] = []
+        props: list[str] = []
         for child in pattern_node.children:
             if child.type == "shorthand_property_identifier_pattern":
                 # { name } → name
@@ -206,10 +217,7 @@ class JavaScriptDataFlowCollector(SecurityRule):
             return
 
         # 是否是路由注册调用
-        if (
-            method_name.lower() not in _ROUTE_METHODS
-            or object_name.lower() not in _ROUTE_OBJECTS
-        ):
+        if method_name.lower() not in _ROUTE_METHODS or object_name.lower() not in _ROUTE_OBJECTS:
             return
 
         line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
@@ -223,12 +231,10 @@ class JavaScriptDataFlowCollector(SecurityRule):
                     # 提取回调参数
                     req_param = self._extract_first_param(arg)
                     if req_param and context.dataflow_tracker:
-                        context.dataflow_tracker.mark_as_source(
-                            req_param, line, source_type="express_route_callback"
-                        )
+                        context.dataflow_tracker.mark_as_source(req_param, line, source_type="express_route_callback")
                     return
 
-    def _extract_first_param(self, func_node: Node) -> Optional[str]:
+    def _extract_first_param(self, func_node: Node) -> str | None:
         """
         提取函数的第一个参数名。
 
@@ -248,7 +254,7 @@ class JavaScriptDataFlowCollector(SecurityRule):
     # ──────────────────────────────────────────────
 
     @staticmethod
-    def _get_node_text(node: Node) -> Optional[str]:
+    def _get_node_text(node: Node) -> str | None:
         """提取节点的文本内容。"""
         if hasattr(node, "text"):
             return node.text.decode("utf-8")

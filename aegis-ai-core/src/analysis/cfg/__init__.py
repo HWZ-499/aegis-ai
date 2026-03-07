@@ -14,7 +14,7 @@ analysis.cfg - 控制流图（CFG）与支配树模块
 - 死代码检测
 """
 
-from .dominator_tree import BasicBlock, CFG, DominatorTree, build_cfg_from_taint_graph
+from .dominator_tree import CFG, BasicBlock, DominatorTree, build_cfg_from_taint_graph
 
 __all__ = [
     "BasicBlock",

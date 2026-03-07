@@ -16,64 +16,73 @@ rule_engine.py - 规则引擎统一入口
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
-from typing import Dict, List
 
+from .analyzers.go_analyzer import GoAnalyzer
+from .analyzers.java_analyzer import JavaAnalyzer
 from .analyzers.javascript_analyzer import JavaScriptAnalyzer
 from .analyzers.python_analyzer import PythonAnalyzer
-from .analyzers.java_analyzer import JavaAnalyzer
-from .analyzers.go_analyzer import GoAnalyzer
 from .base import SecurityRule
 from .dsl import load_dsl_rules_for_language
 from .rules import (
-    PythonRCEAstRule,
-    SQLInjectionRegexRule,
-    PythonSQLInjectionAstRule,
-    JavaScriptSQLInjectionAstRule,
-    JavaSQLInjectionAstRule,
-    GoSQLInjectionAstRule,
-    PythonXSSAstRule,
-    JavaScriptXSSAstRule,
-    JavaXSSAstRule,
-    GoXSSAstRule,
-    PythonPathTraversalAstRule,
-    JavaScriptPathTraversalAstRule,
-    JavaPathTraversalAstRule,
-    GoPathTraversalAstRule,
-    PythonHardcodedCredentialsAstRule,
-    JavaScriptHardcodedCredentialsAstRule,
-    JavaHardcodedCredentialsAstRule,
-    GoHardcodedCredentialsAstRule,
-    PythonDeserializationAstRule,
-    JavaScriptDeserializationAstRule,
-    JavaDeserializationAstRule,
     GoDeserializationAstRule,
-    JavaScriptRCEAstRule,
-    JavaRCEAstRule,
-    GoRCEAstRule,
-    JavaScriptNoSQLInjectionAstRule,
-    PythonNoSQLInjectionAstRule,
-    JavaOpenRedirectAstRule,
+    GoHardcodedCredentialsAstRule,
+    GoNoSQLInjectionAstRule,
     GoOpenRedirectAstRule,
-    # PHP TaintGraph 规则（analyze_php 内部延迟导入，此处仅供类型提示）
-    PhpSQLInjectionRule,
-    PhpRCERule,
-    PhpXSSRule,
-    PhpOpenRedirectRule,
-    PhpPathTraversalRule,
+    GoPathTraversalAstRule,
+    GoRCEAstRule,
+    GoSQLInjectionAstRule,
+    GoXSSAstRule,
+    JavaDeserializationAstRule,
+    JavaHardcodedCredentialsAstRule,
+    JavaNoSQLInjectionAstRule,
+    JavaOpenRedirectAstRule,
+    JavaPathTraversalAstRule,
+    JavaRCEAstRule,
+    JavaScriptDeserializationAstRule,
+    JavaScriptHardcodedCredentialsAstRule,
+    JavaScriptNoSQLInjectionAstRule,
+    JavaScriptOpenRedirectAstRule,
+    JavaScriptPathTraversalAstRule,
+    JavaScriptRCEAstRule,
+    JavaScriptSQLInjectionAstRule,
+    JavaScriptXSSAstRule,
+    JavaSQLInjectionAstRule,
+    JavaXSSAstRule,
     PhpDeserializationRule,
     PhpHardcodedCredentialsRule,
+    PhpNoSQLInjectionRule,
+    PhpOpenRedirectRule,
+    PhpPathTraversalRule,
+    PhpRCERule,
+    # PHP TaintGraph 规则（analyze_php 内部延迟导入，此处仅供类型提示）
+    PhpSQLInjectionRule,
+    PhpXSSRule,
+    PythonDeserializationAstRule,
+    PythonHardcodedCredentialsAstRule,
+    PythonNoSQLInjectionAstRule,
+    PythonOpenRedirectAstRule,
+    PythonPathTraversalAstRule,
+    PythonRCEAstRule,
+    PythonSQLInjectionAstRule,
+    PythonXSSAstRule,
+    SQLInjectionRegexRule,
 )
 
 logger = logging.getLogger(__name__)
 
 
-def get_default_rules_for_language(language: str) -> List[SecurityRule]:
+def get_default_rules_for_language(
+    language: str,
+    include_dsl: bool = True,
+) -> list[SecurityRule]:
     """
     根据语言返回默认规则集合。
 
     Args:
-        language: 语言标识符（"python"、"javascript"、"typescript"、"php"）。
+        language: 语言标识符（"python"、"javascript"、"typescript"、"php"等）。
+        include_dsl: 是否加载 DSL 规则（用于 AST vs DSL 对比实验）。
 
     Returns:
         对应语言的 SecurityRule 实例列表。PHP 规则通过 analyze_php() 调用，
@@ -82,7 +91,7 @@ def get_default_rules_for_language(language: str) -> List[SecurityRule]:
     language = language.lower()
 
     if language == "python":
-        rules: List[SecurityRule] = [
+        rules: list[SecurityRule] = [
             PythonRCEAstRule(),
             SQLInjectionRegexRule(),
             PythonSQLInjectionAstRule(),
@@ -91,8 +100,10 @@ def get_default_rules_for_language(language: str) -> List[SecurityRule]:
             PythonHardcodedCredentialsAstRule(),
             PythonDeserializationAstRule(),
             PythonNoSQLInjectionAstRule(),
+            PythonOpenRedirectAstRule(),
         ]
-        rules.extend(load_dsl_rules_for_language("python"))
+        if include_dsl:
+            rules.extend(load_dsl_rules_for_language("python"))
         return rules
 
     if language in ("javascript", "typescript"):
@@ -105,20 +116,13 @@ def get_default_rules_for_language(language: str) -> List[SecurityRule]:
             JavaScriptHardcodedCredentialsAstRule(),
             JavaScriptDeserializationAstRule(),
             JavaScriptNoSQLInjectionAstRule(),
+            JavaScriptOpenRedirectAstRule(),
         ]
-        rules.extend(load_dsl_rules_for_language(language))
+        if include_dsl:
+            rules.extend(load_dsl_rules_for_language(language))
         return rules
 
     if language == "php":
-        from .rules.php import (
-            PhpSQLInjectionRule,
-            PhpRCERule,
-            PhpXSSRule,
-            PhpOpenRedirectRule,
-            PhpPathTraversalRule,
-            PhpDeserializationRule,
-            PhpHardcodedCredentialsRule,
-        )
         return [
             PhpSQLInjectionRule(),
             PhpRCERule(),
@@ -126,6 +130,7 @@ def get_default_rules_for_language(language: str) -> List[SecurityRule]:
             PhpOpenRedirectRule(),
             PhpPathTraversalRule(),
             PhpDeserializationRule(),
+            PhpNoSQLInjectionRule(),
             PhpHardcodedCredentialsRule(),
         ]
 
@@ -137,6 +142,7 @@ def get_default_rules_for_language(language: str) -> List[SecurityRule]:
             JavaPathTraversalAstRule(),
             JavaHardcodedCredentialsAstRule(),
             JavaDeserializationAstRule(),
+            JavaNoSQLInjectionAstRule(),
             JavaOpenRedirectAstRule(),
         ]
 
@@ -148,21 +154,23 @@ def get_default_rules_for_language(language: str) -> List[SecurityRule]:
             GoPathTraversalAstRule(),
             GoHardcodedCredentialsAstRule(),
             GoDeserializationAstRule(),
+            GoNoSQLInjectionAstRule(),
             GoOpenRedirectAstRule(),
         ]
-        rules.extend(load_dsl_rules_for_language("go"))
+        if include_dsl:
+            rules.extend(load_dsl_rules_for_language("go"))
         return rules
 
     return []
 
 
-def analyze_python(code: str, file_path: Path | str) -> List[Dict]:
+def analyze_python(code: str, file_path: Path | str, include_dsl: bool = True) -> list[dict]:
     """
     使用新规则引擎分析单个 Python 文件。
     TDD 10.1：解析或分析过程异常时返回空列表，不崩溃。
     """
     path = Path(file_path)
-    rules = get_default_rules_for_language("python")
+    rules = get_default_rules_for_language("python", include_dsl=include_dsl)
     analyzer = PythonAnalyzer(rules)
     try:
         return analyzer.analyze(code, path)
@@ -171,13 +179,18 @@ def analyze_python(code: str, file_path: Path | str) -> List[Dict]:
         return []
 
 
-def analyze_javascript(code: str, file_path: Path | str, language: str = "javascript") -> List[Dict]:
+def analyze_javascript(
+    code: str,
+    file_path: Path | str,
+    language: str = "javascript",
+    include_dsl: bool = True,
+) -> list[dict]:
     """
     使用新规则引擎分析单个 JavaScript/TypeScript 文件。
     TDD 10.1：解析或分析过程异常时返回空列表，不崩溃。
     """
     path = Path(file_path)
-    rules = get_default_rules_for_language(language)
+    rules = get_default_rules_for_language(language, include_dsl=include_dsl)
     analyzer = JavaScriptAnalyzer(rules)
     try:
         return analyzer.analyze(code, path, language=language)
@@ -186,13 +199,13 @@ def analyze_javascript(code: str, file_path: Path | str, language: str = "javasc
         return []
 
 
-def analyze_java(code: str, file_path: Path | str) -> List[Dict]:
+def analyze_java(code: str, file_path: Path | str, include_dsl: bool = True) -> list[dict]:
     """
     使用新规则引擎分析单个 Java 文件。
     TDD 10.1：解析或分析过程异常时返回空列表，不崩溃。
     """
     path = Path(file_path)
-    rules = get_default_rules_for_language("java")
+    rules = get_default_rules_for_language("java", include_dsl=include_dsl)
     analyzer = JavaAnalyzer(rules)
     try:
         return analyzer.analyze(code, path)
@@ -201,12 +214,12 @@ def analyze_java(code: str, file_path: Path | str) -> List[Dict]:
         return []
 
 
-def analyze_go(code: str, file_path: Path | str) -> List[Dict]:
+def analyze_go(code: str, file_path: Path | str, include_dsl: bool = True) -> list[dict]:
     """
     使用新规则引擎分析单个 Go 文件。
     """
     path = Path(file_path)
-    rules = get_default_rules_for_language("go")
+    rules = get_default_rules_for_language("go", include_dsl=include_dsl)
     analyzer = GoAnalyzer(rules)
     try:
         return analyzer.analyze(code, path)
@@ -215,7 +228,7 @@ def analyze_go(code: str, file_path: Path | str) -> List[Dict]:
         return []
 
 
-def analyze_php(code: str, file_path: Path | str) -> List[Dict]:
+def analyze_php(code: str, file_path: Path | str) -> list[dict]:
     """
     分析单个 PHP 文件。
 
@@ -232,18 +245,9 @@ def analyze_php(code: str, file_path: Path | str) -> List[Dict]:
     返回格式与 analyze_python / analyze_javascript 统一。
     """
     from .security_rules import scan_code_locally
-    from .rules.php import (
-        PhpSQLInjectionRule,
-        PhpRCERule,
-        PhpXSSRule,
-        PhpOpenRedirectRule,
-        PhpPathTraversalRule,
-        PhpDeserializationRule,
-        PhpHardcodedCredentialsRule,
-    )
 
     path = Path(file_path)
-    results: List[Dict] = []
+    results: list[dict] = []
 
     # ── 1. TaintGraph 精确层 ──
     taint_rules = [
@@ -253,6 +257,7 @@ def analyze_php(code: str, file_path: Path | str) -> List[Dict]:
         PhpOpenRedirectRule(),
         PhpPathTraversalRule(),
         PhpDeserializationRule(),
+        PhpNoSQLInjectionRule(),
         PhpHardcodedCredentialsRule(),
     ]
     taint_covered: set[tuple[int, str]] = set()  # (line, vuln_type)
@@ -283,18 +288,29 @@ def analyze_php(code: str, file_path: Path | str) -> List[Dict]:
             raw_line = lines_of_code[line - 1]
             if "allowed_classes" in raw_line:
                 continue
-        results.append({
-            "type":            vuln_type,
-            "severity":        f.get("severity", "Medium"),
-            "line":            line,
-            "start_line":      line,
-            "end_line":        line,
-            "start_character": 0,
-            "end_character":   999,
-            "details":         f.get("content", ""),
-            "confidence":      f.get("confidence", "medium"),
-            "source":          "PHP-Regex",
-        })
+        # 正则层：PHP RCE 仅当参数为字面量（无 $var / $_GET 等）时不报告，避免常量命令误报
+        if vuln_type == "RCE_COMMAND_EXEC" and 1 <= line <= len(lines_of_code):
+            raw_line = lines_of_code[line - 1]
+            if re.search(r"\$(_(?:GET|POST|REQUEST|COOKIE)|\w+)", raw_line) is None and re.search(
+                r"\b(system|exec|shell_exec|passthru|popen)\s*\(\s*['\"][^'\"]*['\"]\s*\)",
+                raw_line,
+                re.IGNORECASE,
+            ):
+                continue
+        results.append(
+            {
+                "type": vuln_type,
+                "severity": f.get("severity", "Medium"),
+                "line": line,
+                "start_line": line,
+                "end_line": line,
+                "start_character": 0,
+                "end_character": 999,
+                "details": f.get("content", ""),
+                "confidence": f.get("confidence", "medium"),
+                "source": "PHP-Regex",
+            }
+        )
 
     return results
 
@@ -311,4 +327,3 @@ __all__ = [
     "PhpXSSRule",
     "PhpOpenRedirectRule",
 ]
-

@@ -22,34 +22,51 @@ from __future__ import annotations
 
 import ast
 import re
-from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
 
-
 # ── 敏感变量名关键词 ──────────────────────────────────────────────
-_SECRET_KEYWORDS: frozenset[str] = frozenset([
-    "password", "passwd", "pwd", "passphrase",
-    "secret", "private_key", "privkey",
-    "token", "access_token", "refresh_token", "id_token",
-    "api_key", "apikey", "api_secret",
-    "auth", "auth_token", "bearer",
-    "credential", "credentials",
-    "cert", "certificate",
-    "encryption_key", "signing_key",
-    "jwt_secret",
-    "client_secret",
-    "db_pass", "db_password",
-    "mysql_pwd", "postgres_pass",
-])
+_SECRET_KEYWORDS: frozenset[str] = frozenset(
+    [
+        "password",
+        "passwd",
+        "pwd",
+        "passphrase",
+        "secret",
+        "private_key",
+        "privkey",
+        "token",
+        "access_token",
+        "refresh_token",
+        "id_token",
+        "api_key",
+        "apikey",
+        "api_secret",
+        "auth",
+        "auth_token",
+        "bearer",
+        "credential",
+        "credentials",
+        "cert",
+        "certificate",
+        "encryption_key",
+        "signing_key",
+        "jwt_secret",
+        "client_secret",
+        "db_pass",
+        "db_password",
+        "mysql_pwd",
+        "postgres_pass",
+    ]
+)
 
 # ── 占位符/示例值排除列表 ─────────────────────────────────────────
 _PLACEHOLDER_RE = re.compile(
     r"^("
-    r"your[_\-\s]?\w*|"       # your_key / your_password / your-secret
-    r"<\w+>|"                  # <SECRET>
-    r"\[.*?\]|"                # [YOUR_TOKEN]
+    r"your[_\-\s]?\w*|"  # your_key / your_password / your-secret
+    r"<\w+>|"  # <SECRET>
+    r"\[.*?\]|"  # [YOUR_TOKEN]
     r"placeholder|"
     r"changeme|"
     r"change.me|"
@@ -81,28 +98,37 @@ _MIN_REAL_SECRET_LEN = 12
 # 高熵指纹：base64 / hex / 普通强密码模式
 _HIGH_ENTROPY_RE = re.compile(
     r"^[A-Za-z0-9+/=_\-!@#$%^&*]{16,}$|"  # base64 / URL-safe base64 / 密码特殊字符
-    r"^[0-9a-fA-F]{32,}$"                   # hex 32+ 字符
+    r"^[0-9a-fA-F]{32,}$"  # hex 32+ 字符
 )
 
 # 关键字参数名（函数调用中的 password=... 等）
-_KW_KEYWORDS: frozenset[str] = frozenset([
-    "password", "passwd", "pwd", "secret", "token", "key",
-    "api_key", "apikey", "auth", "credential",
-])
+_KW_KEYWORDS: frozenset[str] = frozenset(
+    [
+        "password",
+        "passwd",
+        "pwd",
+        "secret",
+        "token",
+        "key",
+        "api_key",
+        "apikey",
+        "auth",
+        "credential",
+    ]
+)
 
 # 测试文件模式
-_TEST_FILE_RE = re.compile(r"[\\/](tests?|test_\w+|conftest)[\\/]|[\\/]test_[^/\\]+\.py$",
-                           re.IGNORECASE)
+_TEST_FILE_RE = re.compile(r"[\\/](tests?|test_\w+|conftest)[\\/]|[\\/]test_[^/\\]+\.py$", re.IGNORECASE)
 
 
-def _is_test_file(file_path: Optional[str]) -> bool:
+def _is_test_file(file_path: str | None) -> bool:
     """判断文件是否为测试文件（降级严重度）。"""
     if not file_path:
         return False
     return bool(_TEST_FILE_RE.search(file_path))
 
 
-def _extract_str_value(node: ast.AST) -> Optional[str]:
+def _extract_str_value(node: ast.AST) -> str | None:
     """提取字符串/数值常量。"""
     if isinstance(node, ast.Constant):
         if isinstance(node.value, (str, int, float)):
@@ -217,7 +243,7 @@ class PythonHardcodedCredentialsAstRule(SecurityRule):
         context: AnalysisContext,
     ) -> None:
         line_no = getattr(node, "lineno", 0) or 0
-        file_path: Optional[str] = context.extras.get("file_path")
+        file_path: str | None = context.extras.get("file_path")
 
         severity = self.severity
         detail_suffix = ""
@@ -225,12 +251,12 @@ class PythonHardcodedCredentialsAstRule(SecurityRule):
             severity = "Low"
             detail_suffix = "（测试文件中的凭证，但仍建议避免硬编码。）"
 
-        finding: Dict[str, Any] = {
-            "type":     "HARDCODED_CREDENTIALS",
-            "rule_id":  self.rule_id,
+        finding: dict[str, Any] = {
+            "type": "HARDCODED_CREDENTIALS",
+            "rule_id": self.rule_id,
             "severity": severity,
-            "line":     line_no,
-            "details":  (
+            "line": line_no,
+            "details": (
                 f"发现疑似硬编码凭证变量 '{var_name}'（值长度 {len(value)}），"
                 f"建议从环境变量（os.environ）或 Vault 等安全配置中读取。{detail_suffix}"
             ),
@@ -238,7 +264,7 @@ class PythonHardcodedCredentialsAstRule(SecurityRule):
         context.add_finding(finding)
 
     @staticmethod
-    def _extract_name(node: ast.AST) -> Optional[str]:
+    def _extract_name(node: ast.AST) -> str | None:
         if isinstance(node, ast.Name):
             return node.id
         if isinstance(node, ast.Attribute):

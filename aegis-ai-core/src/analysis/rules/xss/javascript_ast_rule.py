@@ -16,7 +16,7 @@ JavaScript/TypeScript XSS 风险 AST 规则（新规则架构）。
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from ...base import (
     AnalysisContext,
@@ -28,6 +28,7 @@ from ...base import (
 # Tree-sitter Node 类型（运行时检查）
 try:
     from tree_sitter import Node
+
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
@@ -73,17 +74,19 @@ class JavaScriptXSSAstRule(SecurityRule):
     # 检测方法
     # ------------------------------------------------------------------
     # 已知可信的 HTML 净化函数名（调用后视为已净化）
-    _HTML_SANITIZERS = frozenset([
-        "sanitize",          # DOMPurify.sanitize / sanitize(x)
-        "escapeHtml",        # 自定义转义函数（常见命名）
-        "escape",            # 通用 escape
-        "encode",            # html-entities encode
-        "htmlEncode",
-        "htmlEscape",
-        "encodeHtml",
-        "purify",            # DOMPurify.purify
-        "createHTML",        # Trusted Types API
-    ])
+    _HTML_SANITIZERS = frozenset(
+        [
+            "sanitize",  # DOMPurify.sanitize / sanitize(x)
+            "escapeHtml",  # 自定义转义函数（常见命名）
+            "escape",  # 通用 escape
+            "encode",  # html-entities encode
+            "htmlEncode",
+            "htmlEscape",
+            "encodeHtml",
+            "purify",  # DOMPurify.purify
+            "createHTML",  # Trusted Types API
+        ]
+    )
 
     def _check_inner_html_assignment(self, node: Node, context: AnalysisContext) -> None:
         """
@@ -116,7 +119,7 @@ class JavaScriptXSSAstRule(SecurityRule):
         right_node = None
         passed_eq = False
         for child in node.children:
-            if child.type == "=" :
+            if child.type == "=":
                 passed_eq = True
                 continue
             if passed_eq:
@@ -141,7 +144,7 @@ class JavaScriptXSSAstRule(SecurityRule):
                 return
 
         line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-        finding: Dict[str, Any] = {
+        finding: dict[str, Any] = {
             "type": "XSS_RISK",
             "rule_id": self.rule_id,
             "severity": self.severity,
@@ -179,7 +182,7 @@ class JavaScriptXSSAstRule(SecurityRule):
     def _check_dangerous_function_call(self, node: Node, context: AnalysisContext) -> None:
         """
         检测危险函数调用（Angular bypassSecurityTrustHtml 等）。
-        
+
         检测目标：
         - sanitizer.bypassSecurityTrustHtml()
         - sanitizer.bypassSecurityTrustScript()
@@ -219,7 +222,7 @@ class JavaScriptXSSAstRule(SecurityRule):
 
         if function_name in dangerous_functions:
             line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-            finding: Dict[str, Any] = {
+            finding: dict[str, Any] = {
                 "type": "XSS_RISK",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
@@ -260,7 +263,7 @@ class JavaScriptXSSAstRule(SecurityRule):
                     if identifiers and all(context.is_var_sanitized(v) for v in identifiers):
                         continue
                     line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                    finding: Dict[str, Any] = {
+                    finding: dict[str, Any] = {
                         "type": "XSS_RISK",
                         "rule_id": self.rule_id,
                         "severity": self.severity,
@@ -308,7 +311,7 @@ class JavaScriptXSSAstRule(SecurityRule):
 
         if prop_name and prop_name in dangerous_props:
             line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-            finding: Dict[str, Any] = {
+            finding: dict[str, Any] = {
                 "type": "XSS_RISK",
                 "rule_id": self.rule_id,
                 "severity": self.severity,

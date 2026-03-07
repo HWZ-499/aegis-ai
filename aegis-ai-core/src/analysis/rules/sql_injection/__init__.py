@@ -9,11 +9,16 @@ sql_injection 规则子包。
 - GoSQLInjectionAstRule: 基于 TaintGraph 的 Go SQL 注入检测。
 """
 
-from .regex_rule import SQLInjectionRegexRule
 from .ast_rule import PythonSQLInjectionAstRule
-from .javascript_ast_rule import JavaScriptSQLInjectionAstRule
-from .java_ast_rule import JavaSQLInjectionAstRule
 from .go_ast_rule import GoSQLInjectionAstRule
+from .java_ast_rule import JavaSQLInjectionAstRule
+from .javascript_ast_rule import JavaScriptSQLInjectionAstRule
+from .regex_rule import SQLInjectionRegexRule
 
-__all__ = ["SQLInjectionRegexRule", "PythonSQLInjectionAstRule", "JavaScriptSQLInjectionAstRule", "JavaSQLInjectionAstRule", "GoSQLInjectionAstRule"]
-
+__all__ = [
+    "SQLInjectionRegexRule",
+    "PythonSQLInjectionAstRule",
+    "JavaScriptSQLInjectionAstRule",
+    "JavaSQLInjectionAstRule",
+    "GoSQLInjectionAstRule",
+]

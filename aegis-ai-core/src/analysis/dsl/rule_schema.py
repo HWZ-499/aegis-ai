@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -23,8 +22,8 @@ class MetaVarConstraint(BaseModel):
         not_regex: 不允许匹配的正则表达式（可选）。
     """
 
-    regex: Optional[str] = None
-    not_regex: Optional[str] = Field(default=None, alias="not_regex")
+    regex: str | None = None
+    not_regex: str | None = Field(default=None, alias="not_regex")
 
 
 class WhereClause(BaseModel):
@@ -37,8 +36,8 @@ class WhereClause(BaseModel):
         file_not_regex: 文件路径不允许匹配的正则表达式。
     """
 
-    file_regex: Optional[str] = None
-    file_not_regex: Optional[str] = None
+    file_regex: str | None = None
+    file_not_regex: str | None = None
 
     def matches(self, file_path: Path) -> bool:
         """判断给定文件路径是否满足过滤条件。
@@ -67,10 +66,10 @@ class DslPattern(BaseModel):
     """
 
     pattern: str
-    metavariables: Dict[str, MetaVarConstraint] = Field(
+    metavariables: dict[str, MetaVarConstraint] = Field(
         default_factory=dict,
     )
-    where: Optional[WhereClause] = None
+    where: WhereClause | None = None
 
 
 class DslRule(BaseModel):
@@ -90,7 +89,7 @@ class DslRule(BaseModel):
     severity: str
     message: str
     vuln_type: str
-    patterns: List[DslPattern]
+    patterns: list[DslPattern]
 
     @field_validator("language")
     @classmethod
@@ -120,4 +119,3 @@ class DslRule(BaseModel):
 
 
 __all__ = ["MetaVarConstraint", "WhereClause", "DslPattern", "DslRule"]
-

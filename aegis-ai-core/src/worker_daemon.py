@@ -45,6 +45,7 @@ def current_memory_mb() -> float:
     """当前进程内存占用（MB），不可用时返回 0。"""
     try:
         import psutil
+
         return psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
     except Exception:
         return 0.0
@@ -58,6 +59,7 @@ def main() -> None:
     args = parser.parse_args()
 
     import socket
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(("127.0.0.1", args.port))
@@ -65,7 +67,12 @@ def main() -> None:
     sock.listen(1)
     # 供父进程读取端口
     print(port, flush=True)
-    logger.info("Worker daemon listening on 127.0.0.1:%s (max_requests=%s, max_memory_mb=%s)", port, args.max_requests, args.max_memory_mb)
+    logger.info(
+        "Worker daemon listening on 127.0.0.1:%s (max_requests=%s, max_memory_mb=%s)",
+        port,
+        args.max_requests,
+        args.max_memory_mb,
+    )
 
     request_count = 0
     while True:
@@ -80,7 +87,7 @@ def main() -> None:
         try:
             sock.settimeout(5.0)
             conn, _ = sock.accept()
-        except socket.timeout:
+        except TimeoutError:
             continue
         except Exception as e:
             logger.exception("Accept error: %s", e)

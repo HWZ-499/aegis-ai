@@ -2,11 +2,11 @@
 """
 生成多种格式的安全扫描报告：JSON、HTML、SARIF、Markdown
 """
+
 import html
 import json
-from typing import Any, Dict, List
 from datetime import datetime
-from pathlib import Path
+from typing import Any
 
 
 def _esc(value: Any) -> str:
@@ -22,28 +22,28 @@ def _esc(value: Any) -> str:
 class ReportGenerator:
     """
     报告生成器
-    
+
     支持多种格式的报告导出
     """
-    
+
     def __init__(self, project_name: str = "Unknown Project"):
         """
         初始化报告生成器
-        
+
         Args:
             project_name: 项目名称
         """
         self.project_name = project_name
         self.scan_time = datetime.now().isoformat()
-    
-    def generate_json(self, results: Dict[str, List[Dict]], stats: Dict) -> str:
+
+    def generate_json(self, results: dict[str, list[dict]], stats: dict) -> str:
         """
         生成 JSON 格式报告
-        
+
         Args:
             results: 扫描结果字典
             stats: 统计信息
-            
+
         Returns:
             JSON 格式的报告字符串
         """
@@ -51,37 +51,37 @@ class ReportGenerator:
             "project_name": self.project_name,
             "scan_time": self.scan_time,
             "summary": {
-                "total_files": stats.get('total_files', 0),
-                "scanned_files": stats.get('scanned_files', 0),
-                "files_with_issues": stats.get('files_with_issues', 0),
-                "total_issues": stats.get('total_issues', 0),
-                "scan_time_seconds": stats.get('scan_time', 0)
+                "total_files": stats.get("total_files", 0),
+                "scanned_files": stats.get("scanned_files", 0),
+                "files_with_issues": stats.get("files_with_issues", 0),
+                "total_issues": stats.get("total_issues", 0),
+                "scan_time_seconds": stats.get("scan_time", 0),
             },
-            "severity_stats": stats.get('severity_stats', {}),
-            "results": results
+            "severity_stats": stats.get("severity_stats", {}),
+            "results": results,
         }
-        
+
         return json.dumps(report, indent=2, ensure_ascii=False)
-    
-    def generate_markdown(self, results: Dict[str, List[Dict]], stats: Dict) -> str:
+
+    def generate_markdown(self, results: dict[str, list[dict]], stats: dict) -> str:
         """
         生成 Markdown 格式报告
-        
+
         Args:
             results: 扫描结果字典
             stats: 统计信息
-            
+
         Returns:
             Markdown 格式的报告字符串
         """
         lines = []
-        
+
         # 标题
         lines.append(f"# 🔒 安全扫描报告 - {self.project_name}")
         lines.append("")
         lines.append(f"**扫描时间**: {self.scan_time}")
         lines.append("")
-        
+
         # 摘要
         lines.append("## 📊 扫描摘要")
         lines.append("")
@@ -91,84 +91,84 @@ class ReportGenerator:
         lines.append(f"| 扫描文件数 | {stats.get('scanned_files', 0)} |")
         lines.append(f"| 有问题文件数 | {stats.get('files_with_issues', 0)} |")
         lines.append(f"| 总问题数 | {stats.get('total_issues', 0)} |")
-        scan_time = stats.get('scan_time', 0)
+        scan_time = stats.get("scan_time", 0)
         if isinstance(scan_time, (int, float)):
             lines.append(f"| 扫描耗时 | {scan_time:.2f} 秒 |")
         else:
             lines.append(f"| 扫描耗时 | {scan_time} |")
         lines.append("")
-        
+
         # 严重程度统计
-        severity_stats = stats.get('severity_stats', {})
+        severity_stats = stats.get("severity_stats", {})
         if severity_stats:
             lines.append("## 🎯 严重程度统计")
             lines.append("")
             lines.append("| 严重程度 | 数量 |")
             lines.append("|---------|------|")
-            for severity in ['Critical', 'High', 'Medium', 'Low']:
+            for severity in ["Critical", "High", "Medium", "Low"]:
                 count = severity_stats.get(severity, 0)
-                emoji = {'Critical': '🔴', 'High': '🟠', 'Medium': '🟡', 'Low': '🟢'}.get(severity, '⚪')
+                emoji = {"Critical": "🔴", "High": "🟠", "Medium": "🟡", "Low": "🟢"}.get(severity, "⚪")
                 lines.append(f"| {emoji} {severity} | {count} |")
             lines.append("")
-        
+
         # 详细结果
         if results:
             lines.append("## 🔍 详细发现")
             lines.append("")
-            
+
             for file_path, findings in results.items():
                 lines.append(f"### 📄 {file_path}")
                 lines.append("")
                 lines.append(f"**问题数量**: {len(findings)}")
                 lines.append("")
-                
+
                 # 按严重程度分组
                 by_severity = {}
                 for finding in findings:
-                    severity = finding.get('severity', 'Medium')
+                    severity = finding.get("severity", "Medium")
                     if severity not in by_severity:
                         by_severity[severity] = []
                     by_severity[severity].append(finding)
-                
-                for severity in ['Critical', 'High', 'Medium', 'Low']:
+
+                for severity in ["Critical", "High", "Medium", "Low"]:
                     if severity not in by_severity:
                         continue
-                    
-                    emoji = {'Critical': '🔴', 'High': '🟠', 'Medium': '🟡', 'Low': '🟢'}.get(severity, '⚪')
+
+                    emoji = {"Critical": "🔴", "High": "🟠", "Medium": "🟡", "Low": "🟢"}.get(severity, "⚪")
                     lines.append(f"#### {emoji} {severity} 级别")
                     lines.append("")
-                    
+
                     for finding in by_severity[severity]:
                         lines.append(f"**第 {finding.get('line', '?')} 行** - {finding.get('type', 'Unknown')}")
                         lines.append("")
                         lines.append(f"> {finding.get('details', 'No details')}")
                         lines.append("")
-                        if finding.get('content'):
-                            lines.append(f"```python")
-                            lines.append(finding['content'])
+                        if finding.get("content"):
+                            lines.append("```python")
+                            lines.append(finding["content"])
                             lines.append("```")
                             lines.append("")
-        
+
         return "\n".join(lines)
-    
-    def generate_html(self, results: Dict[str, List[Dict]], stats: Dict) -> str:
+
+    def generate_html(self, results: dict[str, list[dict]], stats: dict) -> str:
         """
         生成 HTML 格式报告
-        
+
         Args:
             results: 扫描结果字典
             stats: 统计信息
-            
+
         Returns:
             HTML 格式的报告字符串
         """
         # 处理扫描时间显示
-        scan_time = stats.get('scan_time', 0)
+        scan_time = stats.get("scan_time", 0)
         if isinstance(scan_time, (int, float)):
             scan_time_display = f"{scan_time:.2f} 秒"
         else:
             scan_time_display = str(scan_time)
-        
+
         html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -261,19 +261,19 @@ class ReportGenerator:
             </tr>
             <tr>
                 <td>总文件数</td>
-                <td>{_esc(stats.get('total_files', 0))}</td>
+                <td>{_esc(stats.get("total_files", 0))}</td>
             </tr>
             <tr>
                 <td>扫描文件数</td>
-                <td>{_esc(stats.get('scanned_files', 0))}</td>
+                <td>{_esc(stats.get("scanned_files", 0))}</td>
             </tr>
             <tr>
                 <td>有问题文件数</td>
-                <td>{_esc(stats.get('files_with_issues', 0))}</td>
+                <td>{_esc(stats.get("files_with_issues", 0))}</td>
             </tr>
             <tr>
                 <td>总问题数</td>
-                <td>{_esc(stats.get('total_issues', 0))}</td>
+                <td>{_esc(stats.get("total_issues", 0))}</td>
             </tr>
             <tr>
                 <td>扫描耗时</td>
@@ -281,9 +281,9 @@ class ReportGenerator:
             </tr>
         </table>
 """
-        
+
         # 严重程度统计
-        severity_stats = stats.get('severity_stats', {})
+        severity_stats = stats.get("severity_stats", {})
         if severity_stats:
             html += """
         <h2>🎯 严重程度统计</h2>
@@ -293,9 +293,9 @@ class ReportGenerator:
                 <th>数量</th>
             </tr>
 """
-            for severity in ['Critical', 'High', 'Medium', 'Low']:
+            for severity in ["Critical", "High", "Medium", "Low"]:
                 count = severity_stats.get(severity, 0)
-                emoji = {'Critical': '🔴', 'High': '🟠', 'Medium': '🟡', 'Low': '🟢'}.get(severity, '⚪')
+                emoji = {"Critical": "🔴", "High": "🟠", "Medium": "🟡", "Low": "🟢"}.get(severity, "⚪")
                 html += f"""
             <tr>
                 <td>{emoji} {_esc(severity)}</td>
@@ -305,10 +305,10 @@ class ReportGenerator:
             html += """
         </table>
 """
-        
+
         # 扫描范围（已扫描 / 未纳入扫描及原因）
-        discovered = stats.get('discovered_files', [])
-        skipped = stats.get('skipped_files', [])
+        discovered = stats.get("discovered_files", [])
+        skipped = stats.get("skipped_files", [])
         if discovered or skipped:
             html += """
         <h2>📂 扫描范围</h2>
@@ -360,7 +360,7 @@ class ReportGenerator:
                 html += """
         </ul>
 """
-        
+
         # 详细结果
         if results:
             html += """
@@ -372,27 +372,27 @@ class ReportGenerator:
             <h3>📄 {_esc(file_path)}</h3>
             <p><strong>问题数量</strong>: {len(findings)}</p>
 """
-                
+
                 # 按严重程度分组
                 by_severity = {}
                 for finding in findings:
-                    severity = finding.get('severity', 'Medium')
+                    severity = finding.get("severity", "Medium")
                     if severity not in by_severity:
                         by_severity[severity] = []
                     by_severity[severity].append(finding)
-                
-                for severity in ['Critical', 'High', 'Medium', 'Low']:
+
+                for severity in ["Critical", "High", "Medium", "Low"]:
                     if severity not in by_severity:
                         continue
-                    
+
                     html += f"""
             <h4 class="{severity.lower()}">{severity} 级别</h4>
 """
                     for finding in by_severity[severity]:
                         html += f"""
             <div class="finding {severity.lower()}">
-                <p><strong>第 {_esc(finding.get('line', '?'))} 行</strong> - <code>{_esc(finding.get('type', 'Unknown'))}</code></p>
-                <p>{_esc(finding.get('details', 'No details'))}</p>
+                <p><strong>第 {_esc(finding.get("line", "?"))} 行</strong> - <code>{_esc(finding.get("type", "Unknown"))}</code></p>
+                <p>{_esc(finding.get("details", "No details"))}</p>
 """
                         # TDD 7.1：关联位置（污点来源等）
                         related = finding.get("related_locations") or []
@@ -410,115 +410,107 @@ class ReportGenerator:
                             html += """
                 </ul>
 """
-                        if finding.get('content'):
+                        if finding.get("content"):
                             html += f"""
-                <pre><code>{_esc(finding['content'])}</code></pre>
+                <pre><code>{_esc(finding["content"])}</code></pre>
 """
                         html += """
             </div>
 """
-                
+
                 html += """
         </div>
 """
-        
+
         html += """
     </div>
 </body>
 </html>
 """
-        
+
         return html
-    
-    def generate_sarif(self, results: Dict[str, List[Dict]], stats: Dict) -> str:
+
+    def generate_sarif(self, results: dict[str, list[dict]], stats: dict) -> str:
         """
         生成 SARIF 格式报告（GitHub 支持）
-        
+
         Args:
             results: 扫描结果字典
             stats: 统计信息
-            
+
         Returns:
             SARIF 格式的报告字符串
         """
         sarif = {
             "version": "2.1.0",
             "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-            "runs": [{
-                "tool": {
-                    "driver": {
-                        "name": "Aegis Security Scanner",
-                        "version": "1.0.0",
-                        "informationUri": "https://github.com/your-repo/aegis-ai"
-                    }
-                },
-                "results": self._convert_to_sarif_results(results)
-            }]
+            "runs": [
+                {
+                    "tool": {
+                        "driver": {
+                            "name": "Aegis Security Scanner",
+                            "version": "1.0.0",
+                            "informationUri": "https://github.com/your-repo/aegis-ai",
+                        }
+                    },
+                    "results": self._convert_to_sarif_results(results),
+                }
+            ],
         }
-        
+
         return json.dumps(sarif, indent=2, ensure_ascii=False)
-    
-    def _convert_to_sarif_results(self, results: Dict[str, List[Dict]]) -> List[Dict]:
+
+    def _convert_to_sarif_results(self, results: dict[str, list[dict]]) -> list[dict]:
         """
         将扫描结果转换为 SARIF 格式
-        
+
         Args:
             results: 扫描结果字典
-            
+
         Returns:
             SARIF 格式的结果列表
         """
         sarif_results = []
-        
-        severity_map = {
-            'Critical': 'error',
-            'High': 'error',
-            'Medium': 'warning',
-            'Low': 'note'
-        }
-        
+
+        severity_map = {"Critical": "error", "High": "error", "Medium": "warning", "Low": "note"}
+
         for file_path, findings in results.items():
             for finding in findings:
                 sarif_result = {
-                    "ruleId": finding.get('type', 'UNKNOWN'),
-                    "level": severity_map.get(finding.get('severity', 'Medium'), 'warning'),
-                    "message": {
-                        "text": finding.get('details', 'No details')
-                    },
-                    "locations": [{
-                        "physicalLocation": {
-                            "artifactLocation": {
-                                "uri": file_path
-                            },
-                            "region": {
-                                "startLine": finding.get('line', 1),
-                                "startColumn": 1
+                    "ruleId": finding.get("type", "UNKNOWN"),
+                    "level": severity_map.get(finding.get("severity", "Medium"), "warning"),
+                    "message": {"text": finding.get("details", "No details")},
+                    "locations": [
+                        {
+                            "physicalLocation": {
+                                "artifactLocation": {"uri": file_path},
+                                "region": {"startLine": finding.get("line", 1), "startColumn": 1},
                             }
                         }
-                    }]
+                    ],
                 }
                 sarif_results.append(sarif_result)
-        
+
         return sarif_results
-    
-    def generate_html_enhanced(self, results: Dict[str, List[Dict]], stats: Dict) -> str:
+
+    def generate_html_enhanced(self, results: dict[str, list[dict]], stats: dict) -> str:
         """
         生成增强版 HTML 报告（包含 RAG 修复建议）
-        
+
         Args:
             results: 扫描结果字典（已增强）
             stats: 统计信息
-            
+
         Returns:
             增强版 HTML 格式的报告字符串
         """
         # 处理扫描时间显示
-        scan_time = stats.get('scan_time', 0)
+        scan_time = stats.get("scan_time", 0)
         if isinstance(scan_time, (int, float)):
             scan_time_display = f"{scan_time:.2f} 秒"
         else:
             scan_time_display = str(scan_time)
-        
+
         html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -651,19 +643,19 @@ class ReportGenerator:
             </tr>
             <tr>
                 <td>总文件数</td>
-                <td>{_esc(stats.get('total_files', 0))}</td>
+                <td>{_esc(stats.get("total_files", 0))}</td>
             </tr>
             <tr>
                 <td>扫描文件数</td>
-                <td>{_esc(stats.get('scanned_files', 0))}</td>
+                <td>{_esc(stats.get("scanned_files", 0))}</td>
             </tr>
             <tr>
                 <td>有问题文件数</td>
-                <td>{_esc(stats.get('files_with_issues', 0))}</td>
+                <td>{_esc(stats.get("files_with_issues", 0))}</td>
             </tr>
             <tr>
                 <td>总问题数</td>
-                <td>{_esc(stats.get('total_issues', 0))}</td>
+                <td>{_esc(stats.get("total_issues", 0))}</td>
             </tr>
             <tr>
                 <td>扫描耗时</td>
@@ -671,9 +663,9 @@ class ReportGenerator:
             </tr>
         </table>
 """
-        
+
         # 严重程度统计
-        severity_stats = stats.get('severity_stats', {})
+        severity_stats = stats.get("severity_stats", {})
         if severity_stats:
             html += """
         <h2>🎯 严重程度统计</h2>
@@ -683,9 +675,9 @@ class ReportGenerator:
                 <th>数量</th>
             </tr>
 """
-            for severity in ['Critical', 'High', 'Medium', 'Low']:
+            for severity in ["Critical", "High", "Medium", "Low"]:
                 count = severity_stats.get(severity, 0)
-                emoji = {'Critical': '🔴', 'High': '🟠', 'Medium': '🟡', 'Low': '🟢'}.get(severity, '⚪')
+                emoji = {"Critical": "🔴", "High": "🟠", "Medium": "🟡", "Low": "🟢"}.get(severity, "⚪")
                 html += f"""
             <tr>
                 <td>{emoji} {_esc(severity)}</td>
@@ -695,7 +687,7 @@ class ReportGenerator:
             html += """
         </table>
 """
-        
+
         # 基准评估（阶段四：当 stats 含 recall/precision/f1 时显示）
         if any(k in stats for k in ("recall", "precision", "f1")):
             recall = stats.get("recall")
@@ -715,7 +707,7 @@ class ReportGenerator:
             html += """
         </table>
 """
-        
+
         # 详细结果（增强版）
         if results:
             html += """
@@ -727,27 +719,27 @@ class ReportGenerator:
             <h3>📄 {_esc(file_path)}</h3>
             <p><strong>问题数量</strong>: {len(findings)}</p>
 """
-                
+
                 # 按严重程度分组
                 by_severity = {}
                 for finding in findings:
-                    severity = finding.get('severity', 'Medium')
+                    severity = finding.get("severity", "Medium")
                     if severity not in by_severity:
                         by_severity[severity] = []
                     by_severity[severity].append(finding)
-                
-                for severity in ['Critical', 'High', 'Medium', 'Low']:
+
+                for severity in ["Critical", "High", "Medium", "Low"]:
                     if severity not in by_severity:
                         continue
-                    
+
                     html += f"""
             <h4 class="{severity.lower()}">{severity} 级别</h4>
 """
                     for finding in by_severity[severity]:
                         html += f"""
             <div class="finding {severity.lower()}">
-                <p><strong>第 {_esc(finding.get('line', '?'))} 行</strong> - <code>{_esc(finding.get('type', 'Unknown'))}</code></p>
-                <p>{_esc(finding.get('details', 'No details'))}</p>
+                <p><strong>第 {_esc(finding.get("line", "?"))} 行</strong> - <code>{_esc(finding.get("type", "Unknown"))}</code></p>
+                <p>{_esc(finding.get("details", "No details"))}</p>
 """
                         # TDD 7.1：关联位置（污点来源等）
                         related = finding.get("related_locations") or []
@@ -765,47 +757,47 @@ class ReportGenerator:
                             html += """
                 </ul>
 """
-                        if finding.get('content'):
+                        if finding.get("content"):
                             html += f"""
-                <pre><code>{_esc(finding['content'])}</code></pre>
+                <pre><code>{_esc(finding["content"])}</code></pre>
 """
-                        
+
                         # 添加修复建议（RAG 增强）
-                        remediation = finding.get('remediation', {})
+                        remediation = finding.get("remediation", {})
                         if remediation:
-                            cwe = remediation.get('cwe', '')
-                            description = remediation.get('description', '')
-                            suggestions = remediation.get('suggestions', [])
-                            references = remediation.get('references', [])
-                            
-                            html += f"""
+                            cwe = remediation.get("cwe", "")
+                            description = remediation.get("description", "")
+                            suggestions = remediation.get("suggestions", [])
+                            references = remediation.get("references", [])
+
+                            html += """
                 <div class="remediation">
                     <h5>💡 修复建议</h5>
 """
                             if cwe:
                                 html += f'<span class="badge badge-cwe">{_esc(cwe)}</span>'
-                            
+
                             if description:
                                 html += f"<p><em>{_esc(description)}</em></p>"
-                            
+
                             if suggestions:
                                 html += "<ul>"
                                 for suggestion in suggestions:
                                     html += f"<li>{_esc(suggestion)}</li>"
                                 html += "</ul>"
-                            
+
                             if references:
                                 html += "<p><strong>参考链接：</strong></p><ul>"
                                 for ref in references:
                                     html += f'<li><a href="{_esc(ref)}" target="_blank">{_esc(ref)}</a></li>'
                                 html += "</ul>"
-                            
+
                             html += """
                 </div>
 """
-                        
+
                         # 添加相关 CVE 信息
-                        related_cves = finding.get('related_cves', [])
+                        related_cves = finding.get("related_cves", [])
                         if related_cves:
                             html += """
                 <div class="cve-info">
@@ -813,33 +805,33 @@ class ReportGenerator:
                     <ul>
 """
                             for cve in related_cves:
-                                html += f'<li><strong>{_esc(cve.get("cve_id", ""))}</strong> (相关度: {_esc(cve.get("relevance", 0))}) - {_esc(cve.get("description", ""))}</li>'
+                                html += f"<li><strong>{_esc(cve.get('cve_id', ''))}</strong> (相关度: {_esc(cve.get('relevance', 0))}) - {_esc(cve.get('description', ''))}</li>"
                             html += """
                     </ul>
                 </div>
 """
-                        
+
                         html += """
             </div>
 """
-                
+
                 html += """
         </div>
 """
-        
+
         html += """
     </div>
 </body>
 </html>
 """
-        
+
         return html
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # 测试代码
     generator = ReportGenerator("Test Project")
-    
+
     # 模拟结果
     test_results = {
         "test.py": [
@@ -848,23 +840,23 @@ if __name__ == '__main__':
                 "type": "SQL Injection Risk",
                 "severity": "High",
                 "details": "发现 SQL 字符串拼接",
-                "content": "query = \"SELECT * FROM users WHERE id = \" + user_id"
+                "content": 'query = "SELECT * FROM users WHERE id = " + user_id',
             }
         ]
     }
-    
+
     test_stats = {
         "total_files": 10,
         "scanned_files": 10,
         "files_with_issues": 1,
         "total_issues": 1,
         "scan_time": 1.5,
-        "severity_stats": {"High": 1}
+        "severity_stats": {"High": 1},
     }
-    
+
     print("JSON 格式:")
     print(generator.generate_json(test_results, test_stats))
-    print("\n" + "="*70 + "\n")
-    
+    print("\n" + "=" * 70 + "\n")
+
     print("Markdown 格式:")
     print(generator.generate_markdown(test_results, test_stats))

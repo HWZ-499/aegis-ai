@@ -15,10 +15,9 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
 
 # 用例定义（与 test_acceptance_benchmark 对齐，便于统一维护）
-from .benchmark_cases import BENCH_CASES_TP, BENCH_CASES_TN, BenchCase
+from .benchmark_cases import BENCH_CASES_TN, BENCH_CASES_TP, BenchCase
 
 
 @dataclass
@@ -29,8 +28,8 @@ class BenchmarkResult:
     fp: int = 0
     fn: int = 0
     tn: int = 0
-    details: List[Dict] = field(default_factory=list)
-    by_category: Dict[str, Dict[str, int]] = field(default_factory=dict)
+    details: list[dict] = field(default_factory=list)
+    by_category: dict[str, dict[str, int]] = field(default_factory=dict)
 
     @property
     def recall(self) -> float:
@@ -62,7 +61,7 @@ class BenchmarkResult:
             return 0.0
         return 2 * p * r / (p + r)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """便于 JSON 序列化。"""
         return {
             "tp": self.tp,
@@ -78,7 +77,7 @@ class BenchmarkResult:
         }
 
 
-def run_benchmark(cases: Optional[List[BenchCase]] = None) -> BenchmarkResult:
+def run_benchmark(cases: list[BenchCase] | None = None) -> BenchmarkResult:
     """
     运行基准用例，使用 rule_engine.analyze_javascript 与生产一致。
 
@@ -114,16 +113,18 @@ def run_benchmark(cases: Optional[List[BenchCase]] = None) -> BenchmarkResult:
                 result.tn += 1
                 verdict = "TN"
 
-        result.details.append({
-            "id": case.id,
-            "category": case.category,
-            "pattern": case.pattern,
-            "description": case.description,
-            "expect": "VULN" if case.expect_finding else "SAFE",
-            "detected": detected,
-            "verdict": verdict,
-            "finding_count": len(relevant),
-        })
+        result.details.append(
+            {
+                "id": case.id,
+                "category": case.category,
+                "pattern": case.pattern,
+                "description": case.description,
+                "expect": "VULN" if case.expect_finding else "SAFE",
+                "detected": detected,
+                "verdict": verdict,
+                "finding_count": len(relevant),
+            }
+        )
 
         # 按类型聚合
         cat = case.category
@@ -137,7 +138,7 @@ def run_benchmark(cases: Optional[List[BenchCase]] = None) -> BenchmarkResult:
 def format_report_md(
     result: BenchmarkResult,
     target_name: str = "自建基准",
-    date_str: Optional[str] = None,
+    date_str: str | None = None,
 ) -> str:
     """
     生成路线图格式的 Markdown 评估报告。
@@ -181,41 +182,40 @@ def format_report_md(
         else:
             lines.append(f"| {cat} | 0 | 0 | N/A |")
 
-    lines.extend([
-        f"| **总计** | **{total_expected_pos}** | **{result.tp}** | **{result.recall:.1%}** |",
-        "",
-        "---",
-        "",
-        "## 误报率 (FPR)",
-        "",
-        f"- 总发现数: {total_found}",
-        f"- 真阳性 (TP): {result.tp}",
-        f"- 误报 (FP): {result.fp}",
-        f"- 应阴性总数 (TN+FP): {total_expected_neg}",
-        f"- **误报率 (FPR)**: {result.fpr:.1%}",
-        "",
-        "---",
-        "",
-        "## 综合指标",
-        "",
-        f"- **Recall (检测率)**: {result.recall:.1%}",
-        f"- **Precision (精确率)**: {result.precision:.1%}",
-        f"- **F1 Score**: {result.f1:.2f}",
-        "",
-        "---",
-        "",
-        "## 明细 (TP/TN/FP/FN)",
-        "",
-        "| ID | 类型 | 模式 | 预期 | 结果 | 判定 |",
-        "|----|------|------|------|------|------|",
-    ])
+    lines.extend(
+        [
+            f"| **总计** | **{total_expected_pos}** | **{result.tp}** | **{result.recall:.1%}** |",
+            "",
+            "---",
+            "",
+            "## 误报率 (FPR)",
+            "",
+            f"- 总发现数: {total_found}",
+            f"- 真阳性 (TP): {result.tp}",
+            f"- 误报 (FP): {result.fp}",
+            f"- 应阴性总数 (TN+FP): {total_expected_neg}",
+            f"- **误报率 (FPR)**: {result.fpr:.1%}",
+            "",
+            "---",
+            "",
+            "## 综合指标",
+            "",
+            f"- **Recall (检测率)**: {result.recall:.1%}",
+            f"- **Precision (精确率)**: {result.precision:.1%}",
+            f"- **F1 Score**: {result.f1:.2f}",
+            "",
+            "---",
+            "",
+            "## 明细 (TP/TN/FP/FN)",
+            "",
+            "| ID | 类型 | 模式 | 预期 | 结果 | 判定 |",
+            "|----|------|------|------|------|------|",
+        ]
+    )
 
     for d in result.details:
         res_str = "FOUND" if d["detected"] else "CLEAN"
-        lines.append(
-            f"| {d['id']} | {d['category']} | {d['pattern']} | "
-            f"{d['expect']} | {res_str} | {d['verdict']} |"
-        )
+        lines.append(f"| {d['id']} | {d['category']} | {d['pattern']} | {d['expect']} | {res_str} | {d['verdict']} |")
 
     lines.append("")
     return "\n".join(lines)
@@ -224,8 +224,8 @@ def format_report_md(
 def format_report_json(
     result: BenchmarkResult,
     target_name: str = "自建基准",
-    date_str: Optional[str] = None,
-) -> Dict:
+    date_str: str | None = None,
+) -> dict:
     """生成可序列化的 JSON 报告结构。"""
     if date_str is None:
         date_str = datetime.now().strftime("%Y-%m-%d")
@@ -248,9 +248,9 @@ def format_report_json(
 
 
 def run_and_save_report(
-    output_dir: Optional[Path] = None,
+    output_dir: Path | None = None,
     target_name: str = "自建基准",
-    result: Optional[BenchmarkResult] = None,
+    result: BenchmarkResult | None = None,
 ) -> tuple[Path, Path, BenchmarkResult]:
     """
     运行基准、生成 Markdown 与 JSON 报告并写入目录。
@@ -281,7 +281,9 @@ def run_and_save_report(
 
     json_path = output_dir / f"benchmark_report_{date_str}.json"
     json_path.write_text(
-        json.dumps(format_report_json(result, target_name=target_name, date_str=date_str), ensure_ascii=False, indent=2),
+        json.dumps(
+            format_report_json(result, target_name=target_name, date_str=date_str), ensure_ascii=False, indent=2
+        ),
         encoding="utf-8",
     )
 
@@ -291,6 +293,7 @@ def run_and_save_report(
 def _file_matches(finding_file: str, expected_file: str) -> bool:
     """预期 file 可为路径后缀或包含关系，如 'login.js' 或 '*login*'。"""
     import fnmatch
+
     f = finding_file.replace("\\", "/")
     e = expected_file.replace("\\", "/")
     if "*" in e:
@@ -300,7 +303,7 @@ def _file_matches(finding_file: str, expected_file: str) -> bool:
 
 def evaluate_project_against_ground_truth(
     project_dir: Path,
-    ground_truth: List[Dict],
+    ground_truth: list[dict],
     engine: str = "new",
 ) -> BenchmarkResult:
     """
@@ -321,7 +324,7 @@ def evaluate_project_against_ground_truth(
 
     scanner = ProjectScanner(str(project_dir), engine=engine)
     results = scanner.scan_project(verbose=False)
-    all_findings: List[Dict] = []
+    all_findings: list[dict] = []
     for file_path, findings in results.items():
         for f in findings:
             f = dict(f)
@@ -334,14 +337,14 @@ def evaluate_project_against_ground_truth(
     positives = [(i, e) for i, e in enumerate(ground_truth) if e.get("is_true_positive", True)]
     negatives = [(i, e) for i, e in enumerate(ground_truth) if not e.get("is_true_positive", True)]
 
-    used_positive: List[bool] = [False] * len(positives)
-    used_negative: List[bool] = [False] * len(negatives)
+    used_positive: list[bool] = [False] * len(positives)
+    used_negative: list[bool] = [False] * len(negatives)
     matched_finding_idx: set = set()
 
     # 行号容差：±LINE_TOLERANCE 内视为匹配
     LINE_TOLERANCE = 3
 
-    def _match(exp: Dict, finding: Dict) -> bool:
+    def _match(exp: dict, finding: dict) -> bool:
         if finding.get("type", "") != exp.get("type", ""):
             return False
         if not _file_matches(finding.get("_file", ""), exp.get("file", "")):
@@ -375,7 +378,7 @@ def evaluate_project_against_ground_truth(
 
     tp = sum(1 for u in used_positive if u)
     fn = len(positives) - tp
-    fp_neg   = sum(1 for u in used_negative if u)
+    fp_neg = sum(1 for u in used_negative if u)
     fp_extra = sum(1 for j in range(len(all_findings)) if j not in matched_finding_idx)
     fp = fp_neg + fp_extra
     tn = sum(1 for u in used_negative if not u)
