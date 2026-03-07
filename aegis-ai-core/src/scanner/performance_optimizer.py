@@ -6,6 +6,7 @@
 import hashlib
 import json
 import os
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -241,7 +242,7 @@ class ParallelScanner:
         file_paths: list[Path],
         project_path: Path,
         supported_extensions: dict[str, str],
-        progress_callback: callable | None = None,
+        progress_callback: Callable | None = None,
     ) -> dict[Path, list[dict]]:
         """
         并行扫描多个文件
@@ -330,7 +331,7 @@ class PerformanceOptimizer:
         scan_func: callable,
         project_path: Path,
         supported_extensions: dict[str, str],
-        progress_callback: callable | None = None,
+        progress_callback: Callable | None = None,
         engine: str = "legacy",
     ) -> dict[Path, list[dict]]:
         """
