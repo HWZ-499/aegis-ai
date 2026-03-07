@@ -11,7 +11,8 @@ security_rule.py - 规则基类（面向 AST 节点）
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Iterable, Optional, Set
+from collections.abc import Iterable
+from typing import Any
 
 from .analysis_context import AnalysisContext
 
@@ -26,7 +27,7 @@ class SecurityRule(ABC):
     - 通过 supports(language) 控制规则适用的语言集合。
     """
 
-    def __init__(self, rule_id: str, severity: str, languages: Optional[Iterable[str]] = None) -> None:
+    def __init__(self, rule_id: str, severity: str, languages: Iterable[str] | None = None) -> None:
         """
         Args:
             rule_id: 规则唯一标识（如 "SQL_INJECTION"）
@@ -35,13 +36,13 @@ class SecurityRule(ABC):
         """
         self.rule_id = rule_id
         self.severity = severity
-        self._languages: Set[str] = set(languages or [])
+        self._languages: set[str] = set(languages or [])
 
     # ------------------------------------------------------------------
     # 元信息
     # ------------------------------------------------------------------
     @property
-    def languages(self) -> Set[str]:
+    def languages(self) -> set[str]:
         """返回规则适用的语言集合。"""
         return self._languages
 
@@ -85,4 +86,3 @@ class SecurityRule(ABC):
         适用于需要“全局视角”的规则（例如先收集信息，再统一下结论）。
         默认实现为空，实现类可按需重写。
         """
-

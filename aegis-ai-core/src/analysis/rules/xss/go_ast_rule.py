@@ -10,7 +10,7 @@ Go XSS 风险 AST/污点规则。
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Set
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
 
@@ -36,10 +36,10 @@ class GoXSSAstRule(SecurityRule):
         if graph is None:
             return
 
-        reported_sinks: Set[str] = set()
+        reported_sinks: set[str] = set()
 
         try:
-            paths: List[Any] = graph.find_paths_to_sinks()
+            paths: list[Any] = graph.find_paths_to_sinks()
         except Exception:
             return
 
@@ -71,7 +71,7 @@ class GoXSSAstRule(SecurityRule):
                 "且未检测到 template.HTMLEscapeString 等转义，存在 XSS 风险。"
             )
 
-            finding: Dict[str, Any] = {
+            finding: dict[str, Any] = {
                 "type": "XSS_RISK",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
@@ -84,4 +84,3 @@ class GoXSSAstRule(SecurityRule):
 
 
 __all__ = ["GoXSSAstRule"]
-

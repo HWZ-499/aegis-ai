@@ -17,28 +17,51 @@ Sink: pymongo 的 find, find_one, update, update_one, update_many, delete_one, d
 from __future__ import annotations
 
 import ast
-from typing import Any, Dict, List
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
 
-
 # ── 用户输入属性（Flask / Django）────────────────────────────────────
 _USER_INPUT_OBJS = frozenset(["request", "req"])
-_USER_INPUT_ATTRS = frozenset([
-    "json", "form", "data", "values", "GET", "POST", "FILES",
-    "params", "query_params", "args", "cookies", "headers",
-])
+_USER_INPUT_ATTRS = frozenset(
+    [
+        "json",
+        "form",
+        "data",
+        "values",
+        "GET",
+        "POST",
+        "FILES",
+        "params",
+        "query_params",
+        "args",
+        "cookies",
+        "headers",
+    ]
+)
 
 # ── pymongo / motor 查询与更新方法（sink）────────────────────────────
-_MONGO_SINK_METHODS = frozenset([
-    "find", "find_one", "update", "update_one", "update_many",
-    "delete_one", "delete_many", "aggregate", "count_documents",
-    "find_one_and_update", "find_one_and_delete", "find_one_and_replace",
-    "replace_one", "bulk_write",
-])
+_MONGO_SINK_METHODS = frozenset(
+    [
+        "find",
+        "find_one",
+        "update",
+        "update_one",
+        "update_many",
+        "delete_one",
+        "delete_many",
+        "aggregate",
+        "count_documents",
+        "find_one_and_update",
+        "find_one_and_delete",
+        "find_one_and_replace",
+        "replace_one",
+        "bulk_write",
+    ]
+)
 
 
-def _collect_names(node: ast.AST) -> List[str]:
+def _collect_names(node: ast.AST) -> list[str]:
     """从节点子树收集所有 Name.id。"""
     return [n.id for n in ast.walk(node) if isinstance(n, ast.Name)]
 
@@ -166,7 +189,7 @@ class PythonNoSQLInjectionAstRule(SecurityRule):
             return
         if _is_user_input_node(query_arg, context):
             line_no = getattr(node, "lineno", 0)
-            finding: Dict[str, Any] = {
+            finding: dict[str, Any] = {
                 "type": "NOSQL_INJECTION",
                 "rule_id": self.rule_id,
                 "severity": self.severity,

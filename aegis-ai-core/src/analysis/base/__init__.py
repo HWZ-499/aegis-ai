@@ -13,10 +13,10 @@ from .analysis_context import (
     make_related_location,
     tree_sitter_node_to_range,
 )
-from .security_rule import SecurityRule
 from .dataflow_tracker import DataFlowTracker, TaintLevel, TaintSource, VariableInfo
-from .user_input_detector import is_user_input_node, is_user_input_expr
 from .file_context import is_likely_seed_or_migration
+from .security_rule import SecurityRule
+from .user_input_detector import is_user_input_expr, is_user_input_node
 
 __all__ = [
     "AnalysisContext",
@@ -31,4 +31,3 @@ __all__ = [
     "is_user_input_expr",
     "is_likely_seed_or_migration",
 ]
-

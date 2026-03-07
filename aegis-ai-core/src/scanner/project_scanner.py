@@ -2,12 +2,12 @@
 """
 批量扫描整个项目，检测所有代码文件的安全问题
 """
+
 import logging
 import os
 import sys
-from pathlib import Path
-from typing import List, Dict, Optional, Tuple
 from datetime import datetime
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -18,27 +18,42 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 from src.analysis.ast_analyzer import analyze_code_ast
-from src.analysis.security_rules import scan_code_locally
-from src.analysis.rule_based_audit import merge_findings
 from src.analysis.multi_language_ast import analyze_code_multi_language
+from src.analysis.rule_based_audit import merge_findings
 from src.analysis.rule_engine import (
-    analyze_python as analyze_python_new,
-    analyze_javascript as analyze_javascript_new,
-    analyze_php as analyze_php_new,
+    analyze_go as analyze_go_new,
+)
+from src.analysis.rule_engine import (
     analyze_java as analyze_java_new,
 )
+from src.analysis.rule_engine import (
+    analyze_javascript as analyze_javascript_new,
+)
+from src.analysis.rule_engine import (
+    analyze_php as analyze_php_new,
+)
+from src.analysis.rule_engine import (
+    analyze_python as analyze_python_new,
+)
+from src.analysis.security_rules import scan_code_locally
 
 
 class ProjectScanner:
     """
     项目扫描器
-    
+
     扫描整个项目目录，检测所有代码文件的安全问题
     """
-    
-    def __init__(self, project_path: str, ignore_patterns: Optional[List[str]] = None,
-                 use_cache: bool = True, use_parallel: bool = True,
-                 max_workers: Optional[int] = None, engine: str = "new"):
+
+    def __init__(
+        self,
+        project_path: str,
+        ignore_patterns: list[str] | None = None,
+        use_cache: bool = True,
+        use_parallel: bool = True,
+        max_workers: int | None = None,
+        engine: str = "new",
+    ):
         """
         初始化项目扫描器
 
@@ -55,27 +70,28 @@ class ProjectScanner:
         self.project_path = Path(project_path).resolve()
         if not self.project_path.exists():
             raise ValueError(f"项目路径不存在: {project_path}")
-        
+
         # 扫描引擎类型
         self.engine = engine if engine in ("legacy", "new") else "new"
-        
+
         # 性能优化选项
         self.use_cache = use_cache
         self.use_parallel = use_parallel
         self.max_workers = max_workers
-        
+
         # 初始化性能优化器
         if use_cache or use_parallel:
             from src.scanner.performance_optimizer import PerformanceOptimizer
+
             self.optimizer = PerformanceOptimizer(
-                cache_dir=str(self.project_path / '.aegis-cache'),
+                cache_dir=str(self.project_path / ".aegis-cache"),
                 max_workers=max_workers,
                 use_cache=use_cache,
-                use_parallel=use_parallel
+                use_parallel=use_parallel,
             )
         else:
             self.optimizer = None
-        
+
         # ──────────────────────────────────────────────
         # 支持的文件扩展名（1.4 多语言诚实标注）
         #
@@ -84,30 +100,30 @@ class ProjectScanner:
         # 未支持：Rust、Swift、Kotlin、C# 等无规则语言已不列入
         # ──────────────────────────────────────────────
         self._full_support = {
-            '.py': 'python',
-            '.pyw': 'python',
-            '.js': 'javascript',
-            '.jsx': 'javascript',
-            '.mjs': 'javascript',
-            '.cjs': 'javascript',
-            '.ts': 'typescript',
-            '.tsx': 'typescript',
-            '.php': 'php',   # PhpTaintGraph 污点分析（SQLi/XSS/RCE/OPEN_REDIRECT）
-            '.java': 'java', # Java AST + TaintAnalyzer + 规则引擎
-            '.go': 'go',     # Go AST + TaintAnalyzer + 规则引擎
+            ".py": "python",
+            ".pyw": "python",
+            ".js": "javascript",
+            ".jsx": "javascript",
+            ".mjs": "javascript",
+            ".cjs": "javascript",
+            ".ts": "typescript",
+            ".tsx": "typescript",
+            ".php": "php",  # PhpTaintGraph 污点分析（SQLi/XSS/RCE/OPEN_REDIRECT）
+            ".java": "java",  # Java AST + TaintAnalyzer + 规则引擎
+            ".go": "go",  # Go AST + TaintAnalyzer + 规则引擎
         }
         self._partial_support = {
-            '.c': 'c',
-            '.cpp': 'cpp',
-            '.cc': 'cpp',
-            '.cxx': 'cpp',
-            '.h': 'c',
-            '.hpp': 'cpp',
+            ".c": "c",
+            ".cpp": "cpp",
+            ".cc": "cpp",
+            ".cxx": "cpp",
+            ".h": "c",
+            ".hpp": "cpp",
         }
         self.supported_extensions = {**self._full_support, **self._partial_support}
         self._init_ignore_and_excluded(ignore_patterns)
 
-    def get_support_level(self, ext: str) -> Optional[str]:
+    def get_support_level(self, ext: str) -> str | None:
         """
         返回扩展名的支持级别，用于诚实标注与文档。
 
@@ -124,62 +140,128 @@ class ProjectScanner:
             return "partial"
         return None
 
-    def _init_ignore_and_excluded(self, ignore_patterns: Optional[List[str]]) -> None:
+    def _init_ignore_and_excluded(self, ignore_patterns: list[str] | None) -> None:
         self.ignore_patterns = ignore_patterns or [
-            '.git', '__pycache__', 'node_modules', '.venv', 'venv',
-            '.pytest_cache', '.mypy_cache', 'dist', 'build', '.idea',
-            '.vscode', '.vs', '*.pyc', '*.pyo', '*.pyd',
+            ".git",
+            "__pycache__",
+            "node_modules",
+            ".venv",
+            "venv",
+            ".pytest_cache",
+            ".mypy_cache",
+            "dist",
+            "build",
+            ".idea",
+            ".vscode",
+            ".vs",
+            "*.pyc",
+            "*.pyo",
+            "*.pyd",
             # 测试目录（商业扫描器不会扫描这些）
-            'test', 'tests', '__tests__', 'spec', 'specs', '__spec__',
-            'test_*', '*_test', '*_spec', '*.test.*', '*.spec.*',
+            "test",
+            "tests",
+            "__tests__",
+            "spec",
+            "specs",
+            "__spec__",
+            "test_*",
+            "*_test",
+            "*_spec",
+            "*.test.*",
+            "*.spec.*",
             # 其他测试相关目录
-            'coverage', '.nyc_output', 'jest', 'mocha', 'cypress', 'e2e',
+            "coverage",
+            ".nyc_output",
+            "jest",
+            "mocha",
+            "cypress",
+            "e2e",
             # 第三方库目录（'lib' 不在此处，因为 lib/ 是很多项目的核心源码目录）
-            'vendor', 'bower_components',
+            "vendor",
+            "bower_components",
             # 压缩文件扩展名（会在_should_ignore中检查）
-            '*.min.js', '*.min.css', '*.min.js.map',
-            '*.bundle.js', '*.chunk.js', '*.map'
+            "*.min.js",
+            "*.min.css",
+            "*.min.js.map",
+            "*.bundle.js",
+            "*.chunk.js",
+            "*.map",
         ]
-        
+
         # 文件黑名单：已知第三方库文件和构建工具配置文件（不含业务逻辑，跳过以降低噪音）
         self.excluded_files = [
             # 第三方库文件
-            'three.js', 'dat.gui.min.js', 'jquery.min.js',
-            'lodash.min.js', 'react.min.js', 'vue.min.js',
-            'angular.min.js', 'backbone.min.js', 'underscore.min.js',
+            "three.js",
+            "dat.gui.min.js",
+            "jquery.min.js",
+            "lodash.min.js",
+            "react.min.js",
+            "vue.min.js",
+            "angular.min.js",
+            "backbone.min.js",
+            "underscore.min.js",
             # 构建工具配置文件（不应该被扫描）
-            'Gruntfile.js', 'Gulpfile.js', 'gulpfile.js',
-            'webpack.config.js', 'rollup.config.js', 'vite.config.js',
-            'babel.config.js', 'jest.config.js', 'karma.config.js',
-            'tsconfig.json', 'tsconfig.base.json',  # TypeScript 配置文件
+            "Gruntfile.js",
+            "Gulpfile.js",
+            "gulpfile.js",
+            "webpack.config.js",
+            "rollup.config.js",
+            "vite.config.js",
+            "babel.config.js",
+            "jest.config.js",
+            "karma.config.js",
+            "tsconfig.json",
+            "tsconfig.base.json",  # TypeScript 配置文件
             # 注意：package.json 不应该被排除，因为它可能包含业务逻辑
             # 'package.json', 'package-lock.json',  # 依赖配置文件（通常不包含业务逻辑）
         ]
-        
+
         # 目录黑名单：路径中精确匹配则排除整个子树
         # 不排除 'data'/'assets'/'config'，这些目录可能含业务逻辑（DAO、前端代码、配置）
         self.excluded_dirs = [
-            'node_modules', 'vendor', 'lib', 'assets/lib',
-            'assets/private', 'bower_components', 'dist', 'build',
-            'test', 'tests', 'spec', 'specs', 'mock', 'mocks',
-            'fixtures', 'fixture',
-            'static', 'public', 'resources',
-            'datafiles', 'samples',
-            'docs', 'examples', 'tutorials', 'guides',
-            'testdata', 'mockdata', 'seed',
-            'codefixes', 'code-fixes', 'code_fixes',
+            "node_modules",
+            "vendor",
+            "lib",
+            "assets/lib",
+            "assets/private",
+            "bower_components",
+            "dist",
+            "build",
+            "test",
+            "tests",
+            "spec",
+            "specs",
+            "mock",
+            "mocks",
+            "fixtures",
+            "fixture",
+            "static",
+            "public",
+            "resources",
+            "datafiles",
+            "samples",
+            "docs",
+            "examples",
+            "tutorials",
+            "guides",
+            "testdata",
+            "mockdata",
+            "seed",
+            "codefixes",
+            "code-fixes",
+            "code_fixes",
         ]
-        
+
         # 扫描结果
-        self.scan_results: Dict[str, List[Dict]] = {}
+        self.scan_results: dict[str, list[dict]] = {}
         self.scan_stats = {
-            'total_files': 0,
-            'scanned_files': 0,
-            'files_with_issues': 0,
-            'total_issues': 0,
-            'scan_time': None
+            "total_files": 0,
+            "scanned_files": 0,
+            "files_with_issues": 0,
+            "total_issues": 0,
+            "scan_time": None,
         }
-    
+
     def _should_ignore(self, path: Path) -> bool:
         """
         判断路径是否应该被忽略。
@@ -207,24 +289,47 @@ class ProjectScanner:
             if excluded_dir in rel_parts:
                 return True
 
-        compressed_extensions = ['.min.js', '.min.css', '.min.js.map',
-                                  '.bundle.js', '.chunk.js', '.map']
+        compressed_extensions = [".min.js", ".min.css", ".min.js.map", ".bundle.js", ".chunk.js", ".map"]
         if any(path.name.endswith(ext) for ext in compressed_extensions):
             return True
 
         non_code_extensions = [
-            '.md', '.txt', '.json', '.xml', '.yaml', '.yml',
-            '.csv', '.tsv', '.log', '.data', '.dump',
-            '.pdf', '.doc', '.docx', '.xls', '.xlsx',
+            ".md",
+            ".txt",
+            ".json",
+            ".xml",
+            ".yaml",
+            ".yml",
+            ".csv",
+            ".tsv",
+            ".log",
+            ".data",
+            ".dump",
+            ".pdf",
+            ".doc",
+            ".docx",
+            ".xls",
+            ".xlsx",
         ]
         if path.suffix.lower() in non_code_extensions:
-            config_files = {'package.json', 'tsconfig.json', 'webpack.config.js',
-                            'babel.config.js', '.eslintrc.json'}
+            config_files = {"package.json", "tsconfig.json", "webpack.config.js", "babel.config.js", ".eslintrc.json"}
             if path.name.lower() not in config_files:
                 return True
 
-        test_dirs = {'test', 'tests', '__tests__', 'spec', 'specs', '__spec__',
-                     'coverage', '.nyc_output', 'jest', 'mocha', 'cypress', 'e2e'}
+        test_dirs = {
+            "test",
+            "tests",
+            "__tests__",
+            "spec",
+            "specs",
+            "__spec__",
+            "coverage",
+            ".nyc_output",
+            "jest",
+            "mocha",
+            "cypress",
+            "e2e",
+        }
         for part in path_parts:
             if part.lower() in test_dirs:
                 return True
@@ -235,49 +340,58 @@ class ProjectScanner:
         except ValueError:
             rel_str = path_str
         for pattern in self.ignore_patterns:
-            if '*' in pattern:
-                if pattern.startswith('*.'):
+            if "*" in pattern:
+                if pattern.startswith("*."):
                     ext = pattern[1:]
                     if path.name.endswith(ext):
                         return True
-            elif pattern == path.name or pattern in rel_str.replace('\\', '/').split('/'):
+            elif pattern == path.name or pattern in rel_str.replace("\\", "/").split("/"):
                 return True
 
-        if path.name.startswith('.') and path.name not in {'.gitignore', '.env', '.env.example'}:
+        if path.name.startswith(".") and path.name not in {".gitignore", ".env", ".env.example"}:
             return True
 
         return False
-    
-    def _get_discovery(self) -> Tuple[List[Path], List[Tuple[Path, str]]]:
+
+    def _get_discovery(self) -> tuple[list[Path], list[tuple[Path, str]]]:
         """
         获取项目中代码文件及未纳入扫描的文件与原因（用于发现摘要）。
 
         Returns:
             (code_files, skipped_list)，skipped_list 元素为 (path, reason)。
         """
-        code_files: List[Path] = []
-        skipped: List[Tuple[Path, str]] = []
+        code_files: list[Path] = []
+        skipped: list[tuple[Path, str]] = []
 
         for root, dirs, files in os.walk(self.project_path):
             dirs[:] = [d for d in dirs if not self._should_ignore(Path(root) / d)]
 
             for file in files:
                 file_path = Path(root) / file
-                rel_path = file_path.relative_to(self.project_path) if file_path.is_relative_to(self.project_path) else file_path
+                rel_path = (
+                    file_path.relative_to(self.project_path)
+                    if file_path.is_relative_to(self.project_path)
+                    else file_path
+                )
 
                 if self._should_ignore(file_path):
                     skipped.append((rel_path, "被忽略规则排除"))
                     continue
                 if file_path.suffix not in self.supported_extensions:
-                    full_str = ', '.join(sorted(self._full_support.keys()))
-                    part_str = ', '.join(sorted(self._partial_support.keys()))
-                    skipped.append((rel_path, f"扩展名 {file_path.suffix} 不在支持列表（完整支持: {full_str}；基础支持: {part_str}）"))
+                    full_str = ", ".join(sorted(self._full_support.keys()))
+                    part_str = ", ".join(sorted(self._partial_support.keys()))
+                    skipped.append(
+                        (
+                            rel_path,
+                            f"扩展名 {file_path.suffix} 不在支持列表（完整支持: {full_str}；基础支持: {part_str}）",
+                        )
+                    )
                     continue
                 code_files.append(file_path)
 
         return code_files, skipped
 
-    def _get_code_files(self) -> List[Path]:
+    def _get_code_files(self) -> list[Path]:
         """
         获取项目中所有代码文件。
 
@@ -286,44 +400,44 @@ class ProjectScanner:
         """
         code_files, _ = self._get_discovery()
         return code_files
-    
-    def scan_file(self, file_path: Path) -> List[Dict]:
+
+    def scan_file(self, file_path: Path) -> list[dict]:
         """
         扫描单个文件（支持多语言）
-        
+
         Args:
             file_path: 文件路径
-            
+
         Returns:
             检测到的问题列表
         """
         try:
             # 读取文件内容
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(file_path, encoding="utf-8", errors="ignore") as f:
                 code = f.read()
-            
+
             # 检测语言
-            language = self.supported_extensions.get(file_path.suffix, 'unknown')
-            
+            language = self.supported_extensions.get(file_path.suffix, "unknown")
+
             # 执行检测（支持多语言）
             file_path_str = str(file_path)
-            if language == 'python' and self.engine == 'new':
+            if language == "python" and self.engine == "new":
                 # ✅ 新规则引擎（Python）
                 merged_findings = analyze_python_new(code, file_path_str)
-            elif language in ('javascript', 'typescript') and self.engine == 'new':
+            elif language in ("javascript", "typescript") and self.engine == "new":
                 # ✅ 新规则引擎（JS/TS）：使用新架构规则
                 merged_findings = analyze_javascript_new(code, file_path_str, language=language)
-            elif language == 'php' and self.engine == 'new':
+            elif language == "php" and self.engine == "new":
                 # ✅ 新规则引擎（PHP）：PhpTaintGraph 污点分析
                 merged_findings = analyze_php_new(code, file_path_str)
-            elif language == 'java' and self.engine == 'new':
+            elif language == "java" and self.engine == "new":
                 # ✅ 新规则引擎（Java）：Tree-sitter Java + TaintAnalyzer + 规则引擎
                 merged_findings = analyze_java_new(code, file_path_str)
-            elif language == 'go' and self.engine == 'new':
+            elif language == "go" and self.engine == "new":
                 # ✅ 新规则引擎（Go）：Tree-sitter Go + TaintAnalyzer + 规则引擎
                 merged_findings = analyze_go_new(code, file_path_str)
             else:
-                if language == 'python':
+                if language == "python":
                     # 旧版 Python 引擎：AST 分析 + 本地规则匹配
                     ast_findings = analyze_code_ast(code)
                     regex_findings = scan_code_locally(code, file_path=file_path_str)
@@ -334,41 +448,43 @@ class ProjectScanner:
                     regex_findings = scan_code_locally(code, file_path=file_path_str)
                     # 合并结果（去重）
                     merged_findings = merge_findings(multi_lang_findings, regex_findings)
-            
+
             # 添加文件信息
             for finding in merged_findings:
-                finding['file'] = str(file_path.relative_to(self.project_path))
-                finding['file_path'] = str(file_path)
-                finding['language'] = language  # 添加语言信息
-            
+                finding["file"] = str(file_path.relative_to(self.project_path))
+                finding["file_path"] = str(file_path)
+                finding["language"] = language  # 添加语言信息
+
             return merged_findings
-            
+
         except Exception as e:
             logger.warning("扫描文件失败 %s: %s", file_path, e)
             return []
-    
-    def scan_project(self, verbose: bool = False) -> Dict[str, List[Dict]]:
+
+    def scan_project(self, verbose: bool = False) -> dict[str, list[dict]]:
         """
         扫描整个项目
-        
+
         Args:
             verbose: 是否显示详细信息
-            
+
         Returns:
             扫描结果字典，key 为文件路径，value 为问题列表
         """
         start_time = datetime.now()
-        
+
         if verbose:
             logger.info("开始扫描项目: %s", self.project_path)
-            logger.info("完整支持（AST+规则）: %s", ', '.join(sorted(self._full_support.keys())))
-            logger.info("基础支持（仅正则）: %s", ', '.join(sorted(self._partial_support.keys())))
-        
+            logger.info("完整支持（AST+规则）: %s", ", ".join(sorted(self._full_support.keys())))
+            logger.info("基础支持（仅正则）: %s", ", ".join(sorted(self._partial_support.keys())))
+
         # 获取代码文件及未扫描文件列表（用于发现摘要）
         code_files, skipped_list = self._get_discovery()
-        self.scan_stats['total_files'] = len(code_files)
-        self.scan_stats['discovered_files'] = [str(p.relative_to(self.project_path)) if p.is_relative_to(self.project_path) else str(p) for p in code_files]
-        self.scan_stats['skipped_files'] = [(str(p), reason) for p, reason in skipped_list]
+        self.scan_stats["total_files"] = len(code_files)
+        self.scan_stats["discovered_files"] = [
+            str(p.relative_to(self.project_path)) if p.is_relative_to(self.project_path) else str(p) for p in code_files
+        ]
+        self.scan_stats["skipped_files"] = [(str(p), reason) for p, reason in skipped_list]
 
         if verbose:
             logger.info("发现 %d 个代码文件（已纳入扫描）", len(code_files))
@@ -381,47 +497,47 @@ class ProjectScanner:
                     logger.debug("  − %s: %s", path, reason)
                 if len(skipped_list) > 15:
                     logger.debug("  … 及其他 %d 个", len(skipped_list) - 15)
-        
+
         # 扫描每个文件（使用性能优化）
         if self.optimizer:
             # 使用优化的扫描方法（缓存 + 并行）
             def progress_callback(completed, total, file_path):
                 if verbose and completed % 10 == 0:
                     logger.info("扫描进度: %d/%d", completed, total)
-            
+
             optimized_results = self.optimizer.scan_files_optimized(
                 code_files,
                 scan_func=self.scan_file,
                 project_path=self.project_path,
                 supported_extensions=self.supported_extensions,
                 progress_callback=progress_callback if verbose else None,
-                engine=self.engine  # 【修复】传递引擎类型
+                engine=self.engine,  # 【修复】传递引擎类型
             )
-            
+
             # 处理优化后的结果
             for file_path, findings in optimized_results.items():
-                self.scan_stats['scanned_files'] += 1
-                
+                self.scan_stats["scanned_files"] += 1
+
                 if findings:
                     relative_path = str(file_path.relative_to(self.project_path))
                     self.scan_results[relative_path] = findings
-                    self.scan_stats['files_with_issues'] += 1
-                    self.scan_stats['total_issues'] += len(findings)
+                    self.scan_stats["files_with_issues"] += 1
+                    self.scan_stats["total_issues"] += len(findings)
         else:
             # 顺序扫描（不使用优化）
             for i, file_path in enumerate(code_files, 1):
                 if verbose and i % 10 == 0:
                     logger.info("扫描进度: %d/%d", i, len(code_files))
-                
+
                 findings = self.scan_file(file_path)
-                self.scan_stats['scanned_files'] += 1
-                
+                self.scan_stats["scanned_files"] += 1
+
                 if findings:
                     relative_path = str(file_path.relative_to(self.project_path))
                     self.scan_results[relative_path] = findings
-                    self.scan_stats['files_with_issues'] += 1
-                    self.scan_stats['total_issues'] += len(findings)
-        
+                    self.scan_stats["files_with_issues"] += 1
+                    self.scan_stats["total_issues"] += len(findings)
+
         # ── 跨文件污点传播分析（仅新引擎 + JS/TS/Python 项目） ──
         if self.engine == "new":
             cross_file_findings = self._run_cross_file_analysis(verbose=verbose)
@@ -430,27 +546,27 @@ class ProjectScanner:
                 if target_file not in self.scan_results:
                     self.scan_results[target_file] = []
                 self.scan_results[target_file].append(finding)
-                self.scan_stats['total_issues'] += 1
+                self.scan_stats["total_issues"] += 1
             if cross_file_findings and verbose:
                 logger.info("跨文件分析发现 %d 个额外污点路径", len(cross_file_findings))
 
         # 计算扫描时间
         end_time = datetime.now()
-        self.scan_stats['scan_time'] = (end_time - start_time).total_seconds()
-        
+        self.scan_stats["scan_time"] = (end_time - start_time).total_seconds()
+
         if verbose:
             logger.info(
                 "扫描完成！总文件: %d | 已扫描: %d | 有问题: %d | 总问题数: %d | 耗时: %.2fs",
-                self.scan_stats['total_files'],
-                self.scan_stats['scanned_files'],
-                self.scan_stats['files_with_issues'],
-                self.scan_stats['total_issues'],
-                self.scan_stats['scan_time'],
+                self.scan_stats["total_files"],
+                self.scan_stats["scanned_files"],
+                self.scan_stats["files_with_issues"],
+                self.scan_stats["total_issues"],
+                self.scan_stats["scan_time"],
             )
-        
+
         return self.scan_results
 
-    def _run_cross_file_analysis(self, verbose: bool = False) -> List[Dict]:
+    def _run_cross_file_analysis(self, verbose: bool = False) -> list[dict]:
         """
         运行跨文件污点传播分析。
 
@@ -490,37 +606,38 @@ class ProjectScanner:
             )
 
             cross_paths = cross_analyzer.find_cross_file_taint_paths()
-            findings: List[Dict] = []
+            findings: list[dict] = []
 
             for path in cross_paths:
                 # 将 CrossFileTaintPath 转换为统一 finding 格式
                 sink_rel = self._to_relative(path.sink_file)
-                finding: Dict = {
-                    "type":             path.vuln_type.upper() if path.vuln_type else "CROSS_FILE_TAINT",
-                    "severity":         path.severity,
-                    "line":             path.sink_line,
-                    "start_line":       path.sink_line,
-                    "end_line":         path.sink_line,
-                    "start_character":  0,
-                    "end_character":    999,
-                    "details":          path.description or (
+                finding: dict = {
+                    "type": path.vuln_type.upper() if path.vuln_type else "CROSS_FILE_TAINT",
+                    "severity": path.severity,
+                    "line": path.sink_line,
+                    "start_line": path.sink_line,
+                    "end_line": path.sink_line,
+                    "start_character": 0,
+                    "end_character": 999,
+                    "details": path.description
+                    or (
                         f"[CrossFile] 污点数据从 {self._to_relative(path.source_file)}:"
                         f"{path.source_line} ({path.source_expr}) "
                         f"传播至 {sink_rel}:{path.sink_line} ({path.sink_expr})"
                     ),
-                    "file":             sink_rel,
-                    "file_path":        path.sink_file,
-                    "language":         "javascript",
-                    "source":           "CrossFileAnalyzer",
-                    "confidence":       "medium",
+                    "file": sink_rel,
+                    "file_path": path.sink_file,
+                    "language": "javascript",
+                    "source": "CrossFileAnalyzer",
+                    "confidence": "medium",
                     # 关联位置：标记 Source 文件和行
                     "related_locations": [
                         {
-                            "file_path":       path.source_file,
-                            "start_line":      path.source_line,
-                            "end_line":        path.source_line,
+                            "file_path": path.source_file,
+                            "start_line": path.source_line,
+                            "end_line": path.source_line,
                             "start_character": 0,
-                            "end_character":   999,
+                            "end_character": 999,
                             "message": f"SOURCE: {path.source_expr}",
                         }
                     ],
@@ -539,35 +656,28 @@ class ProjectScanner:
             return str(Path(file_path).relative_to(self.project_path))
         except ValueError:
             return file_path
-    
-    def get_stats(self) -> Dict:
+
+    def get_stats(self) -> dict:
         """
         获取扫描统计信息
-        
+
         Returns:
             统计信息字典
         """
         # 按严重程度统计
-        severity_stats = {
-            'Critical': 0,
-            'High': 0,
-            'Medium': 0,
-            'Low': 0
-        }
-        
+        severity_stats = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0}
+
         for findings in self.scan_results.values():
             for finding in findings:
-                severity = finding.get('severity', 'Medium')
+                severity = finding.get("severity", "Medium")
                 severity_stats[severity] = severity_stats.get(severity, 0) + 1
-        
-        return {
-            **self.scan_stats,
-            'severity_stats': severity_stats
-        }
+
+        return {**self.scan_stats, "severity_stats": severity_stats}
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import sys
+
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
     if len(sys.argv) < 2:
@@ -582,4 +692,4 @@ if __name__ == '__main__':
     for file_path, findings in results.items():
         logger.info("  %s: %d 个问题", file_path, len(findings))
         for finding in findings[:3]:
-            logger.info("    - [%s] %s", finding.get('severity', 'Medium'), finding.get('type', 'Unknown'))
+            logger.info("    - [%s] %s", finding.get("severity", "Medium"), finding.get("type", "Unknown"))

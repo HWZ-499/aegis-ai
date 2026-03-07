@@ -9,11 +9,10 @@ analysis.analyzers
 - GoAnalyzer: 处理 Go 源码（使用 Tree-sitter + TaintAnalyzer）
 """
 
-from .python_analyzer import PythonAnalyzer
+from .go_analyzer import GoAnalyzer
+from .java_analyzer import JavaAnalyzer
 from .javascript_analyzer import JavaScriptAnalyzer
 from .php_analyzer import PhpAnalyzer
-from .java_analyzer import JavaAnalyzer
-from .go_analyzer import GoAnalyzer
+from .python_analyzer import PythonAnalyzer
 
 __all__ = ["PythonAnalyzer", "JavaScriptAnalyzer", "PhpAnalyzer", "JavaAnalyzer", "GoAnalyzer"]
-

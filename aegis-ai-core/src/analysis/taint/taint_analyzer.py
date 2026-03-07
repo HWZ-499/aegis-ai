@@ -16,23 +16,23 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
-from dataclasses import dataclass, field
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from .taint_graph import TaintGraph, TaintNode, TaintEdge, TaintPath, NodeType, EdgeType
 from .source_sink_registry import (
     SourceSinkRegistry,
     get_default_registry,
-    VulnCategory,
 )
+from .taint_graph import EdgeType, NodeType, TaintGraph, TaintNode, TaintPath
 
 # Tree-sitter 导入
 try:
-    from tree_sitter import Parser, Node
+    from tree_sitter import Node, Parser
     from tree_sitter_languages import get_language
+
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
@@ -45,31 +45,32 @@ except ImportError:
 class TaintFinding:
     """
     污点分析发现。
-    
+
     表示一个潜在的安全漏洞。
     """
+
     # 漏洞信息
-    vuln_type: str              # 漏洞类型
-    severity: str               # 严重级别
-    confidence: float           # 置信度
-    
+    vuln_type: str  # 漏洞类型
+    severity: str  # 严重级别
+    confidence: float  # 置信度
+
     # 位置信息
-    file_path: str              # 文件路径
-    line: int                   # 行号（Sink 位置）
-    
+    file_path: str  # 文件路径
+    line: int  # 行号（Sink 位置）
+
     # 污点路径
-    taint_path: TaintPath       # 完整污点路径
-    
+    taint_path: TaintPath  # 完整污点路径
+
     # 详情
-    source_expr: str            # Source 表达式
-    sink_expr: str              # Sink 表达式
-    description: str            # 描述
-    cwe: str                    # CWE 编号
-    
+    source_expr: str  # Source 表达式
+    sink_expr: str  # Sink 表达式
+    description: str  # 描述
+    cwe: str  # CWE 编号
+
     # 修复建议
-    remediation: str = ""       # 修复建议
-    
-    def to_dict(self) -> Dict[str, Any]:
+    remediation: str = ""  # 修复建议
+
+    def to_dict(self) -> dict[str, Any]:
         """转换为字典格式"""
         return {
             "vuln_type": self.vuln_type,
@@ -89,60 +90,60 @@ class TaintFinding:
 class TaintAnalyzer:
     """
     污点分析器。
-    
+
     实现完整的 Source → Sink 污点分析。
-    
+
     使用示例：
         analyzer = TaintAnalyzer(language="javascript")
         findings = analyzer.analyze_file(Path("app.js"))
-        
+
         for finding in findings:
             print(f"[{finding.severity}] {finding.vuln_type} at line {finding.line}")
             print(f"  Path: {finding.taint_path.to_string()}")
     """
-    
+
     def __init__(
         self,
         language: str = "javascript",
-        registry: Optional[SourceSinkRegistry] = None,
+        registry: SourceSinkRegistry | None = None,
     ):
         """
         初始化污点分析器。
-        
+
         Args:
             language: 目标语言（javascript, typescript, python）
             registry: Source/Sink 注册表（默认使用全局注册表）
         """
         self.language = language.lower()
         self.registry = registry or get_default_registry()
-        
+
         # 污点图
         self.graph = TaintGraph()
-        
+
         # 当前文件信息
         self._current_file: str = ""
         self._current_code: str = ""
-        
+
         # 变量追踪
-        self._variables: Dict[str, TaintNode] = {}  # name -> node
+        self._variables: dict[str, TaintNode] = {}  # name -> node
 
         # 函数摘要追踪（JS 跨函数污点传播）
         # {func_name: {"first_param": str, "tainted": bool}}
         # 当发现 function foo(req, ...) 且 req 匹配已知 Source 时注册
-        self._tainted_functions: Dict[str, Dict[str, Any]] = {}
+        self._tainted_functions: dict[str, dict[str, Any]] = {}
 
         # 动态 Express Router 实例追踪
         # 存储通过 express.Router() / Router() 创建的变量名
         # 使得 apiRouter.get(...)、v1Router.post(...) 等模式也能被识别为路由
-        self._express_router_vars: Set[str] = set()
+        self._express_router_vars: set[str] = set()
 
         # CFG / 支配树（用于 Guard Clause 精确分析）
         # 在 _analyze_from_root 中构建，供 _check_guard_clause 使用
-        self._guard_if_nodes: List[Any] = []  # 收集的 if 语句节点
-        self._dominator_tree: Any = None       # DominatorTree 实例（延迟构建）
-        
+        self._guard_if_nodes: list[Any] = []  # 收集的 if 语句节点
+        self._dominator_tree: Any = None  # DominatorTree 实例（延迟构建）
+
         # 初始化 Tree-sitter parser
-        self._parser: Optional[Parser] = None
+        self._parser: Parser | None = None
         if TREE_SITTER_AVAILABLE:
             try:
                 if self.language in ("javascript", "typescript"):
@@ -157,19 +158,19 @@ class TaintAnalyzer:
                     lang = get_language("go")
                 else:
                     lang = get_language("javascript")
-                
+
                 self._parser = Parser()
                 self._parser.set_language(lang)
             except Exception:
                 self._parser = None
-    
-    def analyze_file(self, file_path: Path) -> List[TaintFinding]:
+
+    def analyze_file(self, file_path: Path) -> list[TaintFinding]:
         """
         分析单个文件。
-        
+
         Args:
             file_path: 文件路径
-        
+
         Returns:
             发现的漏洞列表
         """
@@ -179,15 +180,15 @@ class TaintAnalyzer:
         except Exception as e:
             logger.warning("污点分析文件失败 %s: %s", file_path, e)
             return []
-    
-    def analyze_code(self, code: str, file_path: str = "") -> List[TaintFinding]:
+
+    def analyze_code(self, code: str, file_path: str = "") -> list[TaintFinding]:
         """
         分析代码字符串。
-        
+
         Args:
             code: 源代码
             file_path: 文件路径（可选）
-        
+
         Returns:
             发现的漏洞列表
         """
@@ -202,7 +203,7 @@ class TaintAnalyzer:
 
         if not self._parser:
             return []
-        
+
         try:
             # 1. 解析 AST
             tree = self._parser.parse(bytes(code, "utf8"))
@@ -235,7 +236,7 @@ class TaintAnalyzer:
         except Exception as e:
             logger.warning("analyze_tree 构建污点图失败 [%s]: %s", file_path, e)
 
-    def _analyze_from_root(self, root: Any, file_path: str, code: str) -> List[TaintFinding]:
+    def _analyze_from_root(self, root: Any, file_path: str, code: str) -> list[TaintFinding]:
         """共用逻辑：从根节点收集 + 识别 + 建边 + 支配树增强 + 查路径 + 生成 findings。"""
         self._collect_assignments(root)
         self._identify_sources_and_sinks(root)
@@ -308,17 +309,34 @@ class TaintAnalyzer:
             self._collect_assignments(child)
 
     # Guard Clause 早返回动词：检测到这些节点时认为是提前退出
-    _GUARD_EXIT_TYPES = frozenset({
-        "return_statement", "throw_statement", "break_statement",
-        # Python
-        "raise_statement",
-    })
+    _GUARD_EXIT_TYPES = frozenset(
+        {
+            "return_statement",
+            "throw_statement",
+            "break_statement",
+            # Python
+            "raise_statement",
+        }
+    )
 
     # 具有验证语义的函数名前缀/后缀（这类函数的返回值一旦为假则早返回，意味着参数已被"验证"）
-    _GUARD_FUNC_PREFIXES = frozenset({
-        "is", "has", "can", "should", "check", "valid", "verify",
-        "assert", "ensure", "validate", "sanitize", "parse", "test",
-    })
+    _GUARD_FUNC_PREFIXES = frozenset(
+        {
+            "is",
+            "has",
+            "can",
+            "should",
+            "check",
+            "valid",
+            "verify",
+            "assert",
+            "ensure",
+            "validate",
+            "sanitize",
+            "parse",
+            "test",
+        }
+    )
 
     def _check_guard_clause(self, if_node: Any) -> None:
         """
@@ -344,8 +362,8 @@ class TaintAnalyzer:
             return
 
         # 提取子节点：condition 和 consequence
-        condition_node: Optional[Any] = None
-        consequence_node: Optional[Any] = None
+        condition_node: Any | None = None
+        consequence_node: Any | None = None
         has_else: bool = False
 
         for child in if_node.children:
@@ -396,7 +414,8 @@ class TaintAnalyzer:
                 existing_node.is_tainted = False
                 logger.debug(
                     "Guard Clause 净化(变量): '%s' 在 if-early-return 后标记为已净化（行 %d）",
-                    var_name, line,
+                    var_name,
+                    line,
                 )
                 continue
 
@@ -412,17 +431,19 @@ class TaintAnalyzer:
                     matched_in_graph = True
                     logger.debug(
                         "Guard Clause 净化(graph): '%s' 在 if-early-return 后标记为已净化（行 %d）",
-                        graph_node.name, line,
+                        graph_node.name,
+                        line,
                     )
             if not matched_in_graph:
                 # 变量未被追踪，可能是尚未遇到的标识符，预先注册净化以防后续污点扩散
                 self.graph.mark_sanitized(var_name, "guard_clause_validation")
                 logger.debug(
                     "Guard Clause 净化(预登记): '%s' 预先标记为已净化（行 %d）",
-                    var_name, line,
+                    var_name,
+                    line,
                 )
 
-    def _is_exit_only_block(self, block_node: Optional[Any]) -> bool:
+    def _is_exit_only_block(self, block_node: Any | None) -> bool:
         """
         判断块（statement_block / suite）是否只包含退出语句。
 
@@ -448,7 +469,7 @@ class TaintAnalyzer:
 
         return exit_found
 
-    def _extract_guard_vars(self, condition_node: Any) -> List[str]:
+    def _extract_guard_vars(self, condition_node: Any) -> list[str]:
         """
         从 Guard Clause 的条件节点中提取被验证的变量名。
 
@@ -461,11 +482,11 @@ class TaintAnalyzer:
         - ``!x || !y``                 → [x, y]
         - ``x``                        → x（err 等直接真值检查）
         """
-        vars_found: List[str] = []
+        vars_found: list[str] = []
         self._extract_guard_vars_recursive(condition_node, vars_found)
         return vars_found
 
-    def _extract_guard_vars_recursive(self, node: Any, result: List[str]) -> None:
+    def _extract_guard_vars_recursive(self, node: Any, result: list[str]) -> None:
         """递归从条件节点提取变量名。"""
         if not TREE_SITTER_AVAILABLE or not isinstance(node, Node):
             return
@@ -510,9 +531,7 @@ class TaintAnalyzer:
                     break
             # 检查是否具有验证语义
             lower_callee = callee_name.lower().split(".")[-1]
-            is_validator = any(
-                lower_callee.startswith(p) for p in self._GUARD_FUNC_PREFIXES
-            )
+            is_validator = any(lower_callee.startswith(p) for p in self._GUARD_FUNC_PREFIXES)
             if is_validator:
                 for child in node.children:
                     if child.type in ("arguments", "argument_list"):
@@ -607,10 +626,7 @@ class TaintAnalyzer:
         if not method_name or not object_name:
             return
         # 对象名必须是静态白名单或动态追踪到的 Router 实例
-        is_route_object = (
-            object_name.lower() in self._ROUTE_OBJECTS
-            or object_name in self._express_router_vars
-        )
+        is_route_object = object_name.lower() in self._ROUTE_OBJECTS or object_name in self._express_router_vars
         if method_name.lower() not in self._ROUTE_METHODS or not is_route_object:
             return
         line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
@@ -632,7 +648,7 @@ class TaintAnalyzer:
                         self._variables[req_param] = n
                     return
 
-    def _extract_first_param(self, func_node: Any) -> Optional[str]:
+    def _extract_first_param(self, func_node: Any) -> str | None:
         """提取函数第一个参数名。(req, res) => {} -> 'req'"""
         for child in func_node.children:
             if child.type == "formal_parameters":
@@ -642,9 +658,16 @@ class TaintAnalyzer:
         return None
 
     # 已知的 HTTP 请求对象参数名（Express / Koa / Fastify 等常见约定）
-    _KNOWN_REQUEST_PARAMS = frozenset({
-        "req", "request", "ctx", "context", "event", "e",
-    })
+    _KNOWN_REQUEST_PARAMS = frozenset(
+        {
+            "req",
+            "request",
+            "ctx",
+            "context",
+            "event",
+            "e",
+        }
+    )
 
     def _register_named_handler_function(self, node: Any) -> None:
         """
@@ -666,7 +689,7 @@ class TaintAnalyzer:
             return
 
         # 提取函数名
-        func_name: Optional[str] = None
+        func_name: str | None = None
         for child in node.children:
             if child.type == "identifier":
                 func_name = self._get_node_text(child)
@@ -676,7 +699,7 @@ class TaintAnalyzer:
             return
 
         # 提取参数列表
-        params: List[str] = []
+        params: list[str] = []
         for child in node.children:
             if child.type == "formal_parameters":
                 for param in child.children:
@@ -725,7 +748,9 @@ class TaintAnalyzer:
 
         logger.debug(
             "函数摘要注册: %s(%s, ...) → first_param '%s' 标记为 tainted",
-            func_name, first_param, first_param,
+            func_name,
+            first_param,
+            first_param,
         )
 
     def _register_arrow_function_as_handler(
@@ -785,10 +810,12 @@ class TaintAnalyzer:
 
         logger.debug(
             "箭头函数摘要注册: const %s = (%s, ...) => {...}，first_param '%s' 标记为 tainted",
-            var_name, first_param, first_param,
+            var_name,
+            first_param,
+            first_param,
         )
 
-    def _extract_first_destructured_param(self, func_node: Any) -> Optional[str]:
+    def _extract_first_destructured_param(self, func_node: Any) -> str | None:
         """
         提取函数第一个参数为解构模式时的内部第一个属性名。
 
@@ -851,11 +878,12 @@ class TaintAnalyzer:
                         self._express_router_vars.add(var_name)
                         logger.debug(
                             "Express Router 实例追踪: %s = %s",
-                            var_name, value_text[:60],
+                            var_name,
+                            value_text[:60],
                         )
                     self._register_variable(var_name, value_text, line)
-    
-    def _extract_destructured_properties(self, pattern_node: Any) -> List[str]:
+
+    def _extract_destructured_properties(self, pattern_node: Any) -> list[str]:
         """
         从 object_pattern 提取属性名（取局部变量名，即别名）。
 
@@ -863,7 +891,7 @@ class TaintAnalyzer:
         ``{ age: userAge }``       → ``['userAge']``（取别名，不取 key）
         ``{ body: { id } }``       → ``['id']``（嵌套解构，取最内层 identifier）
         """
-        props: List[str] = []
+        props: list[str] = []
         for child in pattern_node.children:
             if child.type == "shorthand_property_identifier_pattern":
                 name = self._get_node_text(child)
@@ -872,7 +900,7 @@ class TaintAnalyzer:
             elif child.type == "pair_pattern":
                 # pair_pattern: key : value_pattern
                 # 取最后一个 identifier 作为别名（value 侧），而非 key 侧
-                identifiers: List[str] = []
+                identifiers: list[str] = []
                 for subchild in child.children:
                     if subchild.type == "identifier":
                         n = self._get_node_text(subchild)
@@ -882,12 +910,11 @@ class TaintAnalyzer:
                     props.append(identifiers[-1])
         return props
 
-    def _process_js_destructuring(self, properties: List[str], source_expr: str, line: int) -> None:
+    def _process_js_destructuring(self, properties: list[str], source_expr: str, line: int) -> None:
         """解构赋值：若 source_expr 为 Source 或已污染变量，则解构出的属性继承污点。"""
         src_node = self.graph.get_node_by_name(source_expr, self._current_file) or self._variables.get(source_expr)
-        source_tainted = (
-            self.registry.find_source(source_expr, self.language) is not None
-            or (src_node is not None and src_node.is_tainted)
+        source_tainted = self.registry.find_source(source_expr, self.language) is not None or (
+            src_node is not None and src_node.is_tainted
         )
         if source_tainted and src_node is None and self.registry.find_source(source_expr, self.language):
             src_node = self.graph.add_node(
@@ -913,7 +940,10 @@ class TaintAnalyzer:
                 self._variables[prop] = node
                 if src_node:
                     self.graph.add_edge(
-                        src_node.id, node.id, EdgeType.PROPAGATION, line=line,
+                        src_node.id,
+                        node.id,
+                        EdgeType.PROPAGATION,
+                        line=line,
                         description=f"destructuring: {source_expr} -> {prop}",
                     )
             else:
@@ -925,12 +955,12 @@ class TaintAnalyzer:
                     code_snippet=f"{prop} = {source_expr}.{prop}",
                 )
                 self._variables[prop] = node
-    
+
     def _process_js_assignment(self, node: Any) -> None:
         """处理 JavaScript 赋值表达式"""
         left_text = None
         right_text = None
-        
+
         for i, child in enumerate(node.children):
             if i == 0:  # 左侧
                 left_text = self._get_node_text(child)
@@ -938,7 +968,7 @@ class TaintAnalyzer:
                 continue
             else:  # 右侧
                 right_text = self._get_node_text(child)
-        
+
         if left_text and right_text:
             line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
             # 动态追踪 Express Router 实例赋值（非 const/let/var 形式）
@@ -946,7 +976,8 @@ class TaintAnalyzer:
                 self._express_router_vars.add(left_text)
                 logger.debug(
                     "Express Router 实例追踪（赋值）: %s = %s",
-                    left_text, right_text[:60],
+                    left_text,
+                    right_text[:60],
                 )
             self._register_variable(left_text, right_text, line)
 
@@ -959,8 +990,8 @@ class TaintAnalyzer:
         """
         if not TREE_SITTER_AVAILABLE or not isinstance(node, Node):
             return
-        left_text: Optional[str] = None
-        right_text: Optional[str] = None
+        left_text: str | None = None
+        right_text: str | None = None
         for child in node.children:
             if child.type in ("=", ".=", "+=", "-="):
                 continue
@@ -988,8 +1019,8 @@ class TaintAnalyzer:
         if node.type == "local_variable_declaration":
             for child in node.children:
                 if child.type == "variable_declarator":
-                    name_node: Optional[Node] = None
-                    value_node: Optional[Node] = None
+                    name_node: Node | None = None
+                    value_node: Node | None = None
                     for sub in child.children:
                         if sub.type == "identifier" and name_node is None:
                             name_node = sub
@@ -1010,8 +1041,8 @@ class TaintAnalyzer:
 
         # 一般赋值表达式：left op right
         if node.type == "assignment_expression":
-            left_text: Optional[str] = None
-            right_text: Optional[str] = None
+            left_text: str | None = None
+            right_text: str | None = None
             for child in node.children:
                 if child.type in ("=", "+=", "-=", "*=", "/=", "&=", "|=", "^=", "%=", "<<=", ">>="):
                     continue
@@ -1040,8 +1071,8 @@ class TaintAnalyzer:
 
         # 短变量声明：identifier_list ':=' expression_list
         if node.type == "short_var_declaration":
-            names: List[str] = []
-            expr_text: Optional[str] = None
+            names: list[str] = []
+            expr_text: str | None = None
             for child in node.children:
                 if child.type == "identifier_list":
                     for ident in child.children:
@@ -1063,8 +1094,8 @@ class TaintAnalyzer:
 
         # 一般赋值语句：expression_list op expression_list
         if node.type == "assignment_statement":
-            left_names: List[str] = []
-            right_exprs: List[Node] = []
+            left_names: list[str] = []
+            right_exprs: list[Node] = []
             saw_op = False
             for child in node.children:
                 if child.type == "expression_list" and not saw_op:
@@ -1085,7 +1116,7 @@ class TaintAnalyzer:
                 if right_text:
                     line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
                     self._register_variable(left_names[0], right_text, line)
-    
+
     def _process_py_assignment(self, node: Any) -> None:
         """
         处理 Python 赋值。
@@ -1151,9 +1182,7 @@ class TaintAnalyzer:
         """
         return self._PY_SOURCE_STRIP_RE.sub("", expr).strip()
 
-    def _register_variable_py(
-        self, name: str, normalized_value: str, raw_value: str, line: int
-    ) -> None:
+    def _register_variable_py(self, name: str, normalized_value: str, raw_value: str, line: int) -> None:
         """
         Python 专用变量注册。
 
@@ -1208,7 +1237,7 @@ class TaintAnalyzer:
                     line=line,
                     description=f"Taint propagation: {var_name} -> {name}",
                 )
-    
+
     def _register_variable(self, name: str, value: str, line: int) -> None:
         """注册变量到污点图。2.1 增加：Sanitizer 感知（parseInt/escapeHtml 等标记为已净化）。"""
         # 检查值是否经过 Sanitizer（如 parseInt(x)、escapeHtml(x)）
@@ -1228,7 +1257,7 @@ class TaintAnalyzer:
 
         # 检查值是否是 Source
         source_pattern = self.registry.find_source(value, self.language)
-        
+
         if source_pattern:
             # 创建 Source 节点
             node = self.graph.add_node(
@@ -1248,7 +1277,7 @@ class TaintAnalyzer:
                 line=line,
                 code_snippet=f"{name} = {value}",
             )
-        
+
         # 记录变量映射
         self._variables[name] = node
 
@@ -1268,7 +1297,7 @@ class TaintAnalyzer:
                     line=line,
                     description=f"Taint propagation: {var_name} -> {name}",
                 )
-    
+
     # 函数调用模式：捕获 funcName(...)
     _FUNC_CALL_RE = re.compile(r"^([\w$]+)\s*\(")
 
@@ -1276,7 +1305,7 @@ class TaintAnalyzer:
         self,
         var_name: str,
         value: str,
-        node: "TaintNode",
+        node: TaintNode,
         line: int,
     ) -> None:
         """
@@ -1319,12 +1348,13 @@ class TaintAnalyzer:
         ):
             logger.debug(
                 "函数摘要传播跳过（校验函数）: %s = %s(...) 具有校验语义",
-                var_name, called_func,
+                var_name,
+                called_func,
             )
             return
 
         # 检查调用参数中是否包含已 tainted 的变量
-        call_args_text = value[m.end():]  # 取括号内的参数文本
+        call_args_text = value[m.end() :]  # 取括号内的参数文本
         arg_tainted = any(
             tvar in call_args_text
             for tvar, tnode in self._variables.items()
@@ -1352,7 +1382,9 @@ class TaintAnalyzer:
                     break
             logger.debug(
                 "函数摘要污点传播: %s = %s(...) 中参数 tainted，%s 标记为 tainted",
-                var_name, called_func, var_name,
+                var_name,
+                called_func,
+                var_name,
             )
 
     def _identify_sources_and_sinks(self, node: Any) -> None:
@@ -1367,17 +1399,30 @@ class TaintAnalyzer:
             return
 
         # 函数调用（JS: call_expression，Python: call，PHP: function_call_expression，Java: method_invocation/object_creation_expression）
-        if node.type in ("call_expression", "call", "function_call_expression", "method_invocation", "object_creation_expression"):
+        if node.type in (
+            "call_expression",
+            "call",
+            "function_call_expression",
+            "method_invocation",
+            "object_creation_expression",
+        ):
             self._check_call_expression(node)
 
         # 成员/属性表达式（JS: member_expression，Python: attribute，PHP: member_access_expression / object_member_expression，Java: field_access，Go: selector_expression）
-        elif node.type in ("member_expression", "attribute", "member_access_expression", "object_member_expression", "field_access", "selector_expression"):
+        elif node.type in (
+            "member_expression",
+            "attribute",
+            "member_access_expression",
+            "object_member_expression",
+            "field_access",
+            "selector_expression",
+        ):
             self._check_member_expression(node)
 
         # 递归处理子节点
         for child in node.children:
             self._identify_sources_and_sinks(child)
-    
+
     def _check_call_expression(self, node: Any) -> None:
         """
         检查函数调用是否是 Sink 或 Sanitizer。
@@ -1403,7 +1448,15 @@ class TaintAnalyzer:
         # Go: call_expression 中的 selector_expression / identifier
         callee_text = ""
         for child in node.children:
-            if child.type in ("identifier", "member_expression", "attribute", "name", "object_member_expression", "field_access", "selector_expression"):
+            if child.type in (
+                "identifier",
+                "member_expression",
+                "attribute",
+                "name",
+                "object_member_expression",
+                "field_access",
+                "selector_expression",
+            ):
                 callee_text = self._get_node_text(child) or ""
                 break
 
@@ -1459,7 +1512,7 @@ class TaintAnalyzer:
                 line=line,
                 code_snippet=call_text,
             )
-    
+
     _PARAM_PLACEHOLDER_RE = re.compile(r"\?|%s|%\([\w]+\)s|:\w+", re.IGNORECASE)
 
     def _is_parameterized_query(self, call_node: Any) -> bool:
@@ -1503,9 +1556,9 @@ class TaintAnalyzer:
         expr_text = self._get_node_text(node)
         if not expr_text:
             return
-        
+
         line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-        
+
         # 检查是否是 Source（如 req.body）
         source_pattern = self.registry.find_source(expr_text, self.language)
         if source_pattern:
@@ -1517,7 +1570,7 @@ class TaintAnalyzer:
                 source_pattern=source_pattern.name,
                 code_snippet=expr_text,
             )
-    
+
     def _check_call_arguments(self, call_node: Any, sink_node: TaintNode) -> None:
         """
         检查函数调用的参数是否被污染。
@@ -1538,7 +1591,7 @@ class TaintAnalyzer:
                 if arg.type in (",", "(", ")"):
                     continue
                 self._check_single_argument(arg, sink_node)
-    
+
     def _check_single_argument(self, arg_node: Any, sink_node: TaintNode) -> None:
         """
         检查单个参数节点是否携带污点，并在图中建立参数传递边。
@@ -1574,8 +1627,19 @@ class TaintAnalyzer:
         if atype in ("binary_expression", "binary_operator"):
             for child in arg_node.children:
                 # 跳过运算符本身（+、%、.、//等）
-                if child.type in ("+", ".", "%", "//", "**", "~", "|", "&", "^",
-                                  "binary_operator", "augmented_assignment"):
+                if child.type in (
+                    "+",
+                    ".",
+                    "%",
+                    "//",
+                    "**",
+                    "~",
+                    "|",
+                    "&",
+                    "^",
+                    "binary_operator",
+                    "augmented_assignment",
+                ):
                     continue
                 self._check_single_argument(child, sink_node)
             return
@@ -1590,7 +1654,15 @@ class TaintAnalyzer:
             return
 
         # ── call / call_expression / member_expression / attribute / method_invocation 等：直接 Source 匹配 ──
-        if atype in ("call_expression", "call", "member_expression", "attribute", "method_invocation", "field_access", "selector_expression"):
+        if atype in (
+            "call_expression",
+            "call",
+            "member_expression",
+            "attribute",
+            "method_invocation",
+            "field_access",
+            "selector_expression",
+        ):
             arg_text = self._get_node_text(arg_node) or ""
             normalized = self._normalize_py_source_expr(arg_text) if self.language == "python" else arg_text
             source_pattern = self.registry.find_source(normalized, self.language)
@@ -1644,7 +1716,7 @@ class TaintAnalyzer:
             return
 
         try:
-            from ..cfg import build_cfg_from_ast_if_statements, DominatorTree
+            from ..cfg import DominatorTree, build_cfg_from_ast_if_statements
 
             # 用收集到的 Guard if 节点构建简化 CFG
             cfg = build_cfg_from_ast_if_statements(self._guard_if_nodes)
@@ -1655,16 +1727,14 @@ class TaintAnalyzer:
             self._dominator_tree = dom_tree
 
             # 收集所有 Guard 块的行号范围
-            guard_line_ranges: List[tuple] = []
+            guard_line_ranges: list[tuple] = []
             for block in cfg.blocks:
                 if block.is_guard and block.start_line > 0:
                     protected_ids = dom_tree.get_guard_protected_range(block.block_id)
                     for pid in protected_ids:
                         pblock = cfg.get_block(pid)
                         if pblock and pblock.start_line > 0:
-                            guard_line_ranges.append(
-                                (block.start_line, pblock.start_line, pblock.end_line)
-                            )
+                            guard_line_ranges.append((block.start_line, pblock.start_line, pblock.end_line))
 
             if not guard_line_ranges:
                 return
@@ -1685,6 +1755,7 @@ class TaintAnalyzer:
             # 若是，则将流向该 Sink 的已净化变量的污点路径标记为净化
             for node_id, node in list(self.graph._nodes.items()):  # type: ignore[attr-defined]
                 from .taint_graph import NodeType
+
                 if node.node_type != NodeType.SINK:
                     continue
                 sink_line = node.line or 0
@@ -1706,26 +1777,26 @@ class TaintAnalyzer:
 
         except Exception as e:
             logger.debug("Dominator Tree 构建或应用失败: %s", e)
-    
-    def _generate_findings(self, paths: List[TaintPath]) -> List[TaintFinding]:
+
+    def _generate_findings(self, paths: list[TaintPath]) -> list[TaintFinding]:
         """从污点路径生成漏洞报告"""
         findings = []
-        
+
         for path in paths:
             # 跳过已净化的路径
             if path.is_sanitized:
                 continue
-            
+
             # 获取 Sink 信息
             sink_node = path.sink_node
             if not sink_node:
                 continue
-            
+
             # 确定漏洞类型
             category = sink_node.extras.get("category", "unknown")
             severity = sink_node.extras.get("severity", "High")
             cwe = sink_node.extras.get("cwe", "")
-            
+
             # 创建漏洞报告
             finding = TaintFinding(
                 vuln_type=category,
@@ -1741,20 +1812,17 @@ class TaintAnalyzer:
                 remediation=self._generate_remediation(category),
             )
             findings.append(finding)
-        
+
         return findings
-    
+
     def _generate_description(self, path: TaintPath) -> str:
         """生成漏洞描述"""
         source = path.source_node.name if path.source_node else "unknown"
         sink = path.sink_node.name if path.sink_node else "unknown"
         length = len(path)
-        
-        return (
-            f"用户可控的输入 `{source}` 流向敏感函数 `{sink}`，"
-            f"经过 {length - 2} 个中间变量传播。"
-        )
-    
+
+        return f"用户可控的输入 `{source}` 流向敏感函数 `{sink}`，经过 {length - 2} 个中间变量传播。"
+
     def _generate_remediation(self, category: str) -> str:
         """生成修复建议"""
         remediation_map = {
@@ -1767,18 +1835,18 @@ class TaintAnalyzer:
             "ssrf": "使用白名单限制可访问的 URL，验证 URL 协议和域名。",
         }
         return remediation_map.get(category, "对用户输入进行验证和过滤。")
-    
+
     @staticmethod
-    def _get_node_text(node: Any) -> Optional[str]:
+    def _get_node_text(node: Any) -> str | None:
         """提取节点的文本内容"""
         if hasattr(node, "text"):
             return node.text.decode("utf-8")
         return None
-    
+
     def get_graph(self) -> TaintGraph:
         """获取污点图"""
         return self.graph
-    
+
     def reset(self) -> None:
         """重置分析器状态"""
         self.graph = TaintGraph()

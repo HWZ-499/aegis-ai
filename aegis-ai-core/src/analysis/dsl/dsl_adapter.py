@@ -7,14 +7,12 @@ dsl_adapter.py
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List
 
 from ..base import AnalysisContext, SecurityRule
 from .dsl_engine import load_rules_from_directory, match_source
 from .rule_schema import DslRule
 
-
-_SEVERITY_MAP: Dict[str, str] = {
+_SEVERITY_MAP: dict[str, str] = {
     "INFO": "Info",
     "LOW": "Low",
     "MEDIUM": "Medium",
@@ -66,9 +64,7 @@ class DslRuleAdapter(SecurityRule):
             return
 
         file_path = Path(context.file_path)
-        existing_pairs = {
-            (f.get("line"), f.get("type")) for f in context.findings
-        }
+        existing_pairs = {(f.get("line"), f.get("type")) for f in context.findings}
 
         findings = match_source(self._dsl_rule, source, file_path)
         for finding in findings:
@@ -81,7 +77,7 @@ class DslRuleAdapter(SecurityRule):
             context.add_finding(finding)
 
 
-def load_dsl_rules_for_language(language: str) -> List[SecurityRule]:
+def load_dsl_rules_for_language(language: str) -> list[SecurityRule]:
     """加载指定语言的 DSL 规则并包装为 SecurityRule 适配器。
 
     Args:
@@ -90,15 +86,9 @@ def load_dsl_rules_for_language(language: str) -> List[SecurityRule]:
     Returns:
         对应语言的 DslRuleAdapter 列表。
     """
-    root = (
-        Path(__file__)
-        .resolve()
-        .parent.parent
-        / "rules"
-        / "dsl"
-    )
+    root = Path(__file__).resolve().parent.parent / "rules" / "dsl"
     all_rules = load_rules_from_directory(root)
-    adapters: List[SecurityRule] = []
+    adapters: list[SecurityRule] = []
     lang = language.lower()
     for rule in all_rules:
         if rule.language != lang:
@@ -108,4 +98,3 @@ def load_dsl_rules_for_language(language: str) -> List[SecurityRule]:
 
 
 __all__ = ["DslRuleAdapter", "load_dsl_rules_for_language"]
-

@@ -10,7 +10,7 @@ Java 路径穿越 AST/污点规则。
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Set
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
 
@@ -36,10 +36,10 @@ class JavaPathTraversalAstRule(SecurityRule):
         if graph is None:
             return
 
-        reported_sinks: Set[str] = set()
+        reported_sinks: set[str] = set()
 
         try:
-            paths: List[Any] = graph.find_paths_to_sinks()
+            paths: list[Any] = graph.find_paths_to_sinks()
         except Exception:
             return
 
@@ -71,7 +71,7 @@ class JavaPathTraversalAstRule(SecurityRule):
                 "且未检测到路径规范化或白名单校验，存在目录穿越风险。"
             )
 
-            finding: Dict[str, Any] = {
+            finding: dict[str, Any] = {
                 "type": "PATH_TRAVERSAL",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
@@ -84,4 +84,3 @@ class JavaPathTraversalAstRule(SecurityRule):
 
 
 __all__ = ["JavaPathTraversalAstRule"]
-

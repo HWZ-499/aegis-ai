@@ -10,8 +10,8 @@ Java SQL 注入 AST/污点规则。
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Set
 import re
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
 
@@ -42,10 +42,10 @@ class JavaSQLInjectionAstRule(SecurityRule):
         any_reported = False
         if graph is not None:
             # 避免同一 Sink 重复报多条路径
-            reported_sinks: Set[str] = set()
+            reported_sinks: set[str] = set()
 
             try:
-                paths: List[Any] = graph.find_paths_to_sinks()
+                paths: list[Any] = graph.find_paths_to_sinks()
             except Exception:
                 paths = []
 
@@ -78,7 +78,7 @@ class JavaSQLInjectionAstRule(SecurityRule):
                     "且未检测到参数化查询或有效净化，存在 SQL 注入风险，建议使用 PreparedStatement 或 ORM 参数绑定。"
                 )
 
-                finding: Dict[str, Any] = {
+                finding: dict[str, Any] = {
                     "type": "SQL_INJECTION",
                     "rule_id": self.rule_id,
                     "severity": self.severity,
@@ -109,7 +109,7 @@ class JavaSQLInjectionAstRule(SecurityRule):
                 "检测到 Java 代码中使用 request.getParameter 拼接 SQL 语句并调用 execute/executeQuery，"
                 "存在 SQL 注入风险，建议改用 PreparedStatement 或 ORM 参数绑定。"
             )
-            finding: Dict[str, Any] = {
+            finding: dict[str, Any] = {
                 "type": "SQL_INJECTION",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
@@ -122,4 +122,3 @@ class JavaSQLInjectionAstRule(SecurityRule):
 
 
 __all__ = ["JavaSQLInjectionAstRule"]
-

@@ -13,7 +13,7 @@ JavaScript/TypeScript 路径遍历 / 不安全文件访问 AST 规则。
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
 from ...base.user_input_detector import is_user_input_node
@@ -21,6 +21,7 @@ from ...base.user_input_detector import is_user_input_node
 # Tree-sitter Node 类型
 try:
     from tree_sitter import Node
+
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
@@ -144,7 +145,7 @@ class JavaScriptPathTraversalAstRule(SecurityRule):
             out.extend(self._collect_identifiers_from_node(child))
         return out
 
-    def _make_finding(self, line_no: int, object_name: str | None, method_name: str | None) -> Dict[str, Any]:
+    def _make_finding(self, line_no: int, object_name: str | None, method_name: str | None) -> dict[str, Any]:
         """构建 PATH_TRAVERSAL finding。"""
         return {
             "type": "PATH_TRAVERSAL",

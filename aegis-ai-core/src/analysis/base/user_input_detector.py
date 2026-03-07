@@ -12,14 +12,15 @@ user_input_detector.py - 结构化用户输入检测器
 
 from __future__ import annotations
 
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .dataflow_tracker import DataFlowTracker
+    pass
 
 # Tree-sitter Node 类型
 try:
     from tree_sitter import Node
+
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
@@ -120,7 +121,7 @@ def _chain_matches_any_root(
     """
     for obj_chain, prop in roots:
         prefix = list(obj_chain) + [prop]
-        if len(chain) >= len(prefix) and chain[:len(prefix)] == prefix:
+        if len(chain) >= len(prefix) and chain[: len(prefix)] == prefix:
             return True
     return False
 
@@ -129,9 +130,10 @@ def _chain_matches_any_root(
 # 公共 API
 # ──────────────────────────────────────────────
 
+
 def is_user_input_node(
     node: Any,
-    context: Optional[Any] = None,
+    context: Any | None = None,
     *,
     language: str = "javascript",
 ) -> bool:

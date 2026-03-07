@@ -12,9 +12,8 @@ xss 规则子包。
 """
 
 from .ast_rule import PythonXSSAstRule
-from .javascript_ast_rule import JavaScriptXSSAstRule
-from .java_ast_rule import JavaXSSAstRule
 from .go_ast_rule import GoXSSAstRule
+from .java_ast_rule import JavaXSSAstRule
+from .javascript_ast_rule import JavaScriptXSSAstRule
 
 __all__ = ["PythonXSSAstRule", "JavaScriptXSSAstRule", "JavaXSSAstRule", "GoXSSAstRule"]
-

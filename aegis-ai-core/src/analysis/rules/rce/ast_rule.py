@@ -20,45 +20,90 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
 
-
 # subprocess 危险方法
-_SUBPROCESS_DANGEROUS = frozenset([
-    "call", "run", "Popen", "check_call", "check_output",
-])
+_SUBPROCESS_DANGEROUS = frozenset(
+    [
+        "call",
+        "run",
+        "Popen",
+        "check_call",
+        "check_output",
+    ]
+)
 
 # os 模块危险方法
-_OS_DANGEROUS = frozenset([
-    "system", "popen", "execv", "execve", "execvp", "execvpe",
-    "spawnl", "spawnle", "spawnlp", "spawnlpe",
-    "spawnv", "spawnve", "spawnvp", "spawnvpe",
-])
+_OS_DANGEROUS = frozenset(
+    [
+        "system",
+        "popen",
+        "execv",
+        "execve",
+        "execvp",
+        "execvpe",
+        "spawnl",
+        "spawnle",
+        "spawnlp",
+        "spawnlpe",
+        "spawnv",
+        "spawnve",
+        "spawnvp",
+        "spawnvpe",
+    ]
+)
 
 # 安装/初始化/工具脚本名前缀（业务上下文降级）
-_SETUP_NAMES = frozenset([
-    "setup", "install", "migrate", "upgrade", "seed",
-    "bootstrap", "fixture", "deploy", "init",
-    # 框架 CLI / REPL / 管理工具脚本（如 flask cli.py、django manage.py）
-    "cli", "repl", "shell", "manage", "console", "wsgi", "asgi",
-])
+_SETUP_NAMES = frozenset(
+    [
+        "setup",
+        "install",
+        "migrate",
+        "upgrade",
+        "seed",
+        "bootstrap",
+        "fixture",
+        "deploy",
+        "init",
+        # 框架 CLI / REPL / 管理工具脚本（如 flask cli.py、django manage.py）
+        "cli",
+        "repl",
+        "shell",
+        "manage",
+        "console",
+        "wsgi",
+        "asgi",
+    ]
+)
 
 # Python 用户输入访问模式（结构化）
-_USER_INPUT_ATTRS = frozenset([
-    "form", "args", "json", "data", "values", "cookies", "headers",
-    "GET", "POST", "FILES", "params", "query_params",
-])
+_USER_INPUT_ATTRS = frozenset(
+    [
+        "form",
+        "args",
+        "json",
+        "data",
+        "values",
+        "cookies",
+        "headers",
+        "GET",
+        "POST",
+        "FILES",
+        "params",
+        "query_params",
+    ]
+)
 _USER_INPUT_OBJS = frozenset(["request", "req"])
 
 
-def _collect_names(node: ast.AST) -> List[str]:
+def _collect_names(node: ast.AST) -> list[str]:
     """从节点子树中收集所有 Name.id。"""
     return [n.id for n in ast.walk(node) if isinstance(n, ast.Name)]
 
 
-def _is_user_input_node(node: ast.AST, context: Optional[AnalysisContext] = None) -> bool:
+def _is_user_input_node(node: ast.AST, context: AnalysisContext | None = None) -> bool:
     """
     判断节点是否来自用户输入。
 
@@ -86,8 +131,7 @@ def _is_user_input_node(node: ast.AST, context: Optional[AnalysisContext] = None
 
     if isinstance(node, ast.Name):
         lname = node.id.lower()
-        for kw in ("cmd", "command", "user", "input", "param", "arg",
-                   "query", "data", "payload"):
+        for kw in ("cmd", "command", "user", "input", "param", "arg", "query", "data", "payload"):
             if kw in lname:
                 return True
 
@@ -161,6 +205,7 @@ class PythonRCEAstRule(SecurityRule):
             return
         try:
             import ast as _ast
+
             tree = _ast.parse(source)
         except SyntaxError:
             return
@@ -206,9 +251,7 @@ class PythonRCEAstRule(SecurityRule):
     # ------------------------------------------------------------------
     # eval / exec / compile 污点感知检查
     # ------------------------------------------------------------------
-    def _check_eval_exec(
-        self, node: ast.Call, context: AnalysisContext, func_name: str
-    ) -> None:
+    def _check_eval_exec(self, node: ast.Call, context: AnalysisContext, func_name: str) -> None:
         """
         污点感知版 eval/exec/compile 检测。
 
@@ -239,7 +282,9 @@ class PythonRCEAstRule(SecurityRule):
         # 用户输入直接流入
         if _is_user_input_node(first_arg, context):
             self._add_finding(
-                context, node, "Critical",
+                context,
+                node,
+                "Critical",
                 details=f"发现 {func_name}()，参数来自用户输入，存在代码注入风险。",
             )
             return
@@ -247,7 +292,9 @@ class PythonRCEAstRule(SecurityRule):
         # 环境变量来源：由运维控制，降级
         if _is_env_var_source(first_arg):
             self._add_finding(
-                context, node, "Medium",
+                context,
+                node,
+                "Medium",
                 details=f"发现 {func_name}()，参数来自环境变量，建议确认是否存在配置注入风险。",
             )
             return
@@ -256,7 +303,9 @@ class PythonRCEAstRule(SecurityRule):
         is_setup = _is_setup_script(context.file_path)
         if is_setup:
             self._add_finding(
-                context, node, "Low",
+                context,
+                node,
+                "Low",
                 details=f"[工具脚本] 发现 {func_name}()，参数含变量，处于框架工具脚本上下文，已降级。",
             )
             return
@@ -264,16 +313,16 @@ class PythonRCEAstRule(SecurityRule):
         # 参数含变量但来源不明 → 保守召回，降一级
         if _collect_names(first_arg):
             self._add_finding(
-                context, node, "High",
+                context,
+                node,
+                "High",
                 details=f"发现 {func_name}()，参数含变量，建议确认参数来源是否可控。",
             )
 
     # ------------------------------------------------------------------
     # 参数污染检查
     # ------------------------------------------------------------------
-    def _check_call_with_args(
-        self, node: ast.Call, context: AnalysisContext, call_str: str
-    ) -> None:
+    def _check_call_with_args(self, node: ast.Call, context: AnalysisContext, call_str: str) -> None:
         """
         检查 RCE Sink 的参数是否存在用户输入。
 
@@ -311,7 +360,9 @@ class PythonRCEAstRule(SecurityRule):
         is_setup = _is_setup_script(context.file_path)
         if is_setup and not has_user_input:
             self._add_finding(
-                context, node, "Low",
+                context,
+                node,
+                "Low",
                 details=f"[安装脚本] {call_str}() 调用，参数未检测到用户输入，已降级。",
             )
             return
@@ -319,21 +370,23 @@ class PythonRCEAstRule(SecurityRule):
         if has_user_input:
             sev = severity_override or "Critical"
             self._add_finding(
-                context, node, sev,
+                context,
+                node,
+                sev,
                 details=f"发现 {call_str}() 调用，参数来自用户输入，存在命令注入风险。",
             )
         elif has_any_var:
             sev = severity_override or "High"
             self._add_finding(
-                context, node, sev,
+                context,
+                node,
+                sev,
                 details=f"发现 {call_str}() 调用，参数含变量，建议确认是否可控。",
             )
 
-    def _add_finding(
-        self, context: AnalysisContext, node: ast.AST, severity: str, details: str
-    ) -> None:
+    def _add_finding(self, context: AnalysisContext, node: ast.AST, severity: str, details: str) -> None:
         line_no = getattr(node, "lineno", 0) or 0
-        finding: Dict[str, Any] = {
+        finding: dict[str, Any] = {
             "type": "RCE_COMMAND_EXEC",
             "rule_id": self.rule_id,
             "severity": severity,

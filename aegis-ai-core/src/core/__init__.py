@@ -6,7 +6,7 @@ Aegis AI Core — 共享基础设施模块。
 
 from .config import get_settings
 from .logging_config import setup_logging
-from .models import Finding, RelatedLocation, TaintStep, ScanResult, AuditResponse
+from .models import AuditResponse, Finding, RelatedLocation, ScanResult, TaintStep
 
 __all__ = [
     "get_settings",

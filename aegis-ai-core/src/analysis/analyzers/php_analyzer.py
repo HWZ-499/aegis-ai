@@ -13,8 +13,8 @@ php_analyzer.py - PHP 专用分析器（主引擎对齐版）
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Dict, Iterable, List
 
 from ..base import AnalysisContext, SecurityRule
 
@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 try:
     from tree_sitter import Parser
     from tree_sitter_languages import get_language
+
     _TREE_SITTER_AVAILABLE = True
 except ImportError:
     _TREE_SITTER_AVAILABLE = False
@@ -44,9 +45,7 @@ class PhpAnalyzer:
         Args:
             rules: SecurityRule 规则集合（目前传入空列表，行级规则内部处理）
         """
-        self.rules: List[SecurityRule] = [
-            r for r in rules if r.supports("php") or not r.languages
-        ]
+        self.rules: list[SecurityRule] = [r for r in rules if r.supports("php") or not r.languages]
 
         # 初始化 Tree-sitter parser（PHP 语言）
         self._parser: Parser | None = None
@@ -59,7 +58,7 @@ class PhpAnalyzer:
                 logger.debug("PHP Tree-sitter 初始化失败: %s", e)
                 self._parser = None
 
-    def analyze(self, code: str, file_path: Path) -> List[Dict]:
+    def analyze(self, code: str, file_path: Path) -> list[dict]:
         """
         对单个 PHP 文件执行分析。
 
@@ -82,6 +81,7 @@ class PhpAnalyzer:
         if self._parser:
             try:
                 from ..taint import TaintAnalyzer
+
                 taint_analyzer = TaintAnalyzer(language="php")
                 ts_tree = self._parser.parse(bytes(code, "utf8"))
                 taint_analyzer.analyze_tree(ts_tree.root_node, str(file_path), code)

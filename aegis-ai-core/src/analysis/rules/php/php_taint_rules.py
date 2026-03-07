@@ -18,42 +18,38 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
-from ...security_rules import PhpTaintGraph, _PHP_SINK_PATTERNS, _PHP_SOURCE_RE  # noqa: F401
-
+from ...security_rules import _PHP_SINK_PATTERNS, _PHP_SOURCE_RE, PhpTaintGraph  # noqa: F401
 
 # ─────────────────────────────────────────────────────────────────
 # 常量
 # ─────────────────────────────────────────────────────────────────
 
 # 各 vuln_type → CWE 编号
-_CWE_MAP: Dict[str, str] = {
-    "SQL_INJECTION":    "CWE-89",
+_CWE_MAP: dict[str, str] = {
+    "SQL_INJECTION": "CWE-89",
     "RCE_COMMAND_EXEC": "CWE-78",
-    "XSS_RISK":         "CWE-79",
-    "OPEN_REDIRECT":    "CWE-601",
-    "PATH_TRAVERSAL":   "CWE-22",
-    "DESERIALIZATION":  "CWE-502",
+    "XSS_RISK": "CWE-79",
+    "OPEN_REDIRECT": "CWE-601",
+    "PATH_TRAVERSAL": "CWE-22",
+    "DESERIALIZATION": "CWE-502",
+    "NOSQL_INJECTION": "CWE-943",
     "HARDCODED_CREDENTIALS": "CWE-798",
 }
 
 # Sink 类型过滤表：每个 Rule 只关心自己的 vuln_type
-_SQLI_TYPES  = frozenset(["SQL_INJECTION"])
-_RCE_TYPES   = frozenset(["RCE_COMMAND_EXEC"])
-_XSS_TYPES   = frozenset(["XSS_RISK"])
+_SQLI_TYPES = frozenset(["SQL_INJECTION"])
+_RCE_TYPES = frozenset(["RCE_COMMAND_EXEC"])
+_XSS_TYPES = frozenset(["XSS_RISK"])
 _REDIR_TYPES = frozenset(["OPEN_REDIRECT"])
 _PATH_TRAVERSAL_TYPES = frozenset(["PATH_TRAVERSAL"])
 _DESERIALIZATION_TYPES = frozenset(["DESERIALIZATION"])
 
 # 参数化查询识别：第一个字符串参数含占位符，且存在第二个参数
-_PARAM_PLACEHOLDER_RE = re.compile(
-    r"""['"][^'"]*(?:\?|%s|%\([\w]+\)s|:\w+)[^'"]*['"]""", re.IGNORECASE
-)
-_PARAM_BIND_RE = re.compile(
-    r"""(execute|query)\s*\([^,]+,[^)]+\)""", re.IGNORECASE
-)
+_PARAM_PLACEHOLDER_RE = re.compile(r"""['"][^'"]*(?:\?|%s|%\([\w]+\)s|:\w+)[^'"]*['"]""", re.IGNORECASE)
+_PARAM_BIND_RE = re.compile(r"""(execute|query)\s*\([^,]+,[^)]+\)""", re.IGNORECASE)
 
 # htmlspecialchars / htmlentities / strip_tags（XSS 净化判断用）
 _HTML_ESCAPE_RE = re.compile(
@@ -66,6 +62,7 @@ _HTML_ESCAPE_RE = re.compile(
 # 基础函数
 # ─────────────────────────────────────────────────────────────────
 
+
 def _make_finding(
     vuln_type: str,
     severity: str,
@@ -77,7 +74,7 @@ def _make_finding(
     confidence: str = "high",
     sanitized: bool = False,
     extra_note: str = "",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     构造统一格式的 PHP TaintGraph finding。
 
@@ -103,38 +100,36 @@ def _make_finding(
     )
 
     return {
-        "type":             vuln_type,
-        "severity":         severity,
-        "line":             line,
-        "start_line":       line,
-        "end_line":         line,
-        "start_character":  0,
-        "end_character":    999,
-        "details":          details,
-        "file":             file_path,
-        "cwe":              cwe,
-        "taint_var":        taint_var,
+        "type": vuln_type,
+        "severity": severity,
+        "line": line,
+        "start_line": line,
+        "end_line": line,
+        "start_character": 0,
+        "end_character": 999,
+        "details": details,
+        "file": file_path,
+        "cwe": cwe,
+        "taint_var": taint_var,
         "taint_source_line": taint_source_line,
-        "confidence":       confidence,
-        "source":           "PHP-TaintGraph",
-        "sink_snippet":     sink_snippet[:120],
+        "confidence": confidence,
+        "source": "PHP-TaintGraph",
+        "sink_snippet": sink_snippet[:120],
         # LSP related_locations：标记 Source 行
         "related_locations": [
             {
-                "file_path":       file_path,
-                "start_line":      taint_source_line,
-                "end_line":        taint_source_line,
+                "file_path": file_path,
+                "start_line": taint_source_line,
+                "end_line": taint_source_line,
                 "start_character": 0,
-                "end_character":   999,
-                "message": (
-                    f"SOURCE: {taint_var} 在此行被赋值为用户输入"
-                ),
+                "end_character": 999,
+                "message": (f"SOURCE: {taint_var} 在此行被赋值为用户输入"),
             }
         ],
     }
 
 
-def _extract_sink_var(line: str, vuln_type: str) -> Optional[str]:
+def _extract_sink_var(line: str, vuln_type: str) -> str | None:
     """
     从 Sink 调用行提取第一个污点参数变量名。
 
@@ -147,7 +142,8 @@ def _extract_sink_var(line: str, vuln_type: str) -> Optional[str]:
         # echo/print：语句形式
         m = re.search(
             r"\b(?:echo|print)\s+(?:[^$]*\.\s*)?(\$[\w]+)",
-            line, re.IGNORECASE,
+            line,
+            re.IGNORECASE,
         )
         if m:
             return m.group(1)
@@ -156,7 +152,8 @@ def _extract_sink_var(line: str, vuln_type: str) -> Optional[str]:
         # header("Location: " . $var)
         m = re.search(
             r"""header\s*\(\s*['"][Ll]ocation\s*:['"]\s*\.\s*(\$[\w]+)""",
-            line, re.IGNORECASE,
+            line,
+            re.IGNORECASE,
         )
         if m:
             return m.group(1)
@@ -195,6 +192,7 @@ def _is_parameterized(line: str) -> bool:
 # ─────────────────────────────────────────────────────────────────
 # 规则类
 # ─────────────────────────────────────────────────────────────────
+
 
 class _PhpTaintBaseRule(SecurityRule):
     """
@@ -247,7 +245,7 @@ class _PhpTaintBaseRule(SecurityRule):
         for f in findings:
             context.add_finding(f)
 
-    def analyze(self, code: str, file_path: "str | Path") -> List[Dict]:
+    def analyze(self, code: str, file_path: str | Path) -> list[dict]:
         """
         对 PHP 源码执行污点分析（向后兼容接口）。
 
@@ -261,7 +259,7 @@ class _PhpTaintBaseRule(SecurityRule):
         fp = str(file_path)
         lines = code.split("\n")
         taint = PhpTaintGraph(lines)
-        findings: List[Dict] = []
+        findings: list[dict] = []
 
         for idx, raw_line in enumerate(lines):
             line_num = idx + 1
@@ -288,63 +286,70 @@ class _PhpTaintBaseRule(SecurityRule):
 
                 # 传入 line_num 使 is_tainted/is_sanitized 能进行 CFG 行范围感知
                 if taint.is_tainted(arg_var, line_num):
-                    findings.append(_make_finding(
-                        vuln_type=vuln_type,
-                        severity=base_severity,
-                        line=line_num,
-                        file_path=fp,
-                        taint_var=arg_var,
-                        taint_source_line=taint.get_source_line(arg_var),
-                        sink_snippet=line,
-                        confidence="high",
-                        sanitized=False,
-                    ))
+                    findings.append(
+                        _make_finding(
+                            vuln_type=vuln_type,
+                            severity=base_severity,
+                            line=line_num,
+                            file_path=fp,
+                            taint_var=arg_var,
+                            taint_source_line=taint.get_source_line(arg_var),
+                            sink_snippet=line,
+                            confidence="high",
+                            sanitized=False,
+                        )
+                    )
                 elif taint.is_sanitized(arg_var, line_num):
                     # 净化路径：若子类决定跳过净化 finding 则直接 continue
                     if self._skip_sanitized(line, vuln_type, arg_var, taint):
                         continue
                     # 否则降级 Low 供人工复查
-                    findings.append(_make_finding(
-                        vuln_type=vuln_type,
-                        severity="Low",
-                        line=line_num,
-                        file_path=fp,
-                        taint_var=arg_var,
-                        taint_source_line=taint.get_source_line(arg_var),
-                        sink_snippet=line,
-                        confidence="low",
-                        sanitized=True,
-                    ))
+                    findings.append(
+                        _make_finding(
+                            vuln_type=vuln_type,
+                            severity="Low",
+                            line=line_num,
+                            file_path=fp,
+                            taint_var=arg_var,
+                            taint_source_line=taint.get_source_line(arg_var),
+                            sink_snippet=line,
+                            confidence="low",
+                            sanitized=True,
+                        )
+                    )
                 else:
                     # 变量不在追踪表中，但 Sink 行本身直接含 Source 超全局变量
                     # 例如：echo $_GET['xss'];  （无中间赋值变量）
                     if _PHP_SOURCE_RE.search(line) and not self._extra_filter(line, vuln_type):
                         src_m = re.search(
                             r"\$_(GET|POST|REQUEST|COOKIE|SERVER|FILES|SESSION)\s*\[",
-                            line, re.IGNORECASE,
+                            line,
+                            re.IGNORECASE,
                         )
                         direct_src = src_m.group(0).rstrip("[") if src_m else "$_INPUT"
-                        findings.append({
-                            "type":             vuln_type,
-                            "severity":         base_severity,
-                            "line":             line_num,
-                            "start_line":       line_num,
-                            "end_line":         line_num,
-                            "start_character":  0,
-                            "end_character":    999,
-                            "details": (
-                                f"[TaintGraph] {vuln_type}："
-                                f"用户输入 {direct_src} 直接流入 Sink（第 {line_num} 行），无中间变量。"
-                            ),
-                            "file":             fp,
-                            "cwe":              _CWE_MAP.get(vuln_type, ""),
-                            "taint_var":        direct_src,
-                            "taint_source_line": line_num,
-                            "confidence":       "high",
-                            "source":           "PHP-TaintGraph",
-                            "sink_snippet":     line[:120],
-                            "related_locations": [],
-                        })
+                        findings.append(
+                            {
+                                "type": vuln_type,
+                                "severity": base_severity,
+                                "line": line_num,
+                                "start_line": line_num,
+                                "end_line": line_num,
+                                "start_character": 0,
+                                "end_character": 999,
+                                "details": (
+                                    f"[TaintGraph] {vuln_type}："
+                                    f"用户输入 {direct_src} 直接流入 Sink（第 {line_num} 行），无中间变量。"
+                                ),
+                                "file": fp,
+                                "cwe": _CWE_MAP.get(vuln_type, ""),
+                                "taint_var": direct_src,
+                                "taint_source_line": line_num,
+                                "confidence": "high",
+                                "source": "PHP-TaintGraph",
+                                "sink_snippet": line[:120],
+                                "related_locations": [],
+                            }
+                        )
 
         return self._dedup(findings)
 
@@ -361,7 +366,7 @@ class _PhpTaintBaseRule(SecurityRule):
         line: str,
         vuln_type: str,
         arg_var: str,
-        taint: "PhpTaintGraph",
+        taint: PhpTaintGraph,
     ) -> bool:
         """
         是否跳过已净化路径的 Low finding（子类可覆盖）。
@@ -372,12 +377,12 @@ class _PhpTaintBaseRule(SecurityRule):
         return False
 
     @staticmethod
-    def _dedup(findings: List[Dict]) -> List[Dict]:
+    def _dedup(findings: list[dict]) -> list[dict]:
         """
         去重：同一（line, type, taint_var）只保留第一条。
         """
         seen: set = set()
-        result: List[Dict] = []
+        result: list[dict] = []
         for f in findings:
             key = (f["line"], f["type"], f.get("taint_var", ""))
             if key not in seen:
@@ -413,7 +418,7 @@ class PhpSQLInjectionRule(_PhpTaintBaseRule):
         line: str,
         vuln_type: str,
         arg_var: str,
-        taint: "PhpTaintGraph",
+        taint: PhpTaintGraph,
     ) -> bool:
         """
         对 SQLi：若净化链包含强类型整数化函数（intval/is_numeric 等），
@@ -478,7 +483,7 @@ class PhpRCERule(_PhpTaintBaseRule):
         line: str,
         vuln_type: str,
         arg_var: str,
-        taint: "PhpTaintGraph",
+        taint: PhpTaintGraph,
     ) -> bool:
         """
         对 RCE 规则：若污点变量已被标记为 sanitized（经过净化函数处理过的路径），
@@ -585,7 +590,7 @@ class PhpPathTraversalRule(_PhpTaintBaseRule):
         line: str,
         vuln_type: str,
         arg_var: str,
-        taint: "PhpTaintGraph",
+        taint: PhpTaintGraph,
     ) -> bool:
         """路径经 basename/realpath 等净化后不再报告（含 Low）。"""
         return True
@@ -605,6 +610,91 @@ class PhpDeserializationRule(_PhpTaintBaseRule):
     def _extra_filter(self, line: str, vuln_type: str) -> bool:
         """unserialize(..., ['allowed_classes' => ...]) → 跳过。"""
         return bool(_DESERIALIZE_SAFE_RE.search(line))
+
+
+# 轻量级 PHP NoSQL 注入检测（模式匹配）
+
+
+class PhpNoSQLInjectionRule(SecurityRule):
+    """
+    PHP NoSQL 注入检测规则（模式匹配）。
+
+    目标场景：
+    - MongoDB / ODM 查询中直接使用超全局变量（$_GET/$_POST/$_REQUEST/$_COOKIE）作为查询条件。
+
+    示例（应被检测到）::
+
+        $collection->find(['user' => $_GET['user']]);
+    """
+
+    _PHP_NOSQL_SINK_RE = re.compile(
+        r"""
+        (?:\$[A-Za-z_]\w*\s*->\s*
+           (?:find|findOne|update|updateOne|updateMany|deleteOne|deleteMany|aggregate)
+        )
+        \s*\([^;]*\$_(GET|POST|REQUEST|COOKIE)\s*\[
+        """,
+        re.IGNORECASE | re.VERBOSE,
+    )
+
+    def __init__(self) -> None:
+        super().__init__(
+            rule_id="NOSQL_INJECTION_PHP_TAINT",
+            severity="High",
+            languages=["php"],
+        )
+
+    def visit(self, node: Any, context: AnalysisContext) -> None:
+        """NoSQL 规则不依赖逐节点访问，仅在 after_file 中做行级模式匹配。"""
+
+    def after_file(self, context: AnalysisContext) -> None:
+        for finding in self.analyze(
+            context.extras.get("source", "") or "",
+            context.file_path or "",
+        ):
+            context.add_finding(finding)
+
+    def analyze(self, code: str, file_path: str | Path) -> list[dict]:
+        """
+        对 PHP 源码进行 NoSQL 注入模式扫描，返回 finding 列表。
+
+        目前采用轻量行级正则，后续可视情况升级为基于 PhpTaintGraph 的数据流分析。
+        """
+        fp = str(file_path)
+        lines = code.split("\n")
+        findings: list[dict] = []
+        for idx, raw_line in enumerate(lines):
+            line_num = idx + 1
+            line = raw_line.strip()
+            m = self._PHP_NOSQL_SINK_RE.search(line)
+            if not m:
+                continue
+
+            src_m = re.search(
+                r"\$_(GET|POST|REQUEST|COOKIE)\s*\[",
+                line,
+                re.IGNORECASE,
+            )
+            taint_var = src_m.group(0).rstrip("[") if src_m else "$_INPUT"
+
+            findings.append(
+                {
+                    "type": "NOSQL_INJECTION",
+                    "rule_id": self.rule_id,
+                    "severity": self.severity,
+                    "line": line_num,
+                    "start_line": line_num,
+                    "end_line": line_num,
+                    "details": (
+                        "检测到 PHP 代码中使用超全局变量直接构造 NoSQL 查询条件，"
+                        "存在 NoSQL 注入风险，建议进行白名单过滤或参数绑定。"
+                    ),
+                    "file": fp,
+                    "cwe": _CWE_MAP.get("NOSQL_INJECTION", ""),
+                    "source": "PHP-Pattern",
+                },
+            )
+        return findings
 
 
 # 硬编码凭证模式：$password = "..." / define("DB_PASSWORD", "...") / 'api_key' => '...'
@@ -647,14 +737,14 @@ class PhpHardcodedCredentialsRule(SecurityRule):
         ):
             context.add_finding(f)
 
-    def analyze(self, code: str, file_path: "str | Path") -> List[Dict]:
+    def analyze(self, code: str, file_path: str | Path) -> list[dict]:
         """对 PHP 源码扫描硬编码凭证模式，返回 finding 列表（供 rule_engine.analyze_php 调用）。"""
         fp = str(file_path)
         stem = Path(fp).stem.lower()
         if any(stem.startswith(n) or stem == n for n in _TEST_FILE_NAMES):
             return []
         lines = code.split("\n")
-        findings: List[Dict] = []
+        findings: list[dict] = []
         for idx, raw_line in enumerate(lines):
             line_num = idx + 1
             line = raw_line.strip()
@@ -662,18 +752,20 @@ class PhpHardcodedCredentialsRule(SecurityRule):
                 continue
             if _CREDENTIAL_EXCLUDE_RE.search(line):
                 continue
-            findings.append({
-                "type": "HARDCODED_CREDENTIALS",
-                "rule_id": self.rule_id,
-                "severity": self.severity,
-                "line": line_num,
-                "start_line": line_num,
-                "end_line": line_num,
-                "details": "检测到疑似硬编码凭证（密码/API Key/Secret），建议使用环境变量或密钥管理服务。",
-                "file": fp,
-                "cwe": _CWE_MAP.get("HARDCODED_CREDENTIALS", ""),
-                "source": "PHP-TaintGraph",
-            })
+            findings.append(
+                {
+                    "type": "HARDCODED_CREDENTIALS",
+                    "rule_id": self.rule_id,
+                    "severity": self.severity,
+                    "line": line_num,
+                    "start_line": line_num,
+                    "end_line": line_num,
+                    "details": "检测到疑似硬编码凭证（密码/API Key/Secret），建议使用环境变量或密钥管理服务。",
+                    "file": fp,
+                    "cwe": _CWE_MAP.get("HARDCODED_CREDENTIALS", ""),
+                    "source": "PHP-TaintGraph",
+                }
+            )
         return findings
 
 
@@ -684,5 +776,6 @@ __all__ = [
     "PhpOpenRedirectRule",
     "PhpPathTraversalRule",
     "PhpDeserializationRule",
+    "PhpNoSQLInjectionRule",
     "PhpHardcodedCredentialsRule",
 ]

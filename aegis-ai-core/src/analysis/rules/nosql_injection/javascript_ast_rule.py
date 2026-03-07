@@ -26,20 +26,21 @@ JavaScript/TypeScript NoSQL 注入 AST 规则（优化版 + 数据流分析）�
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ...base import (
     AnalysisContext,
     SecurityRule,
+    is_likely_seed_or_migration,
     make_related_location,
     tree_sitter_node_to_range,
-    is_likely_seed_or_migration,
 )
 from ...base.user_input_detector import is_user_input_node
 
 # Tree-sitter Node 类型
 try:
     from tree_sitter import Node
+
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
@@ -49,50 +50,83 @@ except ImportError:
 class JavaScriptNoSQLInjectionAstRule(SecurityRule):
     """
     基于 Tree-sitter AST 的 JavaScript/TypeScript NoSQL 注入检测规则（优化版 + 数据流分析）。
-    
+
     新增功能：
     - 集成数据流追踪器进行污点分析
     - 扩展 MongoDB 操作符检测
     - 自动收集变量赋值信息
     """
-    
+
     # 扩展的 MongoDB 危险操作符列表
     DANGEROUS_OPERATORS = [
-        "$where",    # 最危险：允许执行任意 JS
-        "$ne",       # 不等于：常用于绕过认证
-        "$gt", "$gte", "$lt", "$lte",  # 比较操作符
-        "$regex",    # 正则匹配：可能导致 ReDoS
-        "$in", "$nin",  # 包含/不包含
-        "$or", "$and", "$not", "$nor",  # 逻辑操作符
-        "$exists",   # 字段存在检查
-        "$type",     # 类型检查
-        "$expr",     # 表达式
+        "$where",  # 最危险：允许执行任意 JS
+        "$ne",  # 不等于：常用于绕过认证
+        "$gt",
+        "$gte",
+        "$lt",
+        "$lte",  # 比较操作符
+        "$regex",  # 正则匹配：可能导致 ReDoS
+        "$in",
+        "$nin",  # 包含/不包含
+        "$or",
+        "$and",
+        "$not",
+        "$nor",  # 逻辑操作符
+        "$exists",  # 字段存在检查
+        "$type",  # 类型检查
+        "$expr",  # 表达式
         "$jsonSchema",  # JSON Schema
-        "$mod",      # 取模
-        "$text",     # 全文搜索
-        "$all",      # 数组匹配
+        "$mod",  # 取模
+        "$text",  # 全文搜索
+        "$all",  # 数组匹配
         "$elemMatch",  # 元素匹配
-        "$size",     # 数组大小
-        "$slice",    # 数组切片
+        "$size",  # 数组大小
+        "$slice",  # 数组切片
     ]
-    
+
     # MongoDB 数据库方法
     MONGO_SINKS = [
-        "find", "findOne", "findById", "findOneAndUpdate", "findOneAndDelete", "findOneAndReplace",
-        "update", "updateOne", "updateMany", "replaceOne",
-        "delete", "deleteOne", "deleteMany", "remove",
-        "count", "countDocuments", "estimatedDocumentCount",
-        "aggregate", "distinct", "mapReduce",
-        "insert", "insertOne", "insertMany",  # 插入操作也可能有注入风险（含旧式 insert API）
+        "find",
+        "findOne",
+        "findById",
+        "findOneAndUpdate",
+        "findOneAndDelete",
+        "findOneAndReplace",
+        "update",
+        "updateOne",
+        "updateMany",
+        "replaceOne",
+        "delete",
+        "deleteOne",
+        "deleteMany",
+        "remove",
+        "count",
+        "countDocuments",
+        "estimatedDocumentCount",
+        "aggregate",
+        "distinct",
+        "mapReduce",
+        "insert",
+        "insertOne",
+        "insertMany",  # 插入操作也可能有注入风险（含旧式 insert API）
     ]
 
     # 调用者名称或片段属于 crypto/哈希/流 API 时，.update() 视为非 NoSQL（降低误报）
     CRYPTO_LIKE_UPDATE_SUBSTRINGS = (
-        "sha256", "sha1", "sha512", "md5", "hmac",
-        "createhash", "createhmac", "cipher", "decipher",
-        "buffer", "stream", "transform",
+        "sha256",
+        "sha1",
+        "sha512",
+        "md5",
+        "hmac",
+        "createhash",
+        "createhmac",
+        "cipher",
+        "decipher",
+        "buffer",
+        "stream",
+        "transform",
         "method",  # method.create().update(message) 常见于哈希/流封装
-        "this",    # this.update(...) 常见于哈希/流类内部（如 HmacSha256.prototype）
+        "this",  # this.update(...) 常见于哈希/流类内部（如 HmacSha256.prototype）
     )
 
     def __init__(self) -> None:
@@ -105,7 +139,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
     def visit(self, node: Any, context: AnalysisContext) -> None:
         """
         访问 Tree-sitter AST 节点。
-        
+
         检测目标：
         - VariableDeclaration: 收集变量赋值信息（用于数据流分析）
         - AssignmentExpression: 收集变量赋值信息
@@ -121,7 +155,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
         # 【数据流收集】收集变量声明（const x = ..., let y = ...）
         if node.type in ("variable_declaration", "lexical_declaration"):
             self._collect_variable_declaration(node, context)
-        
+
         # 【数据流收集】收集赋值表达式（x = ...）
         elif node.type == "assignment_expression":
             self._collect_assignment(node, context)
@@ -133,14 +167,14 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
         # 【检测】检测对象字面量（查询对象）
         elif node.type == "object":
             self._check_query_object(node, context)
-    
+
     # ------------------------------------------------------------------
     # 数据流收集方法
     # ------------------------------------------------------------------
     def _collect_variable_declaration(self, node: Node, context: AnalysisContext) -> None:
         """
         收集变量声明，用于数据流分析。
-        
+
         处理：
         - const userId = req.body.userId;
         - let query = req.query;
@@ -149,37 +183,37 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
             if child.type == "variable_declarator":
                 var_name = None
                 value_expr = None
-                
+
                 for subchild in child.children:
                     if subchild.type == "identifier":
                         var_name = self._get_node_text(subchild)
-                    elif subchild.type not in ("=", ):
+                    elif subchild.type not in ("=",):
                         value_expr = self._get_node_text(subchild)
-                
+
                 if var_name and value_expr:
                     line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
                     context.track_assignment(var_name, value_expr, line)
-    
+
     def _collect_assignment(self, node: Node, context: AnalysisContext) -> None:
         """
         收集赋值表达式，用于数据流分析。
-        
+
         处理：
         - userId = req.body.userId;
         """
         left_node = None
         right_node = None
-        
+
         for child in node.children:
             if child.type == "identifier":
                 left_node = child
-            elif child.type not in ("=", ):
+            elif child.type not in ("=",):
                 right_node = child
-        
+
         if left_node and right_node:
             var_name = self._get_node_text(left_node)
             value_expr = self._get_node_text(right_node)
-            
+
             if var_name and value_expr:
                 line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
                 context.track_assignment(var_name, value_expr, line)
@@ -190,7 +224,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
     def _check_database_method_call(self, node: Node, context: AnalysisContext) -> None:
         """
         检测数据库方法调用（优化后的逻辑）。
-        
+
         逻辑流程：
         1. 获取方法名（callee.property.name）
         2. 命中 MongoDB 危险关键字
@@ -206,13 +240,13 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
         # 1. 获取方法名（callee.property.name）
         method_name = None
         caller_name = None
-        
+
         for child in node.children:
             if child.type == "member_expression":
                 # 提取方法名和调用者
                 method_parts = []
                 obj_parts = []
-                
+
                 def extract_member_parts(n: Node) -> None:
                     """递归提取 member_expression 的各个部分；支持 new ClassName().update、this.update 形式。"""
                     for subchild in n.children:
@@ -259,9 +293,9 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                                     extract_member_parts(c)
                                     break
                                 break
-                
+
                 extract_member_parts(child)
-                
+
                 # 最后一个 property_identifier 是方法名
                 if method_parts:
                     method_name = method_parts[-1]
@@ -271,7 +305,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                         caller_name = ".".join(obj_parts + method_parts[:-1])
                     else:
                         caller_name = obj_parts[0]
-                    
+
             elif child.type == "identifier":
                 # 直接函数调用（如 findOne()）
                 method_name = self._get_node_text(child)
@@ -287,21 +321,29 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
         # - 移除了 "model"（viewModel / formModel 极易误报）
         # - 移除了 "session" / "review"（业务逻辑对象常用词）
         likely_db_objects = [
-            "db", "collection", "users", "usercol", "userscol", "dao",
-            "mongo", "mongoose", "repository", "repo",
+            "db",
+            "collection",
+            "users",
+            "usercol",
+            "userscol",
+            "dao",
+            "mongo",
+            "mongoose",
+            "repository",
+            "repo",
         ]
 
         # 【修复】检测 DAO.update() 模式（如 allocationsDAO.update, contributionsDAO.update）
         is_dao_pattern = False
         if caller_name and caller_name.lower().endswith("dao"):
             is_dao_pattern = True
-        
+
         # 如果调用者不像数据库，且函数名太普通（如 'find'），则跳过
         # 防止把 array.find() 当成漏洞
         if method_name == "find":
             if not caller_name or (not self._is_db_related(caller_name, likely_db_objects) and not is_dao_pattern):
                 return
-        
+
         # 如果调用者存在但不像是数据库对象，跳过
         if caller_name:
             caller_lower = caller_name.lower()
@@ -309,9 +351,13 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
             if caller_lower in ("array", "string", "number", "object", "math", "date"):
                 return
             # 如果调用者不像数据库对象，跳过（除非方法名很明确是数据库操作，或者是 DAO 模式）
-            if method_name not in ("findOne", "updateOne", "deleteOne", "remove", "update") and not self._is_db_related(caller_name, likely_db_objects) and not is_dao_pattern:
+            if (
+                method_name not in ("findOne", "updateOne", "deleteOne", "remove", "update")
+                and not self._is_db_related(caller_name, likely_db_objects)
+                and not is_dao_pattern
+            ):
                 return
-        
+
         # 【修复】对于 update 方法，如果是 DAO 模式，即使调用者不完全匹配，也继续检测
         if method_name == "update" and is_dao_pattern:
             pass  # 继续检测
@@ -325,17 +371,14 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
         if method_name == "update" and self._is_crypto_like_update(caller_name):
             return
 
-                # 4. 关键：参数检查（不要死板地找 req.body）
+            # 4. 关键：参数检查（不要死板地找 req.body）
         for child in node.children:
             if child.type == "arguments":
                 if not child.children:
                     continue
 
                 # 收集所有非分隔符参数
-                all_args: List[Any] = [
-                    arg for arg in child.children
-                    if arg.type not in (",", "(", ")")
-                ]
+                all_args: list[Any] = [arg for arg in child.children if arg.type not in (",", "(", ")")]
 
                 if not all_args:
                     continue
@@ -345,7 +388,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
 
                 # 情况 A: 参数直接是 req.body (Critical)
                 if self._looks_like_user_input(first_arg, context):
-                    finding: Dict[str, Any] = {
+                    finding: dict[str, Any] = {
                         "type": "NOSQL_INJECTION",
                         "rule_id": self.rule_id,
                         "severity": "Critical",  # Critical 级别
@@ -359,7 +402,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                 # 情况 B: 参数是对象字面量 {user: ...} (High)
                 elif first_arg.type == "object":
                     if self._has_dangerous_key_or_value(first_arg, context):
-                        finding: Dict[str, Any] = {
+                        finding: dict[str, Any] = {
                             "type": "NOSQL_INJECTION",
                             "rule_id": self.rule_id,
                             "severity": "High",  # High 级别
@@ -371,7 +414,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                         return
                     elif self._contains_identifier_in_object(first_arg, context):
                         # 对象中包含污染标识符（污点感知）
-                        finding: Dict[str, Any] = {
+                        finding: dict[str, Any] = {
                             "type": "NOSQL_INJECTION",
                             "rule_id": self.rule_id,
                             "severity": "High",  # High 级别（因为对象字面量）
@@ -404,7 +447,9 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                                 return
 
                         # 【降低误报】种子/迁移文件中 insert/insertMany/insertOne 不报（多为初始化数据）
-                        if method_name in ("insert", "insertMany", "insertOne") and is_likely_seed_or_migration(context.file_path):
+                        if method_name in ("insert", "insertMany", "insertOne") and is_likely_seed_or_migration(
+                            context.file_path
+                        ):
                             return
 
                         # 【数据流分析】检查变量是否被污染（优先查 taint_graph）
@@ -433,7 +478,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                             severity = "Medium"
                             details = f"检测到 {caller_name or ''}.{method_name}() 调用，参数是变量 '{var_name}'，可能存在 NoSQL 注入风险（建议检查变量来源）。建议使用参数化查询。"
 
-                        finding: Dict[str, Any] = {
+                        finding: dict[str, Any] = {
                             "type": "NOSQL_INJECTION",
                             "rule_id": self.rule_id,
                             "severity": severity,
@@ -461,7 +506,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                     update_doc = all_args[1]
                     if update_doc.type == "object":
                         if self._has_tainted_update_operator(update_doc, context):
-                            finding: Dict[str, Any] = {
+                            finding: dict[str, Any] = {
                                 "type": "NOSQL_INJECTION",
                                 "rule_id": self.rule_id,
                                 "severity": "High",
@@ -472,7 +517,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                             context.add_finding(finding)
                             return
 
-    def _is_crypto_like_update(self, caller_name: Optional[str]) -> bool:
+    def _is_crypto_like_update(self, caller_name: str | None) -> bool:
         """
         判断 .update() 的调用者是否像 crypto/哈希/流 API（非 NoSQL），用于降低误报。
 
@@ -501,6 +546,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
             return False
 
         import re
+
         # 按 . / _ / 驼峰边界切分，例如 "usersCollection" -> ["users", "Collection"]
         tokens = re.split(r"[._]|(?<=[a-z])(?=[A-Z])", caller_name)
         tokens_lower = {t.lower() for t in tokens if t}
@@ -520,7 +566,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
     def _has_dangerous_key_or_value(self, node: Node, context: AnalysisContext) -> bool:
         """
         检查对象字面量中是否包含危险的键或值。
-        
+
         危险的键：$where, $ne, $regex 等 MongoDB 操作符（使用扩展列表）
         危险的值：req.body.*, req.query.* 等用户输入，或被污染的变量
         """
@@ -571,12 +617,12 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
         for child in update_doc.children:
             if child.type != "pair":
                 continue
-            key_text: Optional[str] = None
-            value_node: Optional[Node] = None
+            key_text: str | None = None
+            value_node: Node | None = None
             for subchild in child.children:
                 if subchild.type in ("property_identifier", "string"):
                     key_text = self._get_node_text(subchild)
-                elif subchild.type not in (":", ):
+                elif subchild.type not in (":",):
                     value_node = subchild
 
             if not key_text or key_text not in UPDATE_OPERATORS:
@@ -627,9 +673,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
 
         return False
 
-    def _contains_identifier_in_object(
-        self, node: Node, context: Optional[AnalysisContext] = None
-    ) -> bool:
+    def _contains_identifier_in_object(self, node: Node, context: AnalysisContext | None = None) -> bool:
         """
         检查对象字面量中是否包含**来自外部/污染的**标识符。
 
@@ -652,10 +696,9 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
 
         # 全大写变量视为常量（如 PAGE_SIZE / MAX_LIMIT）
         import re
+
         _CONST_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
-        _BUILTIN_LITERALS = frozenset(
-            ("true", "false", "null", "undefined", "this", "self", "none")
-        )
+        _BUILTIN_LITERALS = frozenset(("true", "false", "null", "undefined", "this", "self", "none"))
 
         for child in node.children:
             if child.type != "pair":
@@ -731,11 +774,11 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                         var_name = self._get_node_text(value_node)
                         if var_name and context.is_var_tainted(var_name):
                             is_dangerous = True
-                    
+
                     if is_dangerous:
                         line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
                         operator = self._get_node_text(key_node)
-                        finding: Dict[str, Any] = {
+                        finding: dict[str, Any] = {
                             "type": "NOSQL_INJECTION",
                             "rule_id": self.rule_id,
                             "severity": self.severity,
@@ -752,11 +795,11 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
     def _contains_user_input_in_object(self, node: Node) -> bool:
         """
         检查对象字面量中是否包含用户输入。
-        
+
         检测模式：
         - { user: req.body.user }
         - { email: req.query.email }
-        
+
         Tree-sitter AST 结构：
         object
           pair
@@ -775,7 +818,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                 # 我们需要检查 value（第二个子节点）
                 if len(child.children) >= 2:
                     value_node = child.children[1]  # value 是第二个子节点
-                    
+
                     # 检查 value 是否是用户输入（结构化检测）
                     if value_node.type == "member_expression":
                         if self._looks_like_user_input(value_node):

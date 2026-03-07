@@ -12,15 +12,16 @@ javascript_analyzer.py - JavaScript/TypeScript 分析器（新规则架构）
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, List
 
 from ..base import AnalysisContext, SecurityRule
 
 # Tree-sitter 导入
 try:
-    from tree_sitter import Parser, Node
+    from tree_sitter import Node, Parser
     from tree_sitter_languages import get_language
+
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
@@ -40,9 +41,8 @@ class JavaScriptAnalyzer:
             rules: SecurityRule 规则集合
         """
         # 只保留支持 javascript/typescript 的规则
-        self.rules: List[SecurityRule] = [
-            r for r in rules
-            if r.supports("javascript") or r.supports("typescript") or not r.languages
+        self.rules: list[SecurityRule] = [
+            r for r in rules if r.supports("javascript") or r.supports("typescript") or not r.languages
         ]
 
         # 初始化 Tree-sitter parser（如果可用）
@@ -56,7 +56,7 @@ class JavaScriptAnalyzer:
                 # Tree-sitter 不可用时，规则仍然可以工作（例如行级规则）
                 self._parser = None
 
-    def analyze(self, code: str, file_path: Path, language: str = "javascript") -> List[dict]:
+    def analyze(self, code: str, file_path: Path, language: str = "javascript") -> list[dict]:
         """
         对单个 JS/TS 文件执行分析。
 
@@ -90,6 +90,7 @@ class JavaScriptAnalyzer:
                 # 3.1 先运行 TaintAnalyzer 构建污点图（2.1 统一污点系统），规则层通过 context.taint_graph 查询
                 try:
                     from ..taint import TaintAnalyzer
+
                     taint_analyzer = TaintAnalyzer(language=lang)
                     taint_analyzer.analyze_tree(root, str(file_path), code)
                     context.taint_graph = taint_analyzer.get_graph()
@@ -135,4 +136,3 @@ class JavaScriptAnalyzer:
 
 
 __all__ = ["JavaScriptAnalyzer"]
-

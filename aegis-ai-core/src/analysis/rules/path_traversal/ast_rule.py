@@ -22,62 +22,93 @@ Python 路径遍历（Path Traversal）AST 规则。
 from __future__ import annotations
 
 import ast
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
 
-
 # ── Sink 函数：直接以文件路径为参数的高危调用 ──────────────────────────
-_DIRECT_SINK_FUNCS = frozenset([
-    # Python 内置
-    "open",
-    # Flask
-    "send_file",
-    "send_from_directory",
-    # Django
-    "FileResponse",
-])
+_DIRECT_SINK_FUNCS = frozenset(
+    [
+        # Python 内置
+        "open",
+        # Flask
+        "send_file",
+        "send_from_directory",
+        # Django
+        "FileResponse",
+    ]
+)
 
 # ── Sink 方法（obj.method 形式） ────────────────────────────────────────
-_SINK_METHODS = frozenset([
-    # pathlib
-    "open",
-    # os / shutil 等
-    "rename", "remove", "unlink", "rmdir",
-    "copy", "copyfile", "move",
-])
+_SINK_METHODS = frozenset(
+    [
+        # pathlib
+        "open",
+        # os / shutil 等
+        "rename",
+        "remove",
+        "unlink",
+        "rmdir",
+        "copy",
+        "copyfile",
+        "move",
+    ]
+)
 
 # ── 路径构造函数（os.path.join / Path() 等） ────────────────────────────
-_PATH_CONSTRUCT_FUNCS = frozenset([
-    "join",     # os.path.join
-])
-_PATH_CONSTRUCT_CLASSES = frozenset([
-    "Path",     # pathlib.Path
-    "PurePath", "PurePosixPath", "PureWindowsPath",
-    "PosixPath", "WindowsPath",
-])
+_PATH_CONSTRUCT_FUNCS = frozenset(
+    [
+        "join",  # os.path.join
+    ]
+)
+_PATH_CONSTRUCT_CLASSES = frozenset(
+    [
+        "Path",  # pathlib.Path
+        "PurePath",
+        "PurePosixPath",
+        "PureWindowsPath",
+        "PosixPath",
+        "WindowsPath",
+    ]
+)
 
 # ── 净化器：调用后视为已净化 ────────────────────────────────────────────
-_SANITIZE_ATTR_METHODS = frozenset([
-    "basename",   # os.path.basename
-    "abspath",    # os.path.abspath（仍需白名单校验，引擎仅降级）
-    "realpath",   # os.path.realpath
-])
-_SANITIZE_ATTRS = frozenset([
-    "name",       # Path.name / PurePath.name
-    "stem",       # Path.stem
-])
+_SANITIZE_ATTR_METHODS = frozenset(
+    [
+        "basename",  # os.path.basename
+        "abspath",  # os.path.abspath（仍需白名单校验，引擎仅降级）
+        "realpath",  # os.path.realpath
+    ]
+)
+_SANITIZE_ATTRS = frozenset(
+    [
+        "name",  # Path.name / PurePath.name
+        "stem",  # Path.stem
+    ]
+)
 
 # ── 用户输入来源 ────────────────────────────────────────────────────────
 _USER_INPUT_OBJS = frozenset(["request", "req"])
-_USER_INPUT_ATTRS = frozenset([
-    "form", "args", "json", "data", "values", "cookies", "headers",
-    "GET", "POST", "FILES", "params", "query_params",
-    "files",
-])
+_USER_INPUT_ATTRS = frozenset(
+    [
+        "form",
+        "args",
+        "json",
+        "data",
+        "values",
+        "cookies",
+        "headers",
+        "GET",
+        "POST",
+        "FILES",
+        "params",
+        "query_params",
+        "files",
+    ]
+)
 
 
-def _collect_names(node: ast.AST) -> List[str]:
+def _collect_names(node: ast.AST) -> list[str]:
     """收集节点子树中所有 Name.id。"""
     return [n.id for n in ast.walk(node) if isinstance(n, ast.Name)]
 
@@ -101,7 +132,7 @@ def _is_sanitized_node(node: ast.AST) -> bool:
     return False
 
 
-def _is_user_input_node(node: ast.AST, context: Optional[AnalysisContext] = None) -> bool:
+def _is_user_input_node(node: ast.AST, context: AnalysisContext | None = None) -> bool:
     """
     判断节点是否来自用户输入（优先 TaintGraph，次之结构化匹配，最后启发式）。
     """
@@ -130,12 +161,13 @@ def _is_user_input_node(node: ast.AST, context: Optional[AnalysisContext] = None
     # 退化启发式：变量名含文件路径语义关键词
     if isinstance(node, ast.Name):
         import re
+
         lname = node.id.lower()
         _FALLBACK_PATTERNS = (
-            r"^req(?:uest)?",   # req_xxx / request
-            r"_input$",          # xxx_input
-            r"_payload$",        # xxx_payload
-            r"^raw_",            # raw_xxx
+            r"^req(?:uest)?",  # req_xxx / request
+            r"_input$",  # xxx_input
+            r"_payload$",  # xxx_payload
+            r"^raw_",  # raw_xxx
         )
         if any(re.search(pat, lname) for pat in _FALLBACK_PATTERNS):
             return True
@@ -249,29 +281,33 @@ class PythonPathTraversalAstRule(SecurityRule):
                 if names and context is not None and all(context.is_var_sanitized(n) for n in names):
                     continue
                 if _is_user_input_node(part, context):
-                    self._add_finding(context, call_node, func_name,
-                                      details=(
-                                          f"发现 {func_name}() 的路径参数含疑似用户输入且未经净化，"
-                                          f"存在路径遍历风险（../../../etc/passwd 等）。"
-                                          f"建议使用 os.path.basename() 提取文件名，或在白名单目录内校验。"
-                                      ))
+                    self._add_finding(
+                        context,
+                        call_node,
+                        func_name,
+                        details=(
+                            f"发现 {func_name}() 的路径参数含疑似用户输入且未经净化，"
+                            f"存在路径遍历风险（../../../etc/passwd 等）。"
+                            f"建议使用 os.path.basename() 提取文件名，或在白名单目录内校验。"
+                        ),
+                    )
                     return
             return
 
         # f-string
         if isinstance(arg, ast.JoinedStr):
             idents = [n.id for n in ast.walk(arg) if isinstance(n, ast.Name)]
-            has_input = any(_is_user_input_node(ast.Name(id=n, ctx=ast.Load()), context)
-                            for n in idents)
+            has_input = any(_is_user_input_node(ast.Name(id=n, ctx=ast.Load()), context) for n in idents)
             if has_input and context is not None:
                 if all(context.is_var_sanitized(n) for n in idents if n):
                     return
             if has_input:
-                self._add_finding(context, call_node, func_name,
-                                  details=(
-                                      f"发现 {func_name}() 的路径参数使用 f-string 包含用户变量，"
-                                      f"存在路径遍历风险。"
-                                  ))
+                self._add_finding(
+                    context,
+                    call_node,
+                    func_name,
+                    details=(f"发现 {func_name}() 的路径参数使用 f-string 包含用户变量，存在路径遍历风险。"),
+                )
             return
 
         # 直接节点
@@ -282,7 +318,9 @@ class PythonPathTraversalAstRule(SecurityRule):
             return
         if _is_user_input_node(arg, context):
             self._add_finding(
-                context, call_node, func_name,
+                context,
+                call_node,
+                func_name,
                 details=(
                     f"发现 {func_name}() 的路径参数含疑似用户输入且未经净化，"
                     f"存在路径遍历风险（../../../etc/passwd 等）。"
@@ -291,11 +329,12 @@ class PythonPathTraversalAstRule(SecurityRule):
             )
 
     @staticmethod
-    def _flatten_binop(node: ast.AST) -> List[ast.AST]:
+    def _flatten_binop(node: ast.AST) -> list[ast.AST]:
         """递归展平 BinOp 加法/取模链，收集所有叶子节点。"""
         if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Mod)):
-            return (PythonPathTraversalAstRule._flatten_binop(node.left)
-                    + PythonPathTraversalAstRule._flatten_binop(node.right))
+            return PythonPathTraversalAstRule._flatten_binop(node.left) + PythonPathTraversalAstRule._flatten_binop(
+                node.right
+            )
         return [node]
 
     def _add_finding(
@@ -306,7 +345,7 @@ class PythonPathTraversalAstRule(SecurityRule):
         details: str,
     ) -> None:
         line_no = getattr(node, "lineno", 0) or 0
-        finding: Dict[str, Any] = {
+        finding: dict[str, Any] = {
             "type": "PATH_TRAVERSAL",
             "rule_id": self.rule_id,
             "severity": self.severity,

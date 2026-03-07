@@ -1,6 +1,6 @@
 # aegis_server.py - Aegis 工业级 API 服务端
 import os
-import sys
+
 import certifi
 
 # =================================================================
@@ -15,29 +15,36 @@ _project_root = os.path.dirname(os.path.dirname(_current_dir))  # aegis-ai-core 
 # 1. 🛡️ 环境净化与证书修复 (保留昨晚的成果)
 # =================================================================
 valid_cert_path = certifi.where()
-os.environ['REQUESTS_CA_BUNDLE'] = valid_cert_path
-os.environ['SSL_CERT_FILE'] = valid_cert_path
+os.environ["REQUESTS_CA_BUNDLE"] = valid_cert_path
+os.environ["SSL_CERT_FILE"] = valid_cert_path
 
 # =================================================================
 # 2. 🔑 加载环境变量（支持 .env 文件）
 # =================================================================
 try:
     from dotenv import load_dotenv
+
     # 尝试从当前目录或父目录加载 .env 文件
     load_dotenv()
-    load_dotenv(os.path.join(_project_root, '.env'))
+    load_dotenv(os.path.join(_project_root, ".env"))
 except ImportError:
     # 如果没有安装 python-dotenv，只使用系统环境变量
     pass
 
-import httpx
-import chromadb
+import hashlib
 import logging
 import time
-import hashlib
 from collections import OrderedDict, defaultdict, deque
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+import chromadb
+import httpx
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
 from src.analysis.rule_engine import (
     analyze_go,
     analyze_java,
@@ -45,14 +52,9 @@ from src.analysis.rule_engine import (
     analyze_php,
     analyze_python,
 )
-from src.rag.rag_optimizer import optimized_rag_retrieval
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-
 from src.core.config import get_settings
 from src.core.logging_config import setup_logging
+from src.rag.rag_optimizer import optimized_rag_retrieval
 
 # =================================================================
 # 3. 📊 结构化日志系统（统一初始化）
@@ -93,9 +95,9 @@ class SimpleTTLCache:
     def __init__(self, max_items: int, ttl_seconds: int):
         self._max_items = max_items
         self._ttl_seconds = ttl_seconds
-        self._store: "OrderedDict[str, tuple[float, str]]" = OrderedDict()
+        self._store: OrderedDict[str, tuple[float, str]] = OrderedDict()
 
-    def get(self, key: str) -> Optional[str]:
+    def get(self, key: str) -> str | None:
         now = time.time()
         item = self._store.get(key)
         if not item:
@@ -132,7 +134,7 @@ deepseek_cache = SimpleTTLCache(
 # =================================================================
 # 🧠 AI 核心逻辑函数 (httpx 异步调用，带重试和日志)
 # =================================================================
-_http_client: Optional[httpx.AsyncClient] = None
+_http_client: httpx.AsyncClient | None = None
 
 
 def _get_http_client() -> httpx.AsyncClient:
@@ -191,19 +193,22 @@ async def call_deepseek(system_prompt: str, user_message: str) -> str:
 
     start_time = time.time()
     max_attempts = 3
-    resp: Optional[httpx.Response] = None
+    resp: httpx.Response | None = None
 
     for attempt in range(1, max_attempts + 1):
         try:
             resp = await _call_deepseek_once(system_prompt, user_message)
             break
-        except httpx.TimeoutException as e:
+        except httpx.TimeoutException:
             if attempt < max_attempts:
                 import asyncio
-                wait_time = 2 ** attempt
+
+                wait_time = 2**attempt
                 logger.warning(
                     "API 调用超时，%ds 后重试 (尝试 %d/%d)",
-                    wait_time, attempt, max_attempts,
+                    wait_time,
+                    attempt,
+                    max_attempts,
                 )
                 await asyncio.sleep(wait_time)
             else:
@@ -219,10 +224,13 @@ async def call_deepseek(system_prompt: str, user_message: str) -> str:
         except httpx.ConnectError as e:
             if attempt < max_attempts:
                 import asyncio
-                wait_time = 2 ** attempt
+
+                wait_time = 2**attempt
                 logger.warning(
                     "网络连接失败，%ds 后重试 (尝试 %d/%d)",
-                    wait_time, attempt, max_attempts,
+                    wait_time,
+                    attempt,
+                    max_attempts,
                 )
                 await asyncio.sleep(wait_time)
             else:
@@ -250,13 +258,14 @@ async def call_deepseek(system_prompt: str, user_message: str) -> str:
         logger.error(error_msg, extra={"elapsed_ms": elapsed, "error": str(e)})
         return f"❌ {error_msg}"
 
+
 # =================================================================
 # 🌐 FastAPI 服务配置
 # =================================================================
 app = FastAPI(title="Aegis-AI Backend", version="1.0")
 
 
-EXTENSION_LANGUAGE_MAP: Dict[str, str] = {
+EXTENSION_LANGUAGE_MAP: dict[str, str] = {
     ".py": "python",
     ".pyw": "python",
     ".js": "javascript",
@@ -273,7 +282,7 @@ EXTENSION_LANGUAGE_MAP: Dict[str, str] = {
 }
 
 
-def _detect_language(filename: str) -> Optional[str]:
+def _detect_language(filename: str) -> str | None:
     """
     根据文件扩展名推断语言标识。
 
@@ -287,7 +296,7 @@ def _detect_language(filename: str) -> Optional[str]:
     return EXTENSION_LANGUAGE_MAP.get(ext.lower() or "")
 
 
-def _analyze_with_rule_engine(code_text: str, filename: str) -> List[Dict[str, Any]]:
+def _analyze_with_rule_engine(code_text: str, filename: str) -> list[dict[str, Any]]:
     """
     使用统一 rule_engine 对单个文件做安全扫描。
 
@@ -316,7 +325,7 @@ def _analyze_with_rule_engine(code_text: str, filename: str) -> List[Dict[str, A
     return []
 
 
-def _generate_rule_engine_report(findings: List[Dict[str, Any]], filename: str) -> str:
+def _generate_rule_engine_report(findings: list[dict[str, Any]], filename: str) -> str:
     """
     基于 rule_engine 检测结果生成 Markdown 审计报告。
 
@@ -376,6 +385,7 @@ def _generate_rule_engine_report(findings: List[Dict[str, Any]], filename: str) 
 
     return report
 
+
 # =================================================================
 # 6. 🚦 简单限流（按 IP / 路由）
 # =================================================================
@@ -434,9 +444,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # 定义前端发来的数据格式
 class ChatRequest(BaseModel):
     message: str
+
 
 @app.get("/")
 def health_check():
@@ -448,14 +460,12 @@ def health_check():
             "status": "healthy",
             "db_count": db_count,
             "api_key_configured": api_key_configured,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
     except Exception as e:
         logger.error("健康检查失败", extra={"error": str(e)})
-        return JSONResponse(
-            status_code=503,
-            content={"status": "unhealthy", "error": str(e)}
-        )
+        return JSONResponse(status_code=503, content={"status": "unhealthy", "error": str(e)})
+
 
 # =================================================================
 # 5. 🛡️ 全局异常处理
@@ -463,19 +473,19 @@ def health_check():
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """全局异常处理器"""
-    logger.error("未处理的异常", extra={
-        "path": request.url.path,
-        "method": request.method,
-        "error": str(exc),
-        "error_type": type(exc).__name__
-    }, exc_info=True)
+    logger.error(
+        "未处理的异常",
+        extra={"path": request.url.path, "method": request.method, "error": str(exc), "error_type": type(exc).__name__},
+        exc_info=True,
+    )
     return JSONResponse(
         status_code=500,
         content={
             "error": "内部服务器错误",
-            "detail": str(exc) if os.getenv("DEBUG", "false").lower() == "true" else "请联系管理员"
-        }
+            "detail": str(exc) if os.getenv("DEBUG", "false").lower() == "true" else "请联系管理员",
+        },
     )
+
 
 @app.post("/api/chat")
 async def chat_endpoint(req: ChatRequest, request: Request):
@@ -486,15 +496,11 @@ async def chat_endpoint(req: ChatRequest, request: Request):
     """
     start_time = time.time()
     user_query = req.message.strip()
-    
+
     # 记录请求
     client_ip = request.client.host if request.client else "unknown"
-    logger.info("收到聊天请求", extra={
-        "query": user_query,
-        "client_ip": client_ip,
-        "query_length": len(user_query)
-    })
-    
+    logger.info("收到聊天请求", extra={"query": user_query, "client_ip": client_ip, "query_length": len(user_query)})
+
     if not user_query:
         logger.warning("空查询请求")
         return {"reply": "如果你不说话，我无法帮你。", "mode": "none"}
@@ -506,30 +512,32 @@ async def chat_endpoint(req: ChatRequest, request: Request):
             collection=collection,
             query=user_query,
             top_k=5,  # 初始检索 5 条
-            return_top_n=3  # 返回前 3 条
+            return_top_n=3,  # 返回前 3 条
         )
         vector_time = (time.time() - vector_start) * 1000
-        
+
         reply = ""
         mode = "chat"  # 默认为闲聊模式
-        distance = rag_result['distance']
+        distance = rag_result["distance"]
 
-        logger.info("优化的 RAG 检索完成", extra={
-            "distance": distance,
-            "has_match": rag_result['has_match'],
-            "total_candidates": rag_result['total_candidates'],
-            "returned_count": len(rag_result['ranked_results']),
-            "vector_time_ms": vector_time
-        })
+        logger.info(
+            "优化的 RAG 检索完成",
+            extra={
+                "distance": distance,
+                "has_match": rag_result["has_match"],
+                "total_candidates": rag_result["total_candidates"],
+                "returned_count": len(rag_result["ranked_results"]),
+                "vector_time_ms": vector_time,
+            },
+        )
 
         # 路由判断：是否有有效匹配
-        if rag_result['has_match']:
-            logger.info("进入专家模式（RAG）", extra={
-                "distance": distance,
-                "context_length": len(rag_result['context'])
-            })
+        if rag_result["has_match"]:
+            logger.info(
+                "进入专家模式（RAG）", extra={"distance": distance, "context_length": len(rag_result["context"])}
+            )
             mode = "expert"
-            
+
             # RAG 模式提示词（使用融合后的上下文）
             sys_prompt = """你是一个高级安全专家。
             请根据【参考资料】回答问题。参考资料可能包含多条相关信息，请综合分析。
@@ -537,7 +545,7 @@ async def chat_endpoint(req: ChatRequest, request: Request):
             """
             user_msg = f"{rag_result['context']}\n\n【用户问题】:\n{user_query}"
             reply = await call_deepseek(sys_prompt, user_msg)
-            
+
         else:
             logger.info("进入闲聊模式", extra={"distance": distance})
             mode = "chat"
@@ -545,27 +553,22 @@ async def chat_endpoint(req: ChatRequest, request: Request):
             reply = await call_deepseek(sys_prompt, user_query)
 
         elapsed = (time.time() - start_time) * 1000
-        logger.info("请求处理完成", extra={
-            "mode": mode,
-            "distance": distance,
-            "total_time_ms": elapsed,
-            "reply_length": len(reply)
-        })
+        logger.info(
+            "请求处理完成",
+            extra={"mode": mode, "distance": distance, "total_time_ms": elapsed, "reply_length": len(reply)},
+        )
 
-        return {
-            "reply": reply,
-            "mode": mode,
-            "distance": distance
-        }
-    
+        return {"reply": reply, "mode": mode, "distance": distance}
+
     except Exception as e:
         elapsed = (time.time() - start_time) * 1000
-        logger.error("请求处理失败", extra={
-            "error": str(e),
-            "error_type": type(e).__name__,
-            "elapsed_ms": elapsed
-        }, exc_info=True)
+        logger.error(
+            "请求处理失败",
+            extra={"error": str(e), "error_type": type(e).__name__, "elapsed_ms": elapsed},
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail=f"处理请求时发生错误: {str(e)}")
+
 
 # 🔥 新增：代码审计专用接口
 @app.post("/api/audit")
@@ -575,24 +578,19 @@ async def audit_code(file: UploadFile = File(...), request: Request = None):
     """
     start_time = time.time()
     client_ip = request.client.host if request and request.client else "unknown"
-    
-    logger.info("收到审计请求", extra={
-        "file_name": file.filename,
-        "content_type": file.content_type,
-        "client_ip": client_ip
-    })
-    
+
+    logger.info(
+        "收到审计请求", extra={"file_name": file.filename, "content_type": file.content_type, "client_ip": client_ip}
+    )
+
     try:
         # 读取文件内容
         content = await file.read()
         code_text = content.decode("utf-8")
         code_size = len(code_text)
-        
-        logger.info("文件读取成功", extra={
-            "file_name": file.filename,
-            "code_size": code_size
-        })
-        
+
+        logger.info("文件读取成功", extra={"file_name": file.filename, "code_size": code_size})
+
         # === 🔥 核心升级：统一规则引擎（多语言 AST + 污点分析）===
         analysis_start = time.time()
         findings = _analyze_with_rule_engine(code_text, file.filename or "unknown")
@@ -629,31 +627,30 @@ async def audit_code(file: UploadFile = File(...), request: Request = None):
         
         请输出专业的 Markdown 格式审计报告。
         """
-        
+
         # 限制代码长度（避免 token 超限）
         MAX_CODE_LENGTH = 10000
         code_preview = code_text[:MAX_CODE_LENGTH]
         if len(code_text) > MAX_CODE_LENGTH:
-            logger.warning("代码过长，已截断", extra={
-                "original_length": len(code_text),
-                "truncated_length": MAX_CODE_LENGTH
-            })
-        
+            logger.warning(
+                "代码过长，已截断", extra={"original_length": len(code_text), "truncated_length": MAX_CODE_LENGTH}
+            )
+
         # === 尝试 AI 增强（如果可用）===
         reply = ""
         use_ai = bool(DEEPSEEK_API_KEY)  # 如果配置了 API Key，尝试用 AI
-        
+
         if use_ai:
             try:
                 # 限制代码长度（避免 token 超限）
                 MAX_CODE_LENGTH = 10000
                 code_preview = code_text[:MAX_CODE_LENGTH]
                 if len(code_text) > MAX_CODE_LENGTH:
-                    logger.warning("代码过长，已截断", extra={
-                        "original_length": len(code_text),
-                        "truncated_length": MAX_CODE_LENGTH
-                    })
-                
+                    logger.warning(
+                        "代码过长，已截断",
+                        extra={"original_length": len(code_text), "truncated_length": MAX_CODE_LENGTH},
+                    )
+
                 user_msg = f"""
                 {local_report_str}
                 
@@ -665,18 +662,18 @@ async def audit_code(file: UploadFile = File(...), request: Request = None):
                 logger.info("提交 AI 增强审计", extra={"code_length": len(code_preview)})
                 reply = await call_deepseek(system_prompt, user_msg)
                 logger.info("AI 增强审计完成")
-                
+
             except Exception as e:
                 logger.warning("AI 审计失败，降级到纯规则审计", extra={"error": str(e)})
                 use_ai = False
-        
+
         # === 降级策略：如果 AI 不可用，使用纯规则审计 ===
         if not use_ai or not reply or reply.startswith("❌"):
             logger.info("使用纯规则审计引擎")
             reply = _generate_rule_engine_report(findings, file.filename or "unknown")
-        
+
         elapsed = (time.time() - start_time) * 1000
-        
+
         # 统计严重程度
         severity_count = {
             "Critical": len([f for f in findings if f.get("severity") == "Critical"]),
@@ -684,15 +681,18 @@ async def audit_code(file: UploadFile = File(...), request: Request = None):
             "Medium": len([f for f in findings if f.get("severity") == "Medium"]),
             "Low": len([f for f in findings if f.get("severity") == "Low"]),
         }
-        
-        logger.info("审计完成", extra={
-            "file_name": file.filename,
-            "total_findings": len(findings),
-            "severity": severity_count,
-            "used_ai": use_ai,
-            "total_time_ms": elapsed,
-            "reply_length": len(reply)
-        })
+
+        logger.info(
+            "审计完成",
+            extra={
+                "file_name": file.filename,
+                "total_findings": len(findings),
+                "severity": severity_count,
+                "used_ai": use_ai,
+                "total_time_ms": elapsed,
+                "reply_length": len(reply),
+            },
+        )
 
         return {
             "reply": reply,
@@ -700,25 +700,23 @@ async def audit_code(file: UploadFile = File(...), request: Request = None):
             "filename": file.filename,
             "findings_count": len(findings),
             "severity_count": severity_count,
-            "used_ai": use_ai
+            "used_ai": use_ai,
         }
-    
+
     except UnicodeDecodeError as e:
         elapsed = (time.time() - start_time) * 1000
         error_msg = f"文件编码错误，无法解析为 UTF-8: {str(e)}"
         logger.error(error_msg, extra={"file_name": file.filename, "elapsed_ms": elapsed})
         raise HTTPException(status_code=400, detail=error_msg)
-    
+
     except Exception as e:
         elapsed = (time.time() - start_time) * 1000
-        logger.error("审计处理失败", extra={
-            "file_name": file.filename,
-            "error": str(e),
-            "error_type": type(e).__name__,
-            "elapsed_ms": elapsed
-        }, exc_info=True)
+        logger.error(
+            "审计处理失败",
+            extra={"file_name": file.filename, "error": str(e), "error_type": type(e).__name__, "elapsed_ms": elapsed},
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail=f"审计处理时发生错误: {str(e)}")
-
 
 
 # 启动提示
@@ -744,4 +742,5 @@ async def _shutdown() -> None:
 # =================================================================
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("src.server.aegis_server:app", host="0.0.0.0", port=8000, reload=True)

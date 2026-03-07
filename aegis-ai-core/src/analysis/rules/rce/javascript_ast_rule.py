@@ -14,7 +14,7 @@ JavaScript/TypeScript RCE（远程代码执行 / 命令执行）AST 规则。
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from ...base import (
     AnalysisContext,
@@ -27,6 +27,7 @@ from ...base.user_input_detector import is_user_input_node
 # Tree-sitter Node 类型（运行时检查）
 try:
     from tree_sitter import Node
+
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
@@ -95,7 +96,7 @@ class JavaScriptRCEAstRule(SecurityRule):
         # 2. child_process.exec() 等命令执行
         if object_name == "child_process" and method_name in ("exec", "spawn", "execFile"):
             line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-            finding: Dict[str, Any] = {
+            finding: dict[str, Any] = {
                 "type": "RCE_COMMAND_EXEC",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
@@ -109,7 +110,7 @@ class JavaScriptRCEAstRule(SecurityRule):
         # 3. vm.runInNewContext() - Node.js VM 模块（代码执行）
         if object_name == "vm" and method_name in ("runInNewContext", "runInContext", "runInThisContext"):
             line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-            finding: Dict[str, Any] = {
+            finding: dict[str, Any] = {
                 "type": "RCE_COMMAND_EXEC",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
@@ -129,7 +130,7 @@ class JavaScriptRCEAstRule(SecurityRule):
                     for arg in child.children:
                         if self._looks_like_user_input_for_unserialize(arg):
                             line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                            finding: Dict[str, Any] = {
+                            finding: dict[str, Any] = {
                                 "type": "RCE_COMMAND_EXEC",
                                 "rule_id": self.rule_id,
                                 "severity": self.severity,
@@ -153,9 +154,7 @@ class JavaScriptRCEAstRule(SecurityRule):
     # ------------------------------------------------------------------
     # eval / Function 污点感知检查
     # ------------------------------------------------------------------
-    def _check_eval_or_function(
-        self, node: Any, context: AnalysisContext, func_name: str
-    ) -> None:
+    def _check_eval_or_function(self, node: Any, context: AnalysisContext, func_name: str) -> None:
         """
         污点感知版 eval()/Function() 检测。
 
@@ -177,7 +176,7 @@ class JavaScriptRCEAstRule(SecurityRule):
 
         # 用户输入直接流入
         if self._looks_like_user_input_for_unserialize(first_arg):
-            finding: Dict[str, Any] = {
+            finding: dict[str, Any] = {
                 "type": "RCE_COMMAND_EXEC",
                 "rule_id": self.rule_id,
                 "severity": "Critical",
@@ -204,8 +203,13 @@ class JavaScriptRCEAstRule(SecurityRule):
                 return
 
         # 参数含变量但来源不明 → 降级为 Medium
-        if first_arg.type in ("identifier", "member_expression", "call_expression",
-                               "binary_expression", "template_string"):
+        if first_arg.type in (
+            "identifier",
+            "member_expression",
+            "call_expression",
+            "binary_expression",
+            "template_string",
+        ):
             finding = {
                 "type": "RCE_COMMAND_EXEC",
                 "rule_id": self.rule_id,

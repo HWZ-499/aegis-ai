@@ -13,14 +13,13 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Dict, Iterable, List
 
 import yaml
 
 from .rule_schema import DslPattern, DslRule
 
 
-def load_rules_from_directory(root: Path) -> List[DslRule]:
+def load_rules_from_directory(root: Path) -> list[DslRule]:
     """从指定目录递归加载所有 YAML 规则文件。
 
     Args:
@@ -29,7 +28,7 @@ def load_rules_from_directory(root: Path) -> List[DslRule]:
     Returns:
         解析成功的 DslRule 列表。
     """
-    rules: List[DslRule] = []
+    rules: list[DslRule] = []
     if not root.exists():
         return rules
 
@@ -64,7 +63,7 @@ def _build_regex_from_pattern(pattern: str) -> re.Pattern:
         编译后的正则表达式对象。
     """
     token_re = re.compile(r"\$(\w+)")
-    regex_parts: List[str] = []
+    regex_parts: list[str] = []
     last_index = 0
 
     for match in token_re.finditer(pattern):
@@ -102,7 +101,7 @@ def _build_regex_from_pattern(pattern: str) -> re.Pattern:
     return compiled
 
 
-def match_source(rule: DslRule, source: str, file_path: Path) -> List[Dict]:
+def match_source(rule: DslRule, source: str, file_path: Path) -> list[dict]:
     """对源码执行 DSL 规则匹配，返回 Finding 列表。
 
     Args:
@@ -113,7 +112,7 @@ def match_source(rule: DslRule, source: str, file_path: Path) -> List[Dict]:
     Returns:
         Finding 字典列表（尚未包含 file/language 字段）。
     """
-    findings: List[Dict] = []
+    findings: list[dict] = []
     if not source:
         return findings
 
@@ -166,4 +165,3 @@ def _metavars_satisfied(pattern: DslPattern, match: re.Match) -> bool:
 
 
 __all__ = ["load_rules_from_directory", "match_source"]
-

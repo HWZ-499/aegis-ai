@@ -9,8 +9,8 @@ This module contains:
 
 from __future__ import annotations
 
-from .rule_schema import DslPattern, DslRule
 from .dsl_adapter import DslRuleAdapter, load_dsl_rules_for_language
+from .rule_schema import DslPattern, DslRule
 
 __all__ = [
     "DslPattern",
@@ -18,4 +18,3 @@ __all__ = [
     "DslRuleAdapter",
     "load_dsl_rules_for_language",
 ]
-

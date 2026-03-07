@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import ast
 import logging
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, List
 
 from ..base import AnalysisContext, SecurityRule
 
@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 try:
     from tree_sitter import Parser
     from tree_sitter_languages import get_language
+
     _TREE_SITTER_AVAILABLE = True
 except ImportError:
     _TREE_SITTER_AVAILABLE = False
@@ -39,9 +40,7 @@ class PythonAnalyzer:
 
     def __init__(self, rules: Iterable[SecurityRule]) -> None:
         # 只保留支持 python 的规则
-        self.rules: List[SecurityRule] = [
-            r for r in rules if r.supports("python") or not r.languages
-        ]
+        self.rules: list[SecurityRule] = [r for r in rules if r.supports("python") or not r.languages]
 
         # 初始化 Tree-sitter parser（用于 TaintAnalyzer）
         self._ts_parser: Parser | None = None
@@ -53,7 +52,7 @@ class PythonAnalyzer:
             except Exception:
                 self._ts_parser = None
 
-    def analyze(self, code: str, file_path: Path) -> List[dict]:
+    def analyze(self, code: str, file_path: Path) -> list[dict]:
         """
         对单个 Python 文件执行分析。
 
@@ -78,6 +77,7 @@ class PythonAnalyzer:
         if self._ts_parser:
             try:
                 from ..taint import TaintAnalyzer
+
                 taint_analyzer = TaintAnalyzer(language="python")
                 ts_tree = self._ts_parser.parse(bytes(code, "utf8"))
                 taint_analyzer.analyze_tree(ts_tree.root_node, str(file_path), code)

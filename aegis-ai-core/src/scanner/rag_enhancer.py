@@ -15,10 +15,9 @@ rag_enhancer.py - RAG 增强模块
 from __future__ import annotations
 
 import logging
-import os
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +79,7 @@ BUILTIN_REMEDIATION = {
                 ");"
             ),
             "knex": (
-                "// Knex 查询构建器（自动参数化）\n"
-                "const user = await knex('users').where({ id: userId }).first();"
+                "// Knex 查询构建器（自动参数化）\nconst user = await knex('users').where({ id: userId }).first();"
             ),
             "typeorm": (
                 "// TypeORM 参数化查询\n"
@@ -93,8 +91,7 @@ BUILTIN_REMEDIATION = {
                 ");"
             ),
             "prisma": (
-                "// Prisma ORM（自动参数化）\n"
-                "const user = await prisma.user.findUnique({ where: { id: userId } });"
+                "// Prisma ORM（自动参数化）\nconst user = await prisma.user.findUnique({ where: { id: userId } });"
             ),
             "pymysql": (
                 "# pymysql 参数化查询\n"
@@ -121,7 +118,7 @@ BUILTIN_REMEDIATION = {
             ),
             "jdbc": (
                 "// Java: JDBC PreparedStatement 参数化查询\n"
-                "String sql = \"SELECT * FROM users WHERE id = ?\";\n"
+                'String sql = "SELECT * FROM users WHERE id = ?";\n'
                 "try (PreparedStatement ps = connection.prepareStatement(sql)) {\n"
                 "    ps.setInt(1, userId);\n"
                 "    try (ResultSet rs = ps.executeQuery()) {\n"
@@ -131,7 +128,7 @@ BUILTIN_REMEDIATION = {
             ),
             "spring": (
                 "// Java: Spring JdbcTemplate 参数化查询\n"
-                "String sql = \"SELECT * FROM users WHERE id = ?\";\n"
+                'String sql = "SELECT * FROM users WHERE id = ?";\n'
                 "User user = jdbcTemplate.queryForObject(\n"
                 "    sql,\n"
                 "    new Object[] { userId },\n"
@@ -140,15 +137,15 @@ BUILTIN_REMEDIATION = {
             ),
             "hibernate": (
                 "// Java: Hibernate HQL 参数化查询\n"
-                "String hql = \"FROM User u WHERE u.id = :id\";\n"
+                'String hql = "FROM User u WHERE u.id = :id";\n'
                 "User user = session.createQuery(hql, User.class)\n"
-                "    .setParameter(\"id\", userId)\n"
+                '    .setParameter("id", userId)\n'
                 "    .uniqueResult();"
             ),
             "mybatis": (
                 "// Java: MyBatis 使用 #{id} 占位符（自动参数化）\n"
                 "// Mapper XML:\n"
-                "// <select id=\"findUser\" resultType=\"User\">\n"
+                '// <select id="findUser" resultType="User">\n'
                 "//   SELECT * FROM users WHERE id = #{id}\n"
                 "// </select>\n"
                 "User user = userMapper.findUser(userId);"
@@ -240,9 +237,7 @@ BUILTIN_REMEDIATION = {
                 "result = subprocess.run(['ls', '-la', safe_path], capture_output=True, text=True)"
             ),
             "escapeshellarg": (
-                "// PHP: 使用 escapeshellarg 转义参数\n"
-                "$safe = escapeshellarg($user_input);\n"
-                "exec('ls ' . $safe);"
+                "// PHP: 使用 escapeshellarg 转义参数\n$safe = escapeshellarg($user_input);\nexec('ls ' . $safe);"
             ),
         },
     },
@@ -274,33 +269,17 @@ BUILTIN_REMEDIATION = {
             "// this.sanitizer.bypassSecurityTrustHtml(content)"
         ),
         "framework_suggested_code": {
-            "dompurify": (
-                "// DOMPurify 净化后插入\n"
-                "element.innerHTML = DOMPurify.sanitize(userInput);"
-            ),
+            "dompurify": ("// DOMPurify 净化后插入\nelement.innerHTML = DOMPurify.sanitize(userInput);"),
             "he": (
-                "// Node.js 服务端: he 编码\n"
-                "const he = require('he');\n"
-                "res.send(`<p>${he.encode(userInput)}</p>`);"
+                "// Node.js 服务端: he 编码\nconst he = require('he');\nres.send(`<p>${he.encode(userInput)}</p>`);"
             ),
             "dom_sanitizer": (
                 "// Angular: 模板中 {{ userInput }} 自动转义\n"
                 "// 必须用 [innerHTML] 时: this.sanitizer.sanitize(SecurityContext.HTML, content)"
             ),
-            "html_escape": (
-                "# Python: html.escape\n"
-                "import html\n"
-                "safe = html.escape(user_input)"
-            ),
-            "markupsafe": (
-                "# Jinja2 / MarkupSafe\n"
-                "from markupsafe import escape\n"
-                "safe = escape(user_input)"
-            ),
-            "htmlspecialchars": (
-                "// PHP: 输出前转义\n"
-                "echo htmlspecialchars($var, ENT_QUOTES, 'UTF-8');"
-            ),
+            "html_escape": ("# Python: html.escape\nimport html\nsafe = html.escape(user_input)"),
+            "markupsafe": ("# Jinja2 / MarkupSafe\nfrom markupsafe import escape\nsafe = escape(user_input)"),
+            "htmlspecialchars": ("// PHP: 输出前转义\necho htmlspecialchars($var, ENT_QUOTES, 'UTF-8');"),
         },
     },
     "PATH_TRAVERSAL": {
@@ -360,7 +339,7 @@ BUILTIN_REMEDIATION = {
             ),
             "database_sql": (
                 "// Go: database/sql 使用占位符参数\n"
-                "row := db.QueryRow(\"SELECT * FROM users WHERE id = ?\", userID)\n"
+                'row := db.QueryRow("SELECT * FROM users WHERE id = ?", userID)\n'
                 "var user User\n"
                 "if err := row.Scan(&user.ID, &user.Name); err != nil {\n"
                 "    // 处理错误\n"
@@ -369,7 +348,7 @@ BUILTIN_REMEDIATION = {
             "gorm": (
                 "// Go: GORM 查询（自动参数化）\n"
                 "var user User\n"
-                "if err := db.Where(\"id = ?\", userID).First(&user).Error; err != nil {\n"
+                'if err := db.Where("id = ?", userID).First(&user).Error; err != nil {\n'
                 "    // 处理错误\n"
                 "}"
             ),
@@ -395,19 +374,9 @@ BUILTIN_REMEDIATION = {
             "// PHP: getenv('DB_PASSWORD')"
         ),
         "framework_suggested_code": {
-            "process_env": (
-                "// Node.js: 环境变量\n"
-                "const password = process.env.DB_PASSWORD;"
-            ),
-            "os_environ": (
-                "# Python: 环境变量\n"
-                "import os\n"
-                "password = os.environ.get('DB_PASSWORD')"
-            ),
-            "getenv": (
-                "// PHP: getenv\n"
-                "$password = getenv('DB_PASSWORD');"
-            ),
+            "process_env": ("// Node.js: 环境变量\nconst password = process.env.DB_PASSWORD;"),
+            "os_environ": ("# Python: 环境变量\nimport os\npassword = os.environ.get('DB_PASSWORD')"),
+            "getenv": ("// PHP: getenv\n$password = getenv('DB_PASSWORD');"),
             "dotenv": (
                 "// 通用: .env 文件（不要提交到 Git）\n"
                 "// Node: require('dotenv').config(); process.env.KEY\n"
@@ -435,45 +404,33 @@ BUILTIN_REMEDIATION = {
             "// PHP: json_decode()"
         ),
         "framework_suggested_code": {
-            "json_parse": (
-                "// JavaScript: 使用 JSON 替代不安全反序列化\n"
-                "const data = JSON.parse(userInput);"
-            ),
-            "json_loads": (
-                "# Python: json.loads\n"
-                "import json\n"
-                "data = json.loads(user_input)"
-            ),
-            "json_decode": (
-                "// PHP: json_decode 替代 unserialize\n"
-                "$data = json_decode($input, true);"
-            ),
+            "json_parse": ("// JavaScript: 使用 JSON 替代不安全反序列化\nconst data = JSON.parse(userInput);"),
+            "json_loads": ("# Python: json.loads\nimport json\ndata = json.loads(user_input)"),
+            "json_decode": ("// PHP: json_decode 替代 unserialize\n$data = json_decode($input, true);"),
             "yaml_safe_load": (
-                "# Python: yaml.safe_load（勿用 yaml.load）\n"
-                "import yaml\n"
-                "data = yaml.safe_load(user_input)"
+                "# Python: yaml.safe_load（勿用 yaml.load）\nimport yaml\ndata = yaml.safe_load(user_input)"
             ),
             "gin": (
                 "// Go: Gin 框架中安全绑定 JSON（并做字段校验）\n"
                 "type LoginRequest struct {\n"
-                "    Username string `json:\"username\" binding:\"required\"`\n"
-                "    Password string `json:\"password\" binding:\"required\"`\n"
+                '    Username string `json:"username" binding:"required"`\n'
+                '    Password string `json:"password" binding:"required"`\n'
                 "}\n"
                 "var req LoginRequest\n"
                 "if err := c.ShouldBindJSON(&req); err != nil {\n"
-                "    c.JSON(400, gin.H{\"error\": \"invalid input\"})\n"
+                '    c.JSON(400, gin.H{"error": "invalid input"})\n'
                 "    return\n"
                 "}"
             ),
             "echo": (
                 "// Go: Echo 框架中安全绑定 JSON\n"
                 "type LoginRequest struct {\n"
-                "    Username string `json:\"username\" validate:\"required\"`\n"
-                "    Password string `json:\"password\" validate:\"required\"`\n"
+                '    Username string `json:"username" validate:"required"`\n'
+                '    Password string `json:"password" validate:"required"`\n'
                 "}\n"
                 "var req LoginRequest\n"
                 "if err := c.Bind(&req); err != nil {\n"
-                "    return c.JSON(400, map[string]string{\"error\": \"invalid input\"})\n"
+                '    return c.JSON(400, map[string]string{"error": "invalid input"})\n'
                 "}"
             ),
         },
@@ -539,23 +496,11 @@ BUILTIN_REMEDIATION = {
             "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html",
         ],
         "cwe": "CWE-79",
-        "suggested_code": (
-            "// PHP 安全输出示例\n"
-            "echo htmlspecialchars($_GET['name'], ENT_QUOTES, 'UTF-8');"
-        ),
+        "suggested_code": ("// PHP 安全输出示例\necho htmlspecialchars($_GET['name'], ENT_QUOTES, 'UTF-8');"),
         "framework_suggested_code": {
-            "htmlspecialchars": (
-                "// PHP: 输出前转义\n"
-                "echo htmlspecialchars($var, ENT_QUOTES, 'UTF-8');"
-            ),
-            "dompurify": (
-                "// 前端: DOMPurify\n"
-                "element.innerHTML = DOMPurify.sanitize(userInput);"
-            ),
-            "textcontent": (
-                "// 安全: 使用 textContent 替代 innerHTML\n"
-                "element.textContent = userInput;"
-            ),
+            "htmlspecialchars": ("// PHP: 输出前转义\necho htmlspecialchars($var, ENT_QUOTES, 'UTF-8');"),
+            "dompurify": ("// 前端: DOMPurify\nelement.innerHTML = DOMPurify.sanitize(userInput);"),
+            "textcontent": ("// 安全: 使用 textContent 替代 innerHTML\nelement.textContent = userInput;"),
         },
     },
 }
@@ -564,16 +509,16 @@ BUILTIN_REMEDIATION = {
 class RAGEnhancer:
     """
     RAG 增强器。
-    
+
     功能：
     - 为扫描结果添加 CVE 相关信息
     - 提供修复建议
     - 支持 ChromaDB 知识库（可选）
     """
-    
+
     def __init__(
         self,
-        db_path: Optional[str] = None,
+        db_path: str | None = None,
         use_rag: bool = True,
         timeout_seconds: float = 5.0,
     ) -> None:
@@ -591,19 +536,20 @@ class RAGEnhancer:
 
         if use_rag and db_path:
             self._init_chromadb(db_path)
-    
+
     def _init_chromadb(self, db_path: str) -> None:
         """初始化 ChromaDB 连接"""
         try:
             import chromadb
+
             client = chromadb.PersistentClient(path=db_path)
             self.collection = client.get_collection(name="cve_core")
             logger.info("RAG 知识库已连接，包含 %d 条 CVE 记录", self.collection.count())
         except Exception as e:
             logger.warning("RAG 知识库连接失败: %s，将使用内置修复建议", e)
             self.collection = None
-    
-    def enhance_findings(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+
+    def enhance_findings(self, findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         增强扫描结果。
         TDD 10.2：RAG 失败或超时时仅跳过增强，不阻塞、不丢弃已有 findings。
@@ -617,23 +563,23 @@ class RAGEnhancer:
         except Exception as e:
             logger.warning("RAG 增强过程异常，返回原始 findings: %s", e)
             return findings
-    
-    def _enhance_single_finding(self, finding: Dict[str, Any]) -> Dict[str, Any]:
+
+    def _enhance_single_finding(self, finding: dict[str, Any]) -> dict[str, Any]:
         """
         增强单个扫描结果。
-        
+
         Args:
             finding: 原始扫描结果
-        
+
         Returns:
             增强后的扫描结果
         """
         # 复制原始结果
         enhanced = finding.copy()
-        
+
         # 获取漏洞类型
         vuln_type = finding.get("type", "UNKNOWN")
-        
+
         # 添加内置修复建议
         builtin = BUILTIN_REMEDIATION.get(vuln_type, {})
         enhanced["remediation"] = {
@@ -642,7 +588,7 @@ class RAGEnhancer:
             "references": builtin.get("references", []),
             "cwe": builtin.get("cwe", ""),
         }
-        
+
         # 如果有 RAG 知识库，在超时内尝试获取相关 CVE（TDD 10.2）
         if self.collection:
             related_cves = self._query_related_cves_with_timeout(vuln_type, finding)
@@ -652,9 +598,7 @@ class RAGEnhancer:
 
         return enhanced
 
-    def _query_related_cves_with_timeout(
-        self, vuln_type: str, finding: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+    def _query_related_cves_with_timeout(self, vuln_type: str, finding: dict[str, Any]) -> list[dict[str, Any]]:
         """
         带超时的 RAG 查询。超时或异常时返回 []，不阻塞、不丢弃已有 finding。
         """
@@ -672,107 +616,101 @@ class RAGEnhancer:
             except Exception as e:
                 logger.warning("RAG 检索异常，跳过 CVE 增强: %s", e)
                 return []
-    
-    def _query_related_cves(self, vuln_type: str, finding: Dict[str, Any]) -> List[Dict[str, Any]]:
+
+    def _query_related_cves(self, vuln_type: str, finding: dict[str, Any]) -> list[dict[str, Any]]:
         """
         查询相关 CVE。
-        
+
         Args:
             vuln_type: 漏洞类型
             finding: 扫描结果
-        
+
         Returns:
             相关 CVE 列表
         """
         if not self.collection:
             return []
-        
+
         try:
             # 构建查询
             query = f"{vuln_type} {finding.get('details', '')}"
-            
+
             # 从 RAG 优化器导入
             from src.rag.rag_optimizer import optimized_rag_retrieval
-            
-            result = optimized_rag_retrieval(
-                self.collection,
-                query,
-                top_k=5,
-                return_top_n=3
-            )
-            
+
+            result = optimized_rag_retrieval(self.collection, query, top_k=5, return_top_n=3)
+
             if not result.get("has_match"):
                 return []
-            
+
             # 提取 CVE 信息
             cves = []
             for item, score in result.get("ranked_results", []):
-                cves.append({
-                    "cve_id": item.get("id", ""),
-                    "description": item.get("document", "")[:200] + "...",
-                    "relevance": round(score, 2),
-                })
-            
+                cves.append(
+                    {
+                        "cve_id": item.get("id", ""),
+                        "description": item.get("document", "")[:200] + "...",
+                        "relevance": round(score, 2),
+                    }
+                )
+
             return cves
         except Exception as e:
             logger.debug("CVE 查询失败: %s", e)
             return []
-    
-    def get_remediation_summary(self, findings: List[Dict[str, Any]]) -> str:
+
+    def get_remediation_summary(self, findings: list[dict[str, Any]]) -> str:
         """
         生成修复建议摘要。
-        
+
         Args:
             findings: 扫描结果列表
-        
+
         Returns:
             修复建议摘要字符串
         """
         # 按漏洞类型分组
-        by_type: Dict[str, int] = {}
+        by_type: dict[str, int] = {}
         for finding in findings:
             vuln_type = finding.get("type", "UNKNOWN")
             by_type[vuln_type] = by_type.get(vuln_type, 0) + 1
-        
+
         lines = ["## 📋 修复建议摘要\n"]
-        
+
         for vuln_type, count in sorted(by_type.items(), key=lambda x: -x[1]):
             builtin = BUILTIN_REMEDIATION.get(vuln_type, {})
-            
+
             lines.append(f"### {vuln_type} ({count} 处)")
             lines.append(f"**描述**: {builtin.get('description', '未知漏洞类型')}")
             lines.append("")
-            
+
             suggestions = builtin.get("remediation", [])
             if suggestions:
                 lines.append("**修复建议**:")
                 for i, suggestion in enumerate(suggestions, 1):
                     lines.append(f"  {i}. {suggestion}")
-            
+
             refs = builtin.get("references", [])
             if refs:
                 lines.append("")
                 lines.append("**参考链接**:")
                 for ref in refs:
                     lines.append(f"  - {ref}")
-            
+
             lines.append("")
-        
+
         return "\n".join(lines)
 
 
 # 便捷函数
-def enhance_scan_results(
-    findings: List[Dict[str, Any]],
-    db_path: Optional[str] = None
-) -> List[Dict[str, Any]]:
+def enhance_scan_results(findings: list[dict[str, Any]], db_path: str | None = None) -> list[dict[str, Any]]:
     """
     便捷函数：增强扫描结果。
-    
+
     Args:
         findings: 原始扫描结果列表
         db_path: ChromaDB 数据库路径（可选）
-    
+
     Returns:
         增强后的扫描结果列表
     """

@@ -15,19 +15,18 @@ ai_analyzer.py - AI 分析模块
 
 from __future__ import annotations
 
-import ast
 import json
 import logging
 import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # 框架关键词映射：import 关键词 -> 框架标签
-_FRAMEWORK_IMPORT_MAP: Dict[str, str] = {
+_FRAMEWORK_IMPORT_MAP: dict[str, str] = {
     "mysql2": "mysql2",
     "mysql": "mysql",
     "pg": "pg (node-postgres)",
@@ -55,9 +54,9 @@ _FRAMEWORK_IMPORT_MAP: Dict[str, str] = {
 def _extract_rich_context(
     file_path: str,
     vuln_line: int,
-    source_code: Optional[str] = None,
+    source_code: str | None = None,
     padding: int = 10,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     提取漏洞周围的丰富上下文，供 AI 生成精准修复代码。
 
@@ -103,15 +102,15 @@ def _extract_rich_context(
     vuln_snippet = "\n".join(all_lines[ctx_start:ctx_end])
 
     # ── 2. Import / require 语句 ─────────────────────────────────────
-    imports: List[str] = []
+    imports: list[str] = []
     _import_re = re.compile(
         r"^\s*(?:"
-        r"import\s+.+?from\s+['\"].+?['\"]"                      # ES6 import ... from '...'
+        r"import\s+.+?from\s+['\"].+?['\"]"  # ES6 import ... from '...'
         r"|(?:const|let|var)\s+\S+\s*=\s*require\s*\(['\"].+?['\"]\s*\)"  # const x = require('...')
-        r"|require\s*\(\s*['\"].+?['\"]\s*\)"                     # bare require('...')
-        r"|import\s+['\"].+?['\"]"                                # import '...'
-        r"|from\s+\S+\s+import\s+.+"                             # Python from x import y
-        r"|import\s+\S+"                                          # Python import x
+        r"|require\s*\(\s*['\"].+?['\"]\s*\)"  # bare require('...')
+        r"|import\s+['\"].+?['\"]"  # import '...'
+        r"|from\s+\S+\s+import\s+.+"  # Python from x import y
+        r"|import\s+\S+"  # Python import x
         r")",
         re.MULTILINE,
     )
@@ -121,7 +120,7 @@ def _extract_rich_context(
 
     # ── 3. 框架推断 ──────────────────────────────────────────────────
     import_text = "\n".join(imports).lower()
-    framework_hints: List[str] = []
+    framework_hints: list[str] = []
     for keyword, label in _FRAMEWORK_IMPORT_MAP.items():
         if keyword in import_text and label not in framework_hints:
             framework_hints.append(label)
@@ -159,9 +158,7 @@ def _extract_rich_context(
     }
 
 
-def _find_enclosing_function_signature(
-    lines: List[str], vuln_line: int, file_path: str
-) -> str:
+def _find_enclosing_function_signature(lines: list[str], vuln_line: int, file_path: str) -> str:
     """
     从 lines 中向上查找包含 vuln_line 的函数定义，返回其签名行。
 
@@ -174,10 +171,25 @@ def _find_enclosing_function_signature(
     """
     # 优先级正则列表（从最具体到最通用），依次尝试
     # 控制流关键字集合：这些行不是函数定义，即使语法上匹配
-    _CF_KEYWORDS = frozenset({
-        "if", "else", "for", "while", "do", "switch", "try", "catch",
-        "finally", "with", "return", "throw", "case", "break", "continue",
-    })
+    _CF_KEYWORDS = frozenset(
+        {
+            "if",
+            "else",
+            "for",
+            "while",
+            "do",
+            "switch",
+            "try",
+            "catch",
+            "finally",
+            "with",
+            "return",
+            "throw",
+            "case",
+            "break",
+            "continue",
+        }
+    )
 
     _func_patterns = [
         # this.name = (args) => {   ← NodeGoat 风格，最优先
@@ -216,9 +228,7 @@ def _find_enclosing_function_signature(
     return ""
 
 
-def _collect_local_vars(
-    lines: List[str], vuln_line: int, window: int = 30
-) -> List[str]:
+def _collect_local_vars(lines: list[str], vuln_line: int, window: int = 30) -> list[str]:
     """
     收集漏洞行前 window 行内出现的变量名。
 
@@ -228,15 +238,59 @@ def _collect_local_vars(
     3. Python 参数：def func(self, arg):
     4. this.method 赋值中的方法名（部分框架风格）
     """
-    _KEYWORDS = frozenset({
-        "if", "while", "for", "return", "class", "function", "import",
-        "from", "const", "let", "var", "async", "await", "new", "this",
-        "true", "false", "null", "undefined", "export", "default",
-        "try", "catch", "finally", "throw", "switch", "case", "break",
-        "continue", "typeof", "instanceof", "in", "of", "do", "else",
-        "del", "pass", "with", "yield", "lambda", "raise", "except",
-        "global", "nonlocal", "def", "and", "or", "not", "is",
-    })
+    _KEYWORDS = frozenset(
+        {
+            "if",
+            "while",
+            "for",
+            "return",
+            "class",
+            "function",
+            "import",
+            "from",
+            "const",
+            "let",
+            "var",
+            "async",
+            "await",
+            "new",
+            "this",
+            "true",
+            "false",
+            "null",
+            "undefined",
+            "export",
+            "default",
+            "try",
+            "catch",
+            "finally",
+            "throw",
+            "switch",
+            "case",
+            "break",
+            "continue",
+            "typeof",
+            "instanceof",
+            "in",
+            "of",
+            "do",
+            "else",
+            "del",
+            "pass",
+            "with",
+            "yield",
+            "lambda",
+            "raise",
+            "except",
+            "global",
+            "nonlocal",
+            "def",
+            "and",
+            "or",
+            "not",
+            "is",
+        }
+    )
 
     # 匹配：const/let/var/Python 赋值
     _assign_re = re.compile(r"^\s*(?:const|let|var)?\s*(\w+)\s*(?:=|:=)")
@@ -247,7 +301,7 @@ def _collect_local_vars(
     # 匹配：Python def foo(self, a, b):
     _py_params_re = re.compile(r"def\s+\w+\s*\(([^)]*)\)")
 
-    seen: Dict[str, None] = {}
+    seen: dict[str, None] = {}
 
     start = max(0, vuln_line - 1 - window)
     end = vuln_line - 1
@@ -275,51 +329,52 @@ def _collect_local_vars(
 @dataclass
 class AIAnalysisResult:
     """AI 分析结果"""
-    is_true_positive: bool          # 是否为真阳性
-    confidence: float               # 置信度 (0-1)
-    risk_level: str                 # 风险等级: Critical/High/Medium/Low/Info
-    explanation: str                # 分析解释
-    fix_suggestion: Optional[str]   # 修复建议文字描述
-    requires_review: bool           # 是否需要人工审查
+
+    is_true_positive: bool  # 是否为真阳性
+    confidence: float  # 置信度 (0-1)
+    risk_level: str  # 风险等级: Critical/High/Medium/Low/Info
+    explanation: str  # 分析解释
+    fix_suggestion: str | None  # 修复建议文字描述
+    requires_review: bool  # 是否需要人工审查
     # 精准修复字段：针对当前代码上下文由 AI 生成，按需触发时填充
-    fixed_code: Optional[str] = field(default=None)      # AI 生成的完整修复代码（可直接参考）
-    fix_start_line: Optional[int] = field(default=None)  # 建议替换的起始行（基于文件行号）
-    fix_end_line: Optional[int] = field(default=None)    # 建议替换的结束行
+    fixed_code: str | None = field(default=None)  # AI 生成的完整修复代码（可直接参考）
+    fix_start_line: int | None = field(default=None)  # 建议替换的起始行（基于文件行号）
+    fix_end_line: int | None = field(default=None)  # 建议替换的结束行
 
 
 class AIAnalyzer:
     """
     AI 分析器。
-    
+
     功能：
     - 漏洞真实性评估
     - 风险等级调整
     - 修复代码生成
-    
+
     AI 漏斗策略：
     1. 预筛选：只对 Critical/High 级别进行 AI 分析
     2. 批量处理：相似漏洞合并分析
     3. 缓存结果：避免重复分析相同模式
     """
-    
+
     # AI 分析阈值配置
     ANALYSIS_CONFIG = {
         "enabled_severities": ["Critical", "High", "Medium"],  # 降低门槛至 Medium
-        "max_findings_per_batch": 10,                # 每批最大数量
-        "confidence_threshold": 0.7,                 # 置信度阈值
-        "cache_enabled": True,                       # 是否启用缓存
+        "max_findings_per_batch": 10,  # 每批最大数量
+        "confidence_threshold": 0.7,  # 置信度阈值
+        "cache_enabled": True,  # 是否启用缓存
     }
-    
+
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        api_base: Optional[str] = None,
+        api_key: str | None = None,
+        api_base: str | None = None,
         model: str = "deepseek-chat",
-        enabled: bool = True
+        enabled: bool = True,
     ) -> None:
         """
         初始化 AI 分析器。
-        
+
         Args:
             api_key: AI API 密钥（默认从环境变量获取）
             api_base: API 基础 URL
@@ -330,37 +385,37 @@ class AIAnalyzer:
         self.api_base = api_base or os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
         self.model = model
         self.enabled = enabled and bool(self.api_key)
-        
+
         # 分析缓存
-        self._cache: Dict[str, AIAnalysisResult] = {}
-        
+        self._cache: dict[str, AIAnalysisResult] = {}
+
         if self.enabled:
             logger.info("AI 分析器已启用 (模型: %s)", model)
         else:
             logger.warning("AI 分析器未启用（缺少 API 密钥或已禁用）")
-    
-    def should_analyze(self, finding: Dict[str, Any]) -> bool:
+
+    def should_analyze(self, finding: dict[str, Any]) -> bool:
         """
         判断是否应该对该发现进行 AI 分析（AI 漏斗）。
-        
+
         Args:
             finding: 扫描发现
-        
+
         Returns:
             是否应该分析
         """
         if not self.enabled:
             return False
-        
+
         severity = finding.get("severity", "Low")
         return severity in self.ANALYSIS_CONFIG["enabled_severities"]
-    
+
     def analyze_finding(
         self,
-        finding: Dict[str, Any],
-        code_context: Optional[str] = None,
-        language: Optional[str] = None,
-        source_code: Optional[str] = None,
+        finding: dict[str, Any],
+        code_context: str | None = None,
+        language: str | None = None,
+        source_code: str | None = None,
     ) -> AIAnalysisResult:
         """
         分析单个扫描发现。仅在用户主动触发时调用，不应自动批量执行。
@@ -405,49 +460,47 @@ class AIAnalyzer:
             self._cache[cache_key] = result
 
         return result
-    
+
     def analyze_findings_batch(
-        self,
-        findings: List[Dict[str, Any]],
-        code_contexts: Optional[Dict[str, str]] = None
-    ) -> List[Tuple[Dict[str, Any], AIAnalysisResult]]:
+        self, findings: list[dict[str, Any]], code_contexts: dict[str, str] | None = None
+    ) -> list[tuple[dict[str, Any], AIAnalysisResult]]:
         """
         批量分析扫描发现。
-        
+
         Args:
             findings: 扫描发现列表
             code_contexts: 文件路径 -> 代码上下文的映射
-        
+
         Returns:
             (finding, analysis_result) 元组列表
         """
         results = []
-        
+
         # 筛选需要 AI 分析的发现
         to_analyze = [f for f in findings if self.should_analyze(f)]
         skip_analyze = [f for f in findings if not self.should_analyze(f)]
-        
+
         # 对需要分析的进行 AI 分析
         for finding in to_analyze:
             file_path = finding.get("file", "")
             code_context = code_contexts.get(file_path) if code_contexts else None
             result = self.analyze_finding(finding, code_context)
             results.append((finding, result))
-        
+
         # 对不需要分析的返回默认结果
         for finding in skip_analyze:
             result = self._default_analysis(finding)
             results.append((finding, result))
-        
+
         return results
-    
-    def _get_cache_key(self, finding: Dict[str, Any]) -> str:
+
+    def _get_cache_key(self, finding: dict[str, Any]) -> str:
         """生成缓存键"""
         vuln_type = finding.get("type", "")
         details = finding.get("details", "")[:100]
         return f"{vuln_type}:{hash(details)}"
-    
-    def _default_analysis(self, finding: Dict[str, Any]) -> AIAnalysisResult:
+
+    def _default_analysis(self, finding: dict[str, Any]) -> AIAnalysisResult:
         """生成默认分析结果（不使用 AI）"""
         return AIAnalysisResult(
             is_true_positive=True,  # 假设为真阳性
@@ -455,14 +508,14 @@ class AIAnalyzer:
             risk_level=finding.get("severity", "Medium"),
             explanation="未进行 AI 分析，建议人工审查。",
             fix_suggestion=None,
-            requires_review=True
+            requires_review=True,
         )
-    
+
     def _call_ai_analysis(
         self,
-        finding: Dict[str, Any],
-        rich_ctx: Optional[Dict[str, Any]] = None,
-        language: Optional[str] = None,
+        finding: dict[str, Any],
+        rich_ctx: dict[str, Any] | None = None,
+        language: str | None = None,
     ) -> AIAnalysisResult:
         """
         调用 AI 进行分析（仅在用户主动触发时执行，不自动批量调用）。
@@ -510,9 +563,9 @@ class AIAnalyzer:
 
     def _build_analysis_prompt(
         self,
-        finding: Dict[str, Any],
-        rich_ctx: Optional[Dict[str, Any]] = None,
-        language: Optional[str] = None,
+        finding: dict[str, Any],
+        rich_ctx: dict[str, Any] | None = None,
+        language: str | None = None,
     ) -> str:
         """
         构建上下文感知提示词，要求 AI 返回精准修复 JSON。
@@ -532,13 +585,13 @@ class AIAnalyzer:
         vuln_line = finding.get("line", "?")
 
         ctx = rich_ctx or {}
-        framework_hints: List[str] = ctx.get("framework_hints") or []
+        framework_hints: list[str] = ctx.get("framework_hints") or []
         function_sig: str = ctx.get("function_signature") or ""
-        imports: List[str] = ctx.get("imports") or []
-        local_vars: List[str] = ctx.get("local_vars") or []
+        imports: list[str] = ctx.get("imports") or []
+        local_vars: list[str] = ctx.get("local_vars") or []
         vuln_snippet: str = ctx.get("vuln_snippet") or ""
 
-        lines: List[str] = [
+        lines: list[str] = [
             f"你是一个安全工程师，需要修复以下代码中的 {type_desc} 漏洞。",
             "",
             "## 上下文",
@@ -554,7 +607,7 @@ class AIAnalyzer:
 
         if imports:
             # 最多展示 8 条 import
-            lines.append(f"- 相关 import：")
+            lines.append("- 相关 import：")
             for imp in imports[:8]:
                 lines.append(f"  - `{imp}`")
 
@@ -563,7 +616,7 @@ class AIAnalyzer:
 
         lines += [
             "",
-            f"## 漏洞信息",
+            "## 漏洞信息",
             f"- 类型: {type_desc}",
             f"- 严重程度: {finding.get('severity', 'Unknown')}",
             f"- 文件: {finding.get('file', 'Unknown')}",
@@ -605,7 +658,7 @@ class AIAnalyzer:
     def _parse_ai_response(
         self,
         response: str,
-        finding: Dict[str, Any],
+        finding: dict[str, Any],
     ) -> AIAnalysisResult:
         """
         解析 AI JSON 响应，两级容错降级。
@@ -617,7 +670,7 @@ class AIAnalyzer:
         Returns:
             AIAnalysisResult
         """
-        parsed: Optional[Dict[str, Any]] = None
+        parsed: dict[str, Any] | None = None
 
         # 第一次尝试：直接解析整个响应
         try:
@@ -627,7 +680,7 @@ class AIAnalyzer:
 
         # 第二次尝试：提取最外层 JSON 对象（兼容 AI 在前后加了说明文字的情况）
         if parsed is None:
-            match = re.search(r'\{.*\}', response, re.DOTALL)
+            match = re.search(r"\{.*\}", response, re.DOTALL)
             if match:
                 try:
                     parsed = json.loads(match.group())
@@ -654,30 +707,27 @@ class AIAnalyzer:
             fix_start_line=finding.get("start_line"),
             fix_end_line=finding.get("end_line"),
         )
-    
-    def get_analysis_summary(
-        self,
-        results: List[Tuple[Dict[str, Any], AIAnalysisResult]]
-    ) -> Dict[str, Any]:
+
+    def get_analysis_summary(self, results: list[tuple[dict[str, Any], AIAnalysisResult]]) -> dict[str, Any]:
         """
         生成分析摘要。
-        
+
         Args:
             results: 分析结果列表
-        
+
         Returns:
             分析摘要
         """
         total = len(results)
         true_positives = sum(1 for _, r in results if r.is_true_positive)
         needs_review = sum(1 for _, r in results if r.requires_review)
-        
+
         # 按风险等级统计
         by_risk = {}
         for _, result in results:
             level = result.risk_level
             by_risk[level] = by_risk.get(level, 0) + 1
-        
+
         return {
             "total_analyzed": total,
             "true_positives": true_positives,
@@ -688,7 +738,7 @@ class AIAnalyzer:
         }
 
 
-def _build_framework_fix_guidance(vuln_type: str, framework_hints: List[str]) -> str:
+def _build_framework_fix_guidance(vuln_type: str, framework_hints: list[str]) -> str:
     """
     根据漏洞类型和检测到的框架，生成具体的修复指引字符串。
 
@@ -745,7 +795,9 @@ def _build_framework_fix_guidance(vuln_type: str, framework_hints: List[str]) ->
         return "对所有输出进行 HTML 实体编码，禁止使用 `innerHTML` 直接插入用户数据。"
 
     if vuln_type == "RCE_COMMAND_EXEC":
-        return "避免 `eval`/`exec`/`child_process.exec`；若必须执行命令，使用 `child_process.execFile` 加白名单参数数组。"
+        return (
+            "避免 `eval`/`exec`/`child_process.exec`；若必须执行命令，使用 `child_process.execFile` 加白名单参数数组。"
+        )
 
     if vuln_type == "PATH_TRAVERSAL":
         return "使用 `path.resolve()` 规范化路径后，断言其以允许的根目录开头（`startsWith(allowedBase)`）。"
@@ -755,16 +807,15 @@ def _build_framework_fix_guidance(vuln_type: str, framework_hints: List[str]) ->
 
 # 便捷函数
 def analyze_with_ai(
-    findings: List[Dict[str, Any]],
-    api_key: Optional[str] = None
-) -> List[Tuple[Dict[str, Any], AIAnalysisResult]]:
+    findings: list[dict[str, Any]], api_key: str | None = None
+) -> list[tuple[dict[str, Any], AIAnalysisResult]]:
     """
     便捷函数：使用 AI 分析扫描结果。
-    
+
     Args:
         findings: 扫描结果列表
         api_key: AI API 密钥（可选）
-    
+
     Returns:
         (finding, analysis_result) 元组列表
     """
