@@ -4,7 +4,10 @@
 """
 
 import json
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from src.analysis.security_rules import VULN_SIGNATURES
 
@@ -47,7 +50,7 @@ class RuleConfig:
                     default_config.update(config)
                     return default_config
             except Exception as e:
-                print(f"⚠️  加载配置文件失败: {e}，使用默认配置")
+                logger.warning("加载配置文件失败: %s，使用默认配置", e)
                 return default_config
 
         return default_config
@@ -114,7 +117,7 @@ class RuleConfig:
         save_path = Path(output_path) if output_path else self.config_path
 
         if not save_path:
-            print("⚠️  未指定配置文件路径")
+            logger.warning("未指定配置文件路径")
             return
 
         save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -122,7 +125,7 @@ class RuleConfig:
         with open(save_path, "w", encoding="utf-8") as f:
             json.dump(self.config, f, indent=2, ensure_ascii=False)
 
-        print(f"✅ 配置已保存到: {save_path}")
+        logger.info("配置已保存到: %s", save_path)
 
     def disable_rule(self, vuln_type: str, rule_pattern: str):
         """
@@ -202,7 +205,7 @@ def create_default_config(output_path: str) -> Path:
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(default_config, f, indent=2, ensure_ascii=False)
 
-    print(f"✅ 默认配置文件已创建: {config_path}")
+    logger.info("默认配置文件已创建: %s", config_path)
     return config_path
 
 
@@ -225,12 +228,13 @@ if __name__ == "__main__":
         config = RuleConfig(args.config)
 
         if args.list:
-            print("📋 可用规则:")
+            logging.basicConfig(level=logging.INFO, format="%(message)s")
+            logger.info("可用规则:")
             for vuln_type, patterns in VULN_SIGNATURES.items():
-                print(f"\n{vuln_type}:")
+                logger.info("\n%s:", vuln_type)
                 for pattern in patterns:
                     enabled = "✅" if config.is_rule_enabled(vuln_type, pattern) else "❌"
-                    print(f"  {enabled} {pattern}")
+                    logger.info("  %s %s", enabled, pattern)
 
         if args.disable:
             vuln_type, pattern = args.disable

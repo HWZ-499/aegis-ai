@@ -5,11 +5,14 @@
 
 import hashlib
 import json
+import logging
 import os
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class ScanCache:
@@ -113,7 +116,7 @@ class ScanCache:
                     return cache_data.get("findings", [])
 
         except Exception as e:
-            print(f"⚠️  读取缓存失败 {cache_file}: {e}")
+            logger.warning("读取缓存失败 %s: %s", cache_file, e)
             return None
 
         return None
@@ -136,7 +139,7 @@ class ScanCache:
                 json.dump(cache_data, f, indent=2, ensure_ascii=False)
 
         except Exception as e:
-            print(f"⚠️  保存缓存失败 {cache_file}: {e}")
+            logger.warning("保存缓存失败 %s: %s", cache_file, e)
 
     def clear_cache(self, older_than_hours: int | None = None):
         """
@@ -160,9 +163,9 @@ class ScanCache:
                     cache_file.unlink()
                     cleared_count += 1
             except Exception as e:
-                print(f"⚠️  删除缓存文件失败 {cache_file}: {e}")
+                logger.warning("删除缓存文件失败 %s: %s", cache_file, e)
 
-        print(f"✅ 已清理 {cleared_count} 个缓存文件")
+        logger.info("已清理 %s 个缓存文件", cleared_count)
 
 
 class ParallelScanner:
@@ -234,7 +237,7 @@ class ParallelScanner:
             return (file_path, merged_findings)
 
         except Exception as e:
-            print(f"⚠️  扫描文件失败 {file_path}: {e}")
+            logger.warning("扫描文件失败 %s: %s", file_path, e)
             return (file_path, [])
 
     def scan_files_parallel(
@@ -283,7 +286,7 @@ class ParallelScanner:
                         progress_callback(completed, total_files, file_path)
 
                 except Exception as e:
-                    print(f"⚠️  处理文件失败 {file_path}: {e}")
+                    logger.warning("处理文件失败 %s: %s", file_path, e)
                     results[file_path] = []
 
         return results
@@ -332,7 +335,7 @@ class PerformanceOptimizer:
         project_path: Path,
         supported_extensions: dict[str, str],
         progress_callback: Callable | None = None,
-        engine: str = "legacy",
+        engine: str = "new",
     ) -> dict[Path, list[dict]]:
         """
         优化的文件扫描（使用缓存和并行处理）
@@ -428,4 +431,5 @@ if __name__ == "__main__":
         cache = ScanCache(cache_dir=args.cache_dir)
         cache.clear_cache(older_than_hours=args.older_than)
     else:
-        print("使用 --clear-cache 清理缓存")
+        logging.basicConfig(level=logging.INFO)
+        logger.info("使用 --clear-cache 清理缓存")

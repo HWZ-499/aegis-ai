@@ -98,8 +98,8 @@ class TaintAnalyzer:
         findings = analyzer.analyze_file(Path("app.js"))
 
         for finding in findings:
-            print(f"[{finding.severity}] {finding.vuln_type} at line {finding.line}")
-            print(f"  Path: {finding.taint_path.to_string()}")
+            logger.info("[%s] %s at line %s", finding.severity, finding.vuln_type, finding.line)
+            logger.info("  Path: %s", finding.taint_path.to_string())
     """
 
     def __init__(

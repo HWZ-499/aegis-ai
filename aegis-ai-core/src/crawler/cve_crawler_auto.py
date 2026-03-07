@@ -92,7 +92,8 @@ class CVECrawler:
                 with open(LAST_UPDATE_FILE) as f:
                     timestamp = float(f.read().strip())
                     return datetime.fromtimestamp(timestamp)
-            except:
+            except Exception as e:
+                logger.debug("读取上次更新时间失败: %s", e)
                 return None
         return None
 
@@ -436,8 +437,8 @@ class CVECrawler:
             try:
                 existing_data = self.collection.get()
                 existing_ids = set(existing_data.get("ids", []))
-            except:
-                pass
+            except Exception as e:
+                logger.debug("获取现有 CVE ID 失败，将全量更新: %s", e)
 
         # 准备数据
         ids = []

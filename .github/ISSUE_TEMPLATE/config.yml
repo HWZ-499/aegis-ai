@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 文档与路线图
+    url: https://github.com/aegis-ai/aegis-ai/blob/main/ROADMAP.md
+    about: 查看项目路线图与技术债务
+  - name: 贡献指南
+    url: https://github.com/aegis-ai/aegis-ai/blob/main/CONTRIBUTING.md
+    about: 如何参与贡献、添加规则、提交 PR

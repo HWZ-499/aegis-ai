@@ -1,0 +1,45 @@
+# 真实靶场 AST vs DSL 对比实验
+# 可手动触发或按计划运行
+name: Real-world Benchmark
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 0'  # 每周日 03:00 UTC
+
+jobs:
+  ast-vs-dsl:
+    name: AST vs DSL 对比
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 克隆 NodeGoat
+        run: |
+          git clone --depth 1 https://github.com/OWASP/NodeGoat.git ../NodeGoat
+          echo "NODEGOAT_PATH=$(realpath ../NodeGoat)" >> $GITHUB_ENV
+
+      - name: 安装依赖
+        run: |
+          cd aegis-ai-core
+          pip install -r requirements.txt
+          pip install pytest pyyaml pydantic-settings
+
+      - name: 运行 AST vs DSL 对比
+        run: |
+          cd aegis-ai-core
+          mkdir -p reports
+          python scripts/benchmark/compare_ast_vs_dsl.py \
+            --project-dir ../NodeGoat \
+            --output reports
+
+      - name: 上传对比报告
+        uses: actions/upload-artifact@v4
+        with:
+          name: ast-vs-dsl-report
+          path: aegis-ai-core/reports/ast_vs_dsl_*.md
+          retention-days: 90

@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "aegis-ai-core"
@@ -15,6 +15,7 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -67,9 +68,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/how-about-that/aegis-ai"
-Repository = "https://github.com/how-about-that/aegis-ai"
-Issues = "https://github.com/how-about-that/aegis-ai/issues"
+Homepage = "https://github.com/aegis-ai/aegis-ai"
+Repository = "https://github.com/aegis-ai/aegis-ai"
+Issues = "https://github.com/aegis-ai/aegis-ai/issues"
 
 [project.scripts]
 aegis-lsp = "src.lsp.__main__:main"
@@ -168,6 +169,22 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "src.core.*"
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "src.lsp.*"
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "src.analysis.rule_engine"
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "src.analysis.base.*"
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "src.scanner.project_scanner"
 disallow_untyped_defs = true
 
 # ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from src.scanner.ai_analyzer import AIAnalyzer
+from src.scanner.baseline import Baseline
 from src.scanner.incremental_scanner import IncrementalScanner
 from src.scanner.project_scanner import ProjectScanner
 from src.scanner.rag_enhancer import RAGEnhancer
@@ -71,8 +72,8 @@ def main():
     parser.add_argument(
         "--engine",
         choices=["legacy", "new"],
-        default="legacy",
-        help="选择扫描引擎：legacy=旧版（默认），new=新规则引擎（支持 Python 和 JS/TS）",
+        default="new",
+        help="选择扫描引擎：new=新规则引擎（默认），legacy=旧版（将弃用）",
     )
 
     parser.add_argument("--max-workers", type=int, help="最大工作线程/进程数（默认 CPU 核心数）")
@@ -95,6 +96,27 @@ def main():
         "--no-fail-on-findings",
         action="store_true",
         help="发现漏洞时仍返回退出码 0（用于 CI 报告生成，不阻断流水线）",
+    )
+
+    parser.add_argument(
+        "--baseline",
+        type=str,
+        metavar="PATH",
+        help="Baseline 文件路径：仅输出相对该 baseline 的新增 findings",
+    )
+
+    parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="扫描后将当前结果写入 baseline 文件（路径由 --baseline 指定，默认 .aegis-baseline.json）",
+    )
+
+    parser.add_argument(
+        "--rules-dir",
+        type=str,
+        action="append",
+        metavar="PATH",
+        help="额外 DSL 规则目录（可多次指定）；项目内 .aegis/rules 存在时会自动加载",
     )
 
     args = parser.parse_args()
@@ -121,10 +143,25 @@ def main():
                     print("📌 扫描工作区更改")
                 print("=" * 70)
 
-            incremental_scanner = IncrementalScanner(str(project_path), base_ref=args.base_ref)
+            extra_rule_dirs_list: list[Path] = []
+            if getattr(args, "rules_dir", None):
+                extra_rule_dirs_list.extend(Path(p) for p in args.rules_dir)
+            aegis_rules = project_path / ".aegis" / "rules"
+            if aegis_rules.is_dir():
+                extra_rule_dirs_list.append(aegis_rules)
+            incremental_scanner = IncrementalScanner(
+                str(project_path),
+                base_ref=args.base_ref,
+                extra_rule_dirs=extra_rule_dirs_list or None,
+            )
             results, stats = incremental_scanner.scan_with_stats(verbose=args.verbose)
         else:
-            # 全量扫描模式
+            extra_rule_dirs: list[Path] = []
+            if getattr(args, "rules_dir", None):
+                extra_rule_dirs.extend(Path(p) for p in args.rules_dir)
+            aegis_rules = project_path / ".aegis" / "rules"
+            if aegis_rules.is_dir():
+                extra_rule_dirs.append(aegis_rules)
             scanner = ProjectScanner(
                 str(project_path),
                 ignore_patterns=args.ignore,
@@ -132,6 +169,7 @@ def main():
                 use_parallel=not args.no_parallel,
                 max_workers=args.max_workers,
                 engine=args.engine,
+                extra_rule_dirs=extra_rule_dirs or None,
             )
 
             if args.verbose:
@@ -320,6 +358,28 @@ def main():
             else:
                 if args.verbose:
                     print("⚠️ AI 分析未启用（缺少 API 密钥）")
+
+        # Baseline：先更新再过滤（仅输出新增）
+        baseline_path: Path | None = None
+        if args.baseline:
+            baseline_path = (project_path / args.baseline) if not Path(args.baseline).is_absolute() else Path(args.baseline)
+        elif getattr(args, "update_baseline", False):
+            baseline_path = project_path / ".aegis-baseline.json"
+
+        if getattr(args, "update_baseline", False) and baseline_path:
+            base = Baseline.load(baseline_path) if baseline_path.exists() else Baseline()
+            base.add_findings(results, project_path)
+            base.save(baseline_path, project_path)
+            if args.verbose:
+                print(f"✅ Baseline 已更新: {baseline_path}")
+
+        if args.baseline and baseline_path and baseline_path.exists():
+            baseline = Baseline.load(baseline_path)
+            results = baseline.diff(results, project_path)
+            stats["total_issues"] = sum(len(v) for v in results.values())
+            stats["files_with_issues"] = len(results)
+            if args.verbose:
+                print(f"\n📋 Baseline 过滤后新增 findings: {stats['total_issues']}")
 
         # 生成报告
         project_name = project_path.name

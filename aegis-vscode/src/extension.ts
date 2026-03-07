@@ -22,6 +22,8 @@ import {
   Uri,
   Disposable,
 } from "vscode";
+import { FindingsTreeProvider } from "./findingsTreeProvider";
+import { showReport } from "./reportWebview";
 import {
   LanguageClient,
   LanguageClientOptions,
@@ -35,6 +37,10 @@ import {
 const NOTIFICATION_SCAN_START = "aegis/scanStart";
 /** Python 端发送 `aegis/scanEnd` 通知，表示扫描完成（含结果摘要） */
 const NOTIFICATION_SCAN_END = "aegis/scanEnd";
+/** Python 端发送 `aegis/scanError` 通知，表示扫描出错 */
+const NOTIFICATION_SCAN_ERROR = "aegis/scanError";
+/** P5-4：工作区扫描进度 */
+const NOTIFICATION_SCAN_PROGRESS = "aegis/scanProgress";
 
 // ─── 全局状态 ────────────────────────────────────────────────────────────────
 
@@ -47,10 +53,14 @@ let statusBar: StatusBarItem | undefined;
 /** @type {Disposable | undefined} 诊断变化监听器 */
 let diagnosticsListener: Disposable | undefined;
 
+/** P5-4：工作区扫描进度条与结束回调 */
+let workspaceProgressReporter: { report: (p: { message?: string; increment?: number }) => void } | null = null;
+let workspaceScanResolve: (() => void) | null = null;
+
 // ─── Status Bar 状态枚举 ────────────────────────────────────────────────────
 
-/** Status Bar 展示的四种状态 */
-type AegisStatus = "ready" | "scanning" | "issues" | "safe" | "disconnected";
+/** Status Bar 展示的状态 */
+type AegisStatus = "ready" | "scanning" | "issues" | "safe" | "disconnected" | "error";
 
 /**
  * 更新 Status Bar 显示内容。
@@ -87,6 +97,12 @@ function updateStatusBar(status: AegisStatus, issueCount?: number): void {
       statusBar.text = "$(warning) Aegis: 未连接";
       statusBar.tooltip = "Aegis AI LSP Server 未连接，请检查配置";
       statusBar.command = "workbench.action.openSettings";
+      statusBar.backgroundColor = undefined;
+      break;
+    case "error":
+      statusBar.text = "$(error) Aegis: 扫描错误";
+      statusBar.tooltip = "Aegis AI 扫描出错，点击查看日志";
+      statusBar.command = "aegisAI.showOutput";
       statusBar.backgroundColor = undefined;
       break;
   }
@@ -146,6 +162,63 @@ export function activate(context: ExtensionContext): void {
   statusBar.tooltip = "Aegis AI 正在连接 LSP Server";
   statusBar.show();
   context.subscriptions.push(statusBar);
+
+  // Aegis Findings TreeView（侧边栏「Aegis Security」面板）
+  const findingsProvider = new FindingsTreeProvider();
+  const treeView = window.createTreeView("aegisFindings", {
+    treeDataProvider: findingsProvider,
+    showCollapseAll: true,
+  });
+  context.subscriptions.push(treeView);
+
+  // P1-2：注册命令（showOutput 不依赖 client；扫描命令在 client 就绪后可用）
+  context.subscriptions.push(
+    commands.registerCommand("aegisAI.showOutput", () => {
+      outputChannel.show();
+    }),
+    commands.registerCommand("aegisAI.showReport", () => {
+      showReport();
+    })
+  );
+  context.subscriptions.push(
+    commands.registerCommand("aegisAI.scanCurrentFile", () => {
+      const editor = window.activeTextEditor;
+      if (!editor) return;
+      if (!client) {
+        outputChannel.appendLine("[Aegis] 未连接，无法扫描。请等待 LSP 连接后再试。");
+        outputChannel.show();
+        return;
+      }
+      const uri = editor.document.uri.toString();
+      client.sendNotification("aegis/requestScan", { uri });
+      outputChannel.appendLine(`[Aegis] 手动触发扫描: ${uri}`);
+    }),
+    commands.registerCommand("aegisAI.scanWorkspace", () => {
+      if (!client) {
+        outputChannel.appendLine("[Aegis] 未连接，无法扫描。请等待 LSP 连接后再试。");
+        outputChannel.show();
+        return;
+      }
+      outputChannel.appendLine("[Aegis] 手动触发工作区扫描");
+      window.withProgress(
+        {
+          title: "Aegis: 扫描工作区",
+          location: 15, // Notification location
+          cancellable: false,
+        },
+        (progress) => {
+          workspaceProgressReporter = progress;
+          return new Promise<void>((resolve) => {
+            workspaceScanResolve = resolve;
+            client!.sendNotification("aegis/requestScanWorkspace", {});
+          });
+        }
+      ).then(() => {
+        workspaceProgressReporter = null;
+        workspaceScanResolve = null;
+      });
+    })
+  );
 
   // aegis-ai-core 目录：LSP Server 需在 aegis-ai-core 下执行 python -m src.lsp
   let cwd: string | undefined;
@@ -286,6 +359,35 @@ export function activate(context: ExtensionContext): void {
           } else {
             // 无通知参数时从诊断集合推断
             refreshStatusBarFromDiagnostics();
+          }
+        }
+      );
+
+      // ── 监听 LSP 自定义通知：扫描错误（P1-1）────────────────────────────
+      client!.onNotification(
+        NOTIFICATION_SCAN_ERROR,
+        (params: { uri?: string; message?: string }) => {
+          updateStatusBar("error");
+          outputChannel.appendLine(
+            `[Aegis] 扫描错误: ${params?.message ?? "unknown"} (${params?.uri ?? ""})`
+          );
+        }
+      );
+
+      // ── 监听 LSP 自定义通知：工作区扫描进度（P5-4）──────────────────────
+      client!.onNotification(
+        NOTIFICATION_SCAN_PROGRESS,
+        (params: { current?: number; total?: number; uri?: string }) => {
+          const cur = params?.current ?? 0;
+          const tot = params?.total ?? 0;
+          if (workspaceProgressReporter && tot > 0) {
+            workspaceProgressReporter.report({
+              message: `正在扫描 ${cur}/${tot}`,
+              increment: tot > 0 ? (100 / tot) : 0,
+            });
+          }
+          if (cur === tot && workspaceScanResolve) {
+            workspaceScanResolve();
           }
         }
       );

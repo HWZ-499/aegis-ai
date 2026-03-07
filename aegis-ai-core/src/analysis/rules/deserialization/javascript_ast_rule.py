@@ -106,17 +106,42 @@ class JavaScriptDeserializationAstRule(SecurityRule):
         if not is_sink:
             return
 
-        # 取第一个参数
+        # 取第一个参数（跳过括号与逗号；若为 argument_list 等包装则递归取首个子表达式）
         arg_node = None
+        _skip_arg_types = (",", ")", "(")
         for child in node.children:
             if child.type == "arguments":
                 for arg in child.children:
-                    if arg.type not in (",", ")"):
+                    if arg.type not in _skip_arg_types:
                         arg_node = arg
                         break
                 break
         if arg_node is None:
             return
+        # 部分 grammar 下 arguments 首子节点为包装（argument_list 等），递归取第一个表达式节点
+        _expr_types = (
+            "member_expression",
+            "identifier",
+            "call_expression",
+            "string",
+            "template_string",
+            "binary_expression",
+        )
+
+        def _first_expr_node(n: Any) -> Any:
+            if getattr(n, "type", None) in _expr_types:
+                return n
+            for sub in getattr(n, "children", []) or []:
+                if getattr(sub, "type", None) in _skip_arg_types:
+                    continue
+                candidate = _first_expr_node(sub)
+                if candidate is not None:
+                    return candidate
+            return None
+
+        real_arg = _first_expr_node(arg_node)
+        if real_arg is not None:
+            arg_node = real_arg
 
         arg_text = _get_node_text(arg_node) or ""
         if "localStorage" in arg_text or "sessionStorage" in arg_text:

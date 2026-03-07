@@ -115,6 +115,24 @@ BENCH_CASES_TP: list[BenchCase] = [
         "fs.readFile(req.query.path, callback);",
         True,
     ),
+    # DESERIALIZATION
+    BenchCase(
+        "TP-DESER-01",
+        "DESERIALIZATION",
+        "pickle_loads",
+        "pickle.loads(user_data)",
+        "import pickle\ndef handle(data):\n    obj = pickle.loads(data)\n    return obj\n",
+        True,
+    ),
+    # OPEN_REDIRECT
+    BenchCase(
+        "TP-REDIR-01",
+        "OPEN_REDIRECT",
+        "redirect_user_input",
+        "redirect(request.args['url'])",
+        "from flask import redirect, request\n@app.route('/go')\ndef go():\n    url = request.args.get('url')\n    return redirect(url)\n",
+        True,
+    ),
 ]
 
 # ── True Negative：不应检出 ──
@@ -171,6 +189,24 @@ BENCH_CASES_TN: list[BenchCase] = [
     ),
     BenchCase(
         "TN-SQL-01", "SQL_INJECTION", "no_sql_keyword", "无 SQL 关键字拼接", 'const msg = "Hello " + name;', False
+    ),
+    # DESERIALIZATION - safe
+    BenchCase(
+        "TN-DESER-01",
+        "DESERIALIZATION",
+        "json_loads",
+        "json.loads (safe)",
+        "import json\ndef handle(data):\n    return json.loads(data)\n",
+        False,
+    ),
+    # OPEN_REDIRECT - safe
+    BenchCase(
+        "TN-REDIR-01",
+        "OPEN_REDIRECT",
+        "redirect_constant",
+        "redirect to constant URL",
+        "from flask import redirect\n@app.route('/home')\ndef home():\n    return redirect('/dashboard')\n",
+        False,
     ),
     BenchCase(
         "TN-SQL-02",

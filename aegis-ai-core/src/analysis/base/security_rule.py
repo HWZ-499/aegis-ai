@@ -10,9 +10,12 @@ security_rule.py - 规则基类（面向 AST 节点）
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Any
+
+_rule_logger = logging.getLogger(__name__)
 
 from .analysis_context import AnalysisContext
 
@@ -86,3 +89,17 @@ class SecurityRule(ABC):
         适用于需要“全局视角”的规则（例如先收集信息，再统一下结论）。
         默认实现为空，实现类可按需重写。
         """
+
+
+def safe_find_paths(graph: Any, rule_id: str) -> list:
+    """
+    安全执行 graph.find_paths_to_sinks()，异常时记录日志并返回空列表。
+    供各 ast_rule 的 after_file 统一使用，避免散布的 try/except。
+    """
+    try:
+        return graph.find_paths_to_sinks()
+    except Exception as e:
+        _rule_logger.debug(
+            "find_paths_to_sinks failed in rule %s: %s", rule_id, e
+        )
+        return []

@@ -111,6 +111,16 @@ assert result.f1 >= 0.75        ❌ (当前 F1 = 0.62)
 
 ---
 
+### v1.5 — Legacy 引擎移除
+
+- [ ] 确认 new 引擎在所有靶场基准中 >= legacy 引擎指标
+- [ ] 移除 `--engine legacy` CLI 选项
+- [ ] 删除 `security_rules.py`（约 1195 行）
+- [ ] 删除 `ast_analyzer.py` 中旧分析路径
+- [ ] 更新 CONTRIBUTING.md 中 legacy 引擎相关描述
+
+---
+
 ## 📐 架构现状
 
 ```mermaid

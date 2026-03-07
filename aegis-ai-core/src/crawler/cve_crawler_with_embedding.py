@@ -70,8 +70,8 @@ class CVECrawlerWithCustomEmbedding(CVECrawler):
                 metadata = self.collection.metadata or {}
                 metadata["embedding_model"] = embedding_model
                 logger.info(f"📝 集合元数据: {metadata}")
-            except:
-                pass
+            except Exception as e:
+                logger.debug("设置集合元数据失败: %s", e)
 
     def update_database_with_custom_embedding(self, cve_list, incremental: bool = True):
         """
@@ -96,8 +96,8 @@ class CVECrawlerWithCustomEmbedding(CVECrawler):
             try:
                 existing_data = self.collection.get()
                 existing_ids = set(existing_data.get("ids", []))
-            except:
-                pass
+            except Exception as e:
+                logger.debug("获取现有 CVE ID 失败，将全量更新: %s", e)
 
         # 准备数据
         ids = []

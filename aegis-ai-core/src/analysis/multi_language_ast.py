@@ -3,8 +3,11 @@
 使用 Tree-sitter 支持多种编程语言的 AST 分析
 """
 
+import logging
 import threading
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # 按线程复用 analyzer，避免每个文件都新建 Parser（显著减少 33s 级耗时）
 _analyzer_local = threading.local()
@@ -16,8 +19,8 @@ try:
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
-    print("⚠️ tree-sitter 未安装，多语言 AST 分析不可用")
-    print("   安装命令: pip install tree-sitter")
+    _import_logger = logging.getLogger(__name__)
+    _import_logger.warning("tree-sitter 未安装，多语言 AST 分析不可用。安装: pip install tree-sitter")
 
 # 尝试导入 tree-sitter-languages
 try:
@@ -27,8 +30,8 @@ try:
 except ImportError:
     TREE_SITTER_LANGUAGES_AVAILABLE = False
     if TREE_SITTER_AVAILABLE:
-        print("⚠️ tree-sitter-languages 未安装，将使用正则规则")
-        print("   安装命令: pip install tree-sitter-languages")
+        _import_logger = logging.getLogger(__name__)
+        _import_logger.warning("tree-sitter-languages 未安装，将使用正则规则。安装: pip install tree-sitter-languages")
 
 # Python AST 分析（已有实现）
 from src.analysis.ast_analyzer import analyze_code_ast as analyze_python_ast
@@ -73,9 +76,9 @@ class MultiLanguageASTAnalyzer:
                     js_parser.set_language(js_lang)
                     self.parsers["javascript"] = js_parser
                     self.parsers["typescript"] = js_parser  # TypeScript 使用 JavaScript 解析器
-                    print("✅ JavaScript/TypeScript parser 初始化成功")
+                    logger.info("JavaScript/TypeScript parser 初始化成功")
                 except Exception as e:
-                    print(f"⚠️ JavaScript parser 初始化失败: {e}")
+                    logger.warning("JavaScript parser 初始化失败: %s", e)
                     import traceback
 
                     traceback.print_exc()
@@ -86,9 +89,9 @@ class MultiLanguageASTAnalyzer:
                     java_parser = Parser()
                     java_parser.set_language(java_lang)
                     self.parsers["java"] = java_parser
-                    print("✅ Java parser 初始化成功")
+                    logger.info("Java parser 初始化成功")
                 except Exception as e:
-                    print(f"⚠️ Java parser 初始化失败: {e}")
+                    logger.warning("Java parser 初始化失败: %s", e)
 
                 # C/C++
                 try:
@@ -97,9 +100,9 @@ class MultiLanguageASTAnalyzer:
                     cpp_parser.set_language(cpp_lang)
                     self.parsers["cpp"] = cpp_parser
                     self.parsers["c"] = cpp_parser  # C 使用 C++ 解析器
-                    print("✅ C/C++ parser 初始化成功")
+                    logger.info("C/C++ parser 初始化成功")
                 except Exception as e:
-                    print(f"⚠️ C/C++ parser 初始化失败: {e}")
+                    logger.warning("C/C++ parser 初始化失败: %s", e)
 
                 # Go
                 try:
@@ -107,15 +110,14 @@ class MultiLanguageASTAnalyzer:
                     go_parser = Parser()
                     go_parser.set_language(go_lang)
                     self.parsers["go"] = go_parser
-                    print("✅ Go parser 初始化成功")
+                    logger.info("Go parser 初始化成功")
                 except Exception as e:
-                    print(f"⚠️ Go parser 初始化失败: {e}")
+                    logger.warning("Go parser 初始化失败: %s", e)
             else:
-                print("⚠️ tree-sitter-languages 未安装，无法使用预编译语言库")
-                print("   安装命令: pip install tree-sitter-languages")
+                logger.warning("tree-sitter-languages 未安装，无法使用预编译语言库。安装: pip install tree-sitter-languages")
 
         except Exception as e:
-            print(f"⚠️ Tree-sitter 初始化失败: {e}")
+            logger.warning("Tree-sitter 初始化失败: %s", e)
             import traceback
 
             traceback.print_exc()
@@ -257,9 +259,8 @@ class MultiLanguageASTAnalyzer:
                 tree = parser.parse(bytes(code_content, "utf8"))
                 ast_findings = self._traverse_javascript_tree(tree.root_node)
                 findings.extend(ast_findings)
-            except Exception:
-                # AST 分析失败时回退到正则规则
-                pass
+            except Exception as e:
+                logger.debug("JavaScript AST analysis failed, falling back to regex: %s", e)
 
         return findings
 
@@ -633,9 +634,8 @@ class MultiLanguageASTAnalyzer:
                 tree = parser.parse(bytes(code_content, "utf8"))
                 ast_findings = self._traverse_java_tree(tree.root_node)
                 findings.extend(ast_findings)
-            except Exception:
-                # AST 分析失败时回退到正则规则
-                pass
+            except Exception as e:
+                logger.debug("Java AST analysis failed, falling back to regex: %s", e)
 
         return findings
 
@@ -844,6 +844,7 @@ def analyze_code_multi_language(code_content: str, file_path: str | None = None)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     # 测试代码
     analyzer = MultiLanguageASTAnalyzer()
 
@@ -852,18 +853,18 @@ if __name__ == "__main__":
 user_input = input("Enter: ")
 eval(user_input)
 """
-    print("Python 测试:")
+    logger.info("Python 测试:")
     findings = analyzer.analyze(python_code, language="python")
-    print(f"  检测到 {len(findings)} 个问题")
+    logger.info("  检测到 %s 个问题", len(findings))
 
     # 测试 JavaScript
     js_code = """
 const userInput = prompt("Enter: ");
 eval(userInput);
 """
-    print("\nJavaScript 测试:")
+    logger.info("\nJavaScript 测试:")
     findings = analyzer.analyze(js_code, language="javascript")
-    print(f"  检测到 {len(findings)} 个问题")
+    logger.info("  检测到 %s 个问题", len(findings))
 
     # 测试 Java
     java_code = """
@@ -871,6 +872,6 @@ String query = "SELECT * FROM users WHERE id = " + userId;
 Statement stmt = conn.createStatement();
 stmt.execute(query);
 """
-    print("\nJava 测试:")
+    logger.info("\nJava 测试:")
     findings = analyzer.analyze(java_code, language="java")
-    print(f"  检测到 {len(findings)} 个问题")
+    logger.info("  检测到 %s 个问题", len(findings))

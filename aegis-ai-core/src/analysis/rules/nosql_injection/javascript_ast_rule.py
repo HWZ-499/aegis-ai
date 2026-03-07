@@ -401,6 +401,9 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
 
                 # 情况 B: 参数是对象字面量 {user: ...} (High)
                 elif first_arg.type == "object":
+                    # 【降低误报】简单 _id/id 查询（如 findOne({ _id: id })）常见于合法 ById 查找，跳过
+                    if self._is_simple_id_query(first_arg):
+                        return
                     if self._has_dangerous_key_or_value(first_arg, context):
                         finding: dict[str, Any] = {
                             "type": "NOSQL_INJECTION",
@@ -562,6 +565,29 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
             return True
 
         return False
+
+    def _is_simple_id_query(self, node: Node) -> bool:
+        """
+        判断是否为“仅按 _id/id 查询”的对象字面量，用于降低 DAO 层 findByUserId 等误报。
+
+        例如 findOne({ _id: id })、find({ id: userId }) 等单键 id 查询多为合法 ById 查找。
+        """
+        if node.type != "object":
+            return False
+        pairs = [c for c in node.children if c.type == "pair"]
+        if len(pairs) != 1:
+            return False
+        pair = pairs[0]
+        key_text: str | None = None
+        value_node: Node | None = None
+        for sub in pair.children:
+            if sub.type in ("property_identifier", "string"):
+                key_text = self._get_node_text(sub)
+            elif sub.type not in (":",):
+                value_node = sub
+        if not key_text or key_text not in ("_id", "id"):
+            return False
+        return value_node is not None and value_node.type == "identifier"
 
     def _has_dangerous_key_or_value(self, node: Node, context: AnalysisContext) -> bool:
         """

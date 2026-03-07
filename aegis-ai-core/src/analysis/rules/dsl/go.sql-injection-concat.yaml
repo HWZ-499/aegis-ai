@@ -1,0 +1,8 @@
+id: dsl.go.sql-injection-concat
+language: go
+severity: HIGH
+message: "检测到 SQL 字符串拼接，存在注入风险。"
+vuln_type: SQL_INJECTION
+patterns:
+  - pattern: $DB.Query("SELECT" + $EXPR)
+  - pattern: $DB.Exec("DELETE" + $EXPR)

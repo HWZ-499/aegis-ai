@@ -13,8 +13,8 @@ import argparse
 import sys
 from pathlib import Path
 
-# 确保 aegis-ai-core 在 path 中
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# 确保 aegis-ai-core 在 path 中（__file__ 在 scripts/benchmark/ 下，需上溯两级）
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

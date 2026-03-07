@@ -1,0 +1,55 @@
+# Changelog
+
+All notable changes to the aegis-ai-core package are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.2.0] - 2026-03
+
+### Added
+
+- Baseline / Suppression: `.aegis-baseline.json`, `--baseline`, `--update-baseline`, line-level `aegis-ignore` comments
+- Diff-only scanning: `--incremental --base-ref`, line-level diff filter in IncrementalScanner
+- Custom rules: `--rules-dir`, `.aegis/rules/`, LSP `initializationOptions.rules_dirs`
+- PyPI publish workflow (Trusted Publishing), README install note `pip install aegis-ai-core`
+
+### Changed
+
+- CLI default engine: `new` (legacy remains available via `--engine legacy`)
+- LSP/extension: scanError notification, file size limit, scan timeout
+- Core modules: `print()` migrated to `logging` in analysis/scanner (CLI user output unchanged)
+
+### Fixed
+
+- Silent exception handling in LSP server (replaced `except Exception: pass` with logger)
+- Build backend in pyproject.toml: `setuptools.build_meta`
+
+## [1.1.0] - 2026-02
+
+### Added
+
+- NoSQL injection: DAO insert variable args, `$set` nested operator taint, legacy `insert()` in MONGO_SINKS
+- Guard clause scope fix for cross-scope same-name variable purification
+- HARDCODED_CREDENTIALS: placeholder / low-entropy filters to reduce false positives
+- Tests: `tests/rules/` TP/FP for 7 vulnerability types
+- Cross-file taint: CrossFileAnalyzer, CommonJS module.exports
+
+### Changed
+
+- NodeGoat recall to 100%, F1 to 0.62
+
+## [1.0.0] - 2026-01
+
+### Added
+
+- Core SAST engine: JS/TS/Python/PHP (Tree-sitter AST)
+- Taint analysis: TaintGraph, Guard Clause, Dominator Tree
+- LSP server (pygls): diagnostics, Code Action, Status Bar
+- AI remediation: rich context, framework-aware prompt, high-confidence replace
+- SARIF and HTML report output
+- CLI: `aegis-scan`, `aegis-lsp` entry points
+
+[1.2.0]: https://github.com/aegis-ai/aegis-ai/releases/tag/v1.2.0
+[1.1.0]: https://github.com/aegis-ai/aegis-ai/releases/tag/v1.1.0
+[1.0.0]: https://github.com/aegis-ai/aegis-ai/releases/tag/v1.0.0

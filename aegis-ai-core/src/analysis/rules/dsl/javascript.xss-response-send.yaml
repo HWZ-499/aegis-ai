@@ -1,0 +1,8 @@
+id: dsl.javascript.xss-response-send
+language: javascript
+severity: MEDIUM
+message: "检测到将用户输入直接传给 res.send/res.write，存在 XSS 风险。"
+vuln_type: XSS_RISK
+patterns:
+  - pattern: res.send($EXPR)
+  - pattern: res.write($EXPR)

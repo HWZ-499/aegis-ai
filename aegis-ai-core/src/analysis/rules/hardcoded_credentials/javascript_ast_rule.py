@@ -93,7 +93,7 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
         finding: dict[str, Any] = {
             "type": "HARDCODED_CREDENTIALS",
             "rule_id": self.rule_id,
-            "severity": self.severity,
+            "severity": self._effective_severity(context),
             "line": line_no,
             "details": f"发现对象字面量中疑似硬编码凭证属性 '{key_name}'，建议使用环境变量或安全配置管理。",
         }
@@ -125,7 +125,7 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
             finding: dict[str, Any] = {
                 "type": "HARDCODED_CREDENTIALS",
                 "rule_id": self.rule_id,
-                "severity": self.severity,
+                "severity": self._effective_severity(context),
                 "line": line_no,
                 "details": f"发现疑似硬编码凭证变量 '{var_name}'，建议使用环境变量或安全配置管理。",
             }
@@ -161,7 +161,7 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
             finding: dict[str, Any] = {
                 "type": "HARDCODED_CREDENTIALS",
                 "rule_id": self.rule_id,
-                "severity": self.severity,
+                "severity": self._effective_severity(context),
                 "line": line_no,
                 "details": f"发现疑似硬编码凭证变量 '{var_name}'，建议使用环境变量或安全配置管理。",
             }
@@ -170,6 +170,15 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
     # ------------------------------------------------------------------
     # 辅助方法
     # ------------------------------------------------------------------
+
+    def _effective_severity(self, context: AnalysisContext) -> str:
+        """配置类文件中降级为 Medium，减少 config/ 下默认值误报。"""
+        fp = getattr(context, "file_path", None) or ""
+        path_lower = str(fp).lower().replace("\\", "/")
+        if "config" in path_lower:
+            return "Medium"
+        return self.severity
+
     # 已知误报：变量名含 key/Keyboard 等但非凭证（降低误报）
     CREDENTIAL_FALSE_POSITIVES = frozenset(
         {

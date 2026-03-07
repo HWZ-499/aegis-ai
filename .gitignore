@@ -35,6 +35,7 @@ Thumbs.db
 
 # 测试靶场（本地副本，不进版本控制）
 DVWA/
+NodeGoat/
 
 # 基准测试报告（本地生成，体积较大）
 aegis-ai-core/reports/

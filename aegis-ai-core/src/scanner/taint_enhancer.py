@@ -17,6 +17,7 @@ taint_enhancer.py - 污点分析增强器
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,8 @@ except ImportError:
     TaintAnalyzer = None
     TaintGraph = None
     TaintPath = None
+
+logger = logging.getLogger(__name__)
 
 
 class TaintEnhancer:
@@ -91,7 +94,7 @@ class TaintEnhancer:
             return [self._convert_finding(f) for f in findings]
 
         except Exception as e:
-            print(f"⚠️ 污点分析失败 {file_path}: {e}")
+            logger.warning("污点分析失败 %s: %s", file_path, e)
             return []
 
     def analyze_code(self, code: str, file_path: str = "") -> list[dict]:
@@ -119,7 +122,7 @@ class TaintEnhancer:
             return [self._convert_finding(f) for f in findings]
 
         except Exception as e:
-            print(f"⚠️ 污点分析失败: {e}")
+            logger.warning("污点分析失败: %s", e)
             return []
 
     def enhance_findings(self, findings: list[dict], code: str, file_path: str = "") -> list[dict]:
@@ -166,7 +169,7 @@ class TaintEnhancer:
             return enhanced
 
         except Exception as e:
-            print(f"⚠️ 污点增强失败: {e}")
+            logger.warning("污点增强失败: %s", e)
             return findings
 
     def _find_related_taint_path(self, graph: TaintGraph, line: int, file_path: str) -> dict | None:
@@ -303,7 +306,7 @@ def enhance_scan_results(
             enhanced_results[rel_path] = enhanced_findings
 
         except Exception as e:
-            print(f"⚠️ 增强失败 {rel_path}: {e}")
+            logger.warning("增强失败 %s: %s", rel_path, e)
             enhanced_results[rel_path] = findings
 
     return enhanced_results

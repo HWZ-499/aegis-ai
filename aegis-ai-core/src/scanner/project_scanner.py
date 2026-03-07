@@ -11,6 +11,9 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# P1-3：单文件大小上限（超过则跳过，避免 DoS）
+MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024  # 2 MB
+
 # 添加项目根目录到 Python 路径
 _current_dir = Path(__file__).parent
 _project_root = _current_dir.parent.parent.parent  # aegis-ai-core
@@ -53,6 +56,7 @@ class ProjectScanner:
         use_parallel: bool = True,
         max_workers: int | None = None,
         engine: str = "new",
+        extra_rule_dirs: list[Path] | list[str] | None = None,
     ):
         """
         初始化项目扫描器
@@ -66,8 +70,20 @@ class ProjectScanner:
             engine: 扫描引擎类型：
                 - "new":    新规则引擎（AST + 污点分析，Python/JS/TS 完整支持，默认）
                 - "legacy": 旧版引擎（ast_analyzer + security_rules，兼容保留）
+            extra_rule_dirs: 额外 DSL 规则目录（如 .aegis/rules），须在 project_path 下。
         """
         self.project_path = Path(project_path).resolve()
+        self._extra_rule_dirs: list[Path] = []
+        if extra_rule_dirs:
+            for d in extra_rule_dirs:
+                p = Path(d).resolve()
+                if not p.is_dir():
+                    continue
+                try:
+                    p.relative_to(self.project_path)
+                    self._extra_rule_dirs.append(p)
+                except ValueError:
+                    logger.warning("跳过规则目录（超出项目根）: %s", p)
         if not self.project_path.exists():
             raise ValueError(f"项目路径不存在: {project_path}")
 
@@ -387,6 +403,17 @@ class ProjectScanner:
                         )
                     )
                     continue
+                try:
+                    if file_path.stat().st_size > MAX_FILE_SIZE_BYTES:
+                        skipped.append(
+                            (
+                                rel_path,
+                                f"文件过大 ({file_path.stat().st_size / 1024 / 1024:.1f} MB > 2 MB)",
+                            )
+                        )
+                        continue
+                except OSError:
+                    pass
                 code_files.append(file_path)
 
         return code_files, skipped
@@ -421,21 +448,30 @@ class ProjectScanner:
 
             # 执行检测（支持多语言）
             file_path_str = str(file_path)
+            extra = self._extra_rule_dirs or None
+            root = self.project_path
             if language == "python" and self.engine == "new":
-                # ✅ 新规则引擎（Python）
-                merged_findings = analyze_python_new(code, file_path_str)
+                merged_findings = analyze_python_new(
+                    code, file_path_str,
+                    extra_rule_dirs=extra, rules_allowed_root=root,
+                )
             elif language in ("javascript", "typescript") and self.engine == "new":
-                # ✅ 新规则引擎（JS/TS）：使用新架构规则
-                merged_findings = analyze_javascript_new(code, file_path_str, language=language)
+                merged_findings = analyze_javascript_new(
+                    code, file_path_str, language=language,
+                    extra_rule_dirs=extra, rules_allowed_root=root,
+                )
             elif language == "php" and self.engine == "new":
-                # ✅ 新规则引擎（PHP）：PhpTaintGraph 污点分析
                 merged_findings = analyze_php_new(code, file_path_str)
             elif language == "java" and self.engine == "new":
-                # ✅ 新规则引擎（Java）：Tree-sitter Java + TaintAnalyzer + 规则引擎
-                merged_findings = analyze_java_new(code, file_path_str)
+                merged_findings = analyze_java_new(
+                    code, file_path_str,
+                    extra_rule_dirs=extra, rules_allowed_root=root,
+                )
             elif language == "go" and self.engine == "new":
-                # ✅ 新规则引擎（Go）：Tree-sitter Go + TaintAnalyzer + 规则引擎
-                merged_findings = analyze_go_new(code, file_path_str)
+                merged_findings = analyze_go_new(
+                    code, file_path_str,
+                    extra_rule_dirs=extra, rules_allowed_root=root,
+                )
             else:
                 if language == "python":
                     # 旧版 Python 引擎：AST 分析 + 本地规则匹配
