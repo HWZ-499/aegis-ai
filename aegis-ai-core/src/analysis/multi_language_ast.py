@@ -114,7 +114,9 @@ class MultiLanguageASTAnalyzer:
                 except Exception as e:
                     logger.warning("Go parser 初始化失败: %s", e)
             else:
-                logger.warning("tree-sitter-languages 未安装，无法使用预编译语言库。安装: pip install tree-sitter-languages")
+                logger.warning(
+                    "tree-sitter-languages 未安装，无法使用预编译语言库。安装: pip install tree-sitter-languages"
+                )
 
         except Exception as e:
             logger.warning("Tree-sitter 初始化失败: %s", e)
