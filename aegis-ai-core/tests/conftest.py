@@ -16,8 +16,10 @@ if str(_project_root) not in sys.path:
 # 排除「不是真正 pytest 用例」的脚本文件，避免 pytest 收集时 INTERNALERROR：
 #   - test_vulnerable_code.py：漏洞代码样本文件，含 input() 等副作用
 #   - test_api_direct.py：独立脚本，依赖未安装的 aegis_server
+#   - test_nvd_api.py：NVD API Key 检查脚本，无 key 时 sys.exit(1)，会中断整次测试
 #   - test_embedding_models.py：已在文件内用 pytest.skip 处理，此处兜底
 collect_ignore = [
     "test_vulnerable_code.py",
     "test_api_direct.py",
+    "test_nvd_api.py",
 ]
