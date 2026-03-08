@@ -18,7 +18,7 @@ js_dataflow_collector.py - JavaScript/TypeScript 数据流收集器（阶段二�
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from .analysis_context import AnalysisContext
 from .security_rule import SecurityRule
@@ -133,9 +133,9 @@ class JavaScriptDataFlowCollector(SecurityRule):
             # ── 普通赋值 ──
             elif left_node.type == "identifier":
                 var_name = self._get_node_text(left_node)
-                value_text = self._get_node_text(value_node)
-                if var_name and value_text:
-                    context.track_assignment(var_name, value_text, line)
+                value_text_ident = self._get_node_text(value_node)
+                if var_name and value_text_ident:
+                    context.track_assignment(var_name, value_text_ident, line)
 
     def _extract_destructured_properties(self, pattern_node: Node) -> list[str]:
         """
@@ -257,7 +257,7 @@ class JavaScriptDataFlowCollector(SecurityRule):
     def _get_node_text(node: Node) -> str | None:
         """提取节点的文本内容。"""
         if hasattr(node, "text"):
-            return node.text.decode("utf-8")
+            return cast(str, node.text.decode("utf-8"))
         return None
 
 

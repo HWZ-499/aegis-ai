@@ -18,7 +18,7 @@ import concurrent.futures
 import logging
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import quote, unquote, urlparse
 
 if TYPE_CHECKING:
@@ -48,7 +48,7 @@ try:
     AI_ANALYZER_AVAILABLE = True
 except Exception:  # ImportError 或 openai 未安装等
     AI_ANALYZER_AVAILABLE = False
-    AIAnalyzer = None  # type: ignore[assignment]
+    AIAnalyzer = None  # type: ignore[misc,assignment]
 
 # ---------------------------------------------------------------------------
 # 常量 & 映射
@@ -122,19 +122,19 @@ class WorkspaceContext:
 
     @property
     def disabled_rules(self) -> list[str]:
-        return self._init_options.get("disabled_rules", [])
+        return cast(list[str], self._init_options.get("disabled_rules", []))
 
     @property
     def severity_minimum(self) -> str:
-        return self._init_options.get("severity_minimum", "Low")
+        return cast(str, self._init_options.get("severity_minimum", "Low"))
 
     @property
     def scan_on_save(self) -> bool:
-        return self._init_options.get("scan_on_save", True)
+        return cast(bool, self._init_options.get("scan_on_save", True))
 
     @property
     def scan_on_change(self) -> bool:
-        return self._init_options.get("scan_on_change", True)
+        return cast(bool, self._init_options.get("scan_on_change", True))
 
     def build_graph_async(self, project_path: str) -> None:
         """在后台线程中构建依赖图（不阻塞 LSP 事件循环）。"""
@@ -388,7 +388,7 @@ def _get_remediation_for_rule(rule_id: str) -> dict[str, Any]:
     根据规则类型（如 NOSQL_INJECTION）返回内置修复建议。
     M1：供 Code Action 使用，与 rag_enhancer.BUILTIN_REMEDIATION 一致。
     """
-    return BUILTIN_REMEDIATION.get(rule_id, {})
+    return cast(dict[str, Any], BUILTIN_REMEDIATION.get(rule_id, {}))
 
 
 # PHP 专属修复示例代码（TaintGraph finding 时使用，替代 rag_enhancer 里的 JS 示例）

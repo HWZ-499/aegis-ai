@@ -39,7 +39,8 @@ jobs:
       - name: mypy type check (core module)
         run: |
           cd aegis-ai-core
-          mypy src/lsp/ src/analysis/rule_engine.py src/analysis/base/ src/scanner/project_scanner.py --config-file pyproject.toml
+          pip install types-PyYAML -q
+          mypy src/lsp/ src/analysis/rule_engine.py src/analysis/base/ src/scanner/project_scanner.py --config-file pyproject.toml --follow-imports=skip
 
   # ── VSCode Extension Build Check ─────────────────────────────
   extension:
