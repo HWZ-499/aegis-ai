@@ -99,6 +99,7 @@ collect_ignore = [
     "tests/test_vulnerable_code.py",
     "tests/test_api_direct.py",
     "tests/test_nvd_api.py",
+    "tests/test_rag_optimizer.py",
 ]
 
 # ---------------------------------------------------------------------------
