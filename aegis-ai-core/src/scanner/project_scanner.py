@@ -8,6 +8,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ from src.analysis.rule_engine import (
     analyze_python as analyze_python_new,
 )
 from src.analysis.security_rules import scan_code_locally
+from src.scanner.performance_optimizer import PerformanceOptimizer
 
 
 class ProjectScanner:
@@ -96,9 +98,8 @@ class ProjectScanner:
         self.max_workers = max_workers
 
         # 初始化性能优化器
+        self.optimizer: PerformanceOptimizer | None
         if use_cache or use_parallel:
-            from src.scanner.performance_optimizer import PerformanceOptimizer
-
             self.optimizer = PerformanceOptimizer(
                 cache_dir=str(self.project_path / ".aegis-cache"),
                 max_workers=max_workers,
@@ -270,7 +271,7 @@ class ProjectScanner:
 
         # 扫描结果
         self.scan_results: dict[str, list[dict]] = {}
-        self.scan_stats = {
+        self.scan_stats: dict[str, Any] = {
             "total_files": 0,
             "scanned_files": 0,
             "files_with_issues": 0,
@@ -546,7 +547,7 @@ class ProjectScanner:
         # 扫描每个文件（使用性能优化）
         if self.optimizer:
             # 使用优化的扫描方法（缓存 + 并行）
-            def progress_callback(completed, total, file_path):
+            def progress_callback(completed: int, total: int, file_path: Path) -> None:
                 if verbose and completed % 10 == 0:
                     logger.info("扫描进度: %d/%d", completed, total)
 

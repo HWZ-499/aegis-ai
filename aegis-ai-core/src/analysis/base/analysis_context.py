@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from src.core.models import Finding
@@ -165,33 +165,33 @@ class AnalysisContext:
     def is_var_tainted(self, var_name: str) -> bool:
         """检查变量是否被污染（且未经净化）。优先查 taint_graph，否则 dataflow_tracker。"""
         if self.taint_graph is not None:
-            return self.taint_graph.is_var_tainted(var_name, str(self.file_path))
+            return cast(bool, self.taint_graph.is_var_tainted(var_name, str(self.file_path)))
         if self.dataflow_tracker:
-            return self.dataflow_tracker.is_tainted(var_name)
+            return cast(bool, self.dataflow_tracker.is_tainted(var_name))
         return False
 
     def is_var_sanitized(self, var_name: str) -> bool:
         """检查变量是否经过 Sanitizer 净化。优先查 taint_graph。"""
         if self.taint_graph is not None:
-            return self.taint_graph.is_var_sanitized(var_name)
+            return cast(bool, self.taint_graph.is_var_sanitized(var_name))
         if self.dataflow_tracker:
-            return self.dataflow_tracker.is_sanitized(var_name)
+            return cast(bool, self.dataflow_tracker.is_sanitized(var_name))
         return False
 
     def get_sanitizer_name(self, var_name: str) -> str | None:
         """获取变量经过的净化器名称（如 ``"parseInt"``）。优先查 taint_graph。"""
         if self.taint_graph is not None:
-            return self.taint_graph.get_sanitizer_name(var_name)
+            return cast(str | None, self.taint_graph.get_sanitizer_name(var_name))
         if self.dataflow_tracker:
-            return self.dataflow_tracker.get_sanitizer_name(var_name)
+            return cast(str | None, self.dataflow_tracker.get_sanitizer_name(var_name))
         return None
 
     def has_tracked_var(self, var_name: str) -> bool:
         """变量是否已被追踪。优先查 taint_graph，否则 dataflow_tracker。"""
         if self.taint_graph is not None:
-            return self.taint_graph.has_tracked_var(var_name, str(self.file_path))
+            return cast(bool, self.taint_graph.has_tracked_var(var_name, str(self.file_path)))
         if self.dataflow_tracker:
-            return self.dataflow_tracker.has_tracked_var(var_name)
+            return cast(bool, self.dataflow_tracker.has_tracked_var(var_name))
         return False
 
     def get_taint_source(self, var_name: str) -> Any | None:

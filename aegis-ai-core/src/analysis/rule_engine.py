@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .analyzers.go_analyzer import GoAnalyzer
 from .analyzers.java_analyzer import JavaAnalyzer
@@ -221,7 +221,7 @@ def _analyze_with(
             raw = analyzer.analyze(code, path, language=language)
         else:
             raw = analyzer.analyze(code, path)
-        return filter_suppressed_findings(raw, code)
+        return cast(list[dict[str, Any]], filter_suppressed_findings(raw, code))
     except Exception:
         logger.exception("_analyze_with(%s) failed for %s", language, path)
         return []
@@ -336,7 +336,10 @@ def analyze_php(code: str, file_path: Path | str) -> list[dict]:
 
     for rule in taint_rules:
         try:
-            for f in rule.analyze(code, path):
+            analyze_fn = getattr(rule, "analyze", None)
+            if not callable(analyze_fn):
+                continue
+            for f in analyze_fn(code, path):
                 results.append(f)
                 taint_covered.add((f["line"], f["type"]))
         except Exception:

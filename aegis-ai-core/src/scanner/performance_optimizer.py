@@ -318,6 +318,8 @@ class PerformanceOptimizer:
         self.use_cache = use_cache
         self.use_parallel = use_parallel
 
+        self.cache: ScanCache | None
+        self.parallel_scanner: ParallelScanner | None
         if use_cache:
             self.cache = ScanCache(cache_dir)
         else:
@@ -331,7 +333,7 @@ class PerformanceOptimizer:
     def scan_files_optimized(
         self,
         file_paths: list[Path],
-        scan_func: callable,
+        scan_func: Callable[[Path], list[dict]],
         project_path: Path,
         supported_extensions: dict[str, str],
         progress_callback: Callable | None = None,

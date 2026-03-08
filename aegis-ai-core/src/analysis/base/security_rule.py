@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, cast
 
 _rule_logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ def safe_find_paths(graph: Any, rule_id: str) -> list:
     供各 ast_rule 的 after_file 统一使用，避免散布的 try/except。
     """
     try:
-        return graph.find_paths_to_sinks()
+        return cast(list, graph.find_paths_to_sinks())
     except Exception as e:
         _rule_logger.debug("find_paths_to_sinks failed in rule %s: %s", rule_id, e)
         return []
