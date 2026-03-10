@@ -51,6 +51,7 @@ VULN_TYPE_MAP = {
     "sql_injection": "SQL_INJECTION",
     "deserialization": "DESERIALIZATION",
     "open_redirect": "OPEN_REDIRECT",
+    "ssrf": "SSRF",
 }
 
 JS_EXTENSIONS = {".js", ".ts", ".jsx", ".tsx"}

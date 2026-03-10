@@ -21,7 +21,7 @@
 - **AI 精准修复**：Code Action 直接替换漏洞行（置信度 >= 0.75），生成复用原变量名和框架 API 的修复代码
 - **框架感知**：自动识别 mysql2、Sequelize、Mongoose、pymysql、SQLAlchemy 等框架，提供专用修复示例
 - **多语言支持**：JavaScript / TypeScript / Python / PHP（基于 Tree-sitter AST）
-- **多漏洞类型**：SQL 注入、NoSQL 注入、XSS、RCE、路径穿越、反序列化、硬编码凭证等 10+ 种
+- **多漏洞类型**：SQL 注入、NoSQL 注入、XSS、RCE、路径穿越、反序列化、硬编码凭证、**SSRF**（CWE-918）等 10+ 种
 - **污点分析**：跨函数污点追踪、Guard Clause 净化识别、Dominator Tree 支持
 - **CI/CD 集成**：GitHub Actions + GitLab CI，支持 SARIF 格式上报
 
@@ -45,8 +45,16 @@ cd aegis-ai-core
 pip install -r requirements.txt
 ```
 
-#### 2. 配置 API Key（可选，用于 AI 修复功能）
+#### 2. 配置 AI 提供商（可选，用于 AI 修复功能）
 
+**选项 A：使用本地 Ollama（免费，无需 API Key）**
+```bash
+# 安装 Ollama 后：
+ollama pull llama3
+export AI_PROVIDER=ollama
+```
+
+**选项 B：使用 DeepSeek API（低成本，推荐）**
 ```bash
 # Windows
 set DEEPSEEK_API_KEY=your_api_key_here
@@ -54,8 +62,14 @@ set DEEPSEEK_API_KEY=your_api_key_here
 # macOS / Linux
 export DEEPSEEK_API_KEY=your_api_key_here
 
-# 或创建 .env 文件（推荐）
+# 或创建 .env 文件
 echo "DEEPSEEK_API_KEY=your_api_key_here" > aegis-ai-core/.env
+```
+
+**选项 C：使用 OpenAI API**
+```bash
+export AI_PROVIDER=openai
+export OPENAI_API_KEY=your_openai_key
 ```
 
 #### 3. 安装 VSCode 扩展
@@ -179,9 +193,62 @@ flowchart LR
     Conf -- "否" --> Comment["插入注释块\n修复建议参考"]
 ```
 
+## 配置 AI 提供商
+
+Aegis AI 支持多种 AI 提供商进行智能代码修复，通过 `AI_PROVIDER` 环境变量选择：
+
+| 提供商 | 设置方式 | 适用场景 |
+|--------|---------|---------|
+| **DeepSeek**（默认）| `export DEEPSEEK_API_KEY=xxx` | 成本低，中文支持好 |
+| **OpenAI** | `export AI_PROVIDER=openai && export OPENAI_API_KEY=xxx` | GPT-4o 强推理能力 |
+| **Ollama**（本地免费）| `export AI_PROVIDER=ollama` | 离线使用，保护代码隐私 |
+| **自定义端点** | `export AI_PROVIDER=custom && export AI_BASE_URL=xxx && export AI_API_KEY=xxx` | 企业私有化部署 |
+
+### 使用本地 Ollama（免费，无需联网）
+
+```bash
+# 1. 安装并启动 Ollama
+brew install ollama && ollama serve
+
+# 2. 拉取模型
+ollama pull llama3  # 或 qwen2.5-coder, deepseek-r1 等
+
+# 3. 告知 Aegis 使用 Ollama
+export AI_PROVIDER=ollama
+# 可选：自定义模型（默认 llama3）
+export OLLAMA_MODEL=qwen2.5-coder
+
+# 4. 正常使用，无需 API Key
+aegis-scan ./your_project
+```
+
 ---
 
-## 项目结构
+## 内联抑制注释（aegis-ignore）
+
+对于误报或已知接受的风险，可在代码行添加 `aegis-ignore` 注释来抑制该行的告警：
+
+```python
+# 行末注释：抑制该行所有漏洞
+response = requests.get(trusted_internal_url)  # aegis-ignore
+
+# 行末注释：仅抑制该行的特定类型
+response = requests.get(validated_url)  # aegis-ignore: SSRF
+
+# 行上方注释：抑制下一行（适合代码较长时）
+# aegis-ignore: SQL_INJECTION
+cursor.execute(pre_validated_query)
+```
+
+同样适用于 JavaScript/TypeScript/Java/Go/PHP：
+
+```javascript
+const resp = await fetch(allowlistedUrl); // aegis-ignore: SSRF
+```
+
+---
+
+
 
 ```
 aegis-ai/
@@ -271,6 +338,9 @@ aegis-ai/
 - 真实靶场基准测试（NodeGoat、DVWA、Django、Flask），NodeGoat F1 达到 0.62
 - `tests/rules/` 正/负样本测试套件（7 类漏洞，19 个参数化测试用例，100% 通过）
 - NoSQL 检测增强：DAO insert 变量参数、update `$set` 嵌套、guard clause 作用域修复
+- **SSRF 检测（CWE-918）**：Python（requests/urllib/httpx）+ JavaScript（fetch/axios/http.get）
+- **多 AI 提供商支持**：DeepSeek（默认）、OpenAI、Ollama（本地免费离线）、自定义端点
+- **内联抑制注释**：`# aegis-ignore` / `// aegis-ignore` 支持行末和行上方两种格式，可按漏洞类型过滤
 
 ### 规划中
 

@@ -40,6 +40,7 @@ from src.analysis.rule_engine import (
     analyze_python as analyze_python_new,
 )
 from src.analysis.security_rules import scan_code_locally
+from src.scanner.false_positive_manager import InlineSuppressor
 from src.scanner.performance_optimizer import PerformanceOptimizer
 
 
@@ -500,6 +501,11 @@ class ProjectScanner:
                 finding["file"] = str(file_path.relative_to(self.project_path))
                 finding["file_path"] = str(file_path)
                 finding["language"] = language  # 添加语言信息
+
+            # 应用内联抑制注释（# aegis-ignore / // aegis-ignore）
+            if merged_findings:
+                suppressor = InlineSuppressor(code)
+                merged_findings = suppressor.filter_findings(merged_findings)
 
             return merged_findings
 
