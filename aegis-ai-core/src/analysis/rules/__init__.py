@@ -48,6 +48,7 @@ from .php import (
     PhpXSSRule,
 )
 from .rce import GoRCEAstRule, JavaRCEAstRule, JavaScriptRCEAstRule, PythonRCEAstRule
+from .ssrf import JavaScriptSSRFAstRule, PythonSSRFAstRule
 from .sql_injection import (
     GoSQLInjectionAstRule,
     JavaScriptSQLInjectionAstRule,
@@ -91,6 +92,8 @@ __all__ = [
     "JavaScriptOpenRedirectAstRule",
     "JavaOpenRedirectAstRule",
     "GoOpenRedirectAstRule",
+    "PythonSSRFAstRule",
+    "JavaScriptSSRFAstRule",
     # PHP TaintGraph 规则
     "PhpSQLInjectionRule",
     "PhpRCERule",
