@@ -3,14 +3,15 @@
 [![Security Scan](https://github.com/aegis-ai/aegis-ai/actions/workflows/security-scan.yml/badge.svg)](https://github.com/aegis-ai/aegis-ai/actions/workflows/security-scan.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![PyPI version](https://badge.fury.io/py/aegis-ai-core.svg)](https://pypi.org/project/aegis-ai-core/)
+<!-- PyPI 包尚未发布，发布后取消下行注释 -->
+<!-- [![PyPI version](https://badge.fury.io/py/aegis-ai-core.svg)](https://pypi.org/project/aegis-ai-core/) -->
 
 > 开源的 VSCode/Cursor 安全扫描插件，在编写代码的同时实时检测漏洞，并由 AI 生成框架感知的精准修复建议。
 
-**当前版本**: v0.2.0 | **扩展 ID**: `aegis-ai.aegis-ai-security` | **状态**: 预览版，积极开发中 | [查看路线图 →](ROADMAP.md)
+**VSCode 扩展版本**: v0.2.0 | **核心引擎版本**: v1.2.0 | **扩展 ID**: `aegis-ai.aegis-ai-security` | **状态**: 预览版，积极开发中 | [查看路线图 →](ROADMAP.md)
 
 <!-- 演示 GIF：录制后放置于 docs/assets/demo.gif，详见 docs/guides/DEMO_GIF.md -->
-![Demo](docs/assets/demo.gif)
+<!-- ![Demo](docs/assets/demo.gif) -->
 
 ---
 
@@ -20,8 +21,8 @@
 - **Status Bar 状态显示**：`$(shield) 就绪` / `$(loading~spin) 扫描中` / `$(error) N 个问题` / `$(check) 安全`
 - **AI 精准修复**：Code Action 直接替换漏洞行（置信度 >= 0.75），生成复用原变量名和框架 API 的修复代码
 - **框架感知**：自动识别 mysql2、Sequelize、Mongoose、pymysql、SQLAlchemy 等框架，提供专用修复示例
-- **多语言支持**：JavaScript / TypeScript / Python / PHP（基于 Tree-sitter AST）
-- **多漏洞类型**：SQL 注入、NoSQL 注入、XSS、RCE、路径穿越、反序列化、硬编码凭证、**SSRF**（CWE-918）等 10+ 种
+- **多语言支持**：JavaScript / TypeScript / Python / PHP（基于 Tree-sitter AST）；Java / Go（AST 规则，实验性）
+- **多漏洞类型**：SQL 注入、NoSQL 注入、XSS、RCE、路径穿越、反序列化、硬编码凭证、**SSRF**（CWE-918）、开放重定向，共 9 类
 - **污点分析**：跨函数污点追踪、Guard Clause 净化识别、Dominator Tree 支持
 - **CI/CD 集成**：GitHub Actions + GitLab CI，支持 SARIF 格式上报
 
@@ -31,8 +32,8 @@
 
 ### 安装核心引擎（二选一）
 
-- **从 PyPI 安装（推荐）**：`pip install aegis-ai-core`，安装后可直接使用 `aegis-scan`、`aegis-lsp` 命令。
-- **从源码安装**：`cd aegis-ai-core && pip install -e .`
+- **从 PyPI 安装**（包发布后可用）：`pip install aegis-ai-core`，安装后可直接使用 `aegis-scan`、`aegis-lsp` 命令。
+- **从源码安装（当前推荐）**：`cd aegis-ai-core && pip install -e .`
 
 ### 方式一：VSCode/Cursor 扩展（推荐）
 
@@ -90,10 +91,13 @@ code --install-extension aegis-vscode/aegis-ai-security-0.2.0.vsix
 | `aegisAI.pythonPath` | `python` | Python 可执行文件路径 |
 | `aegisAI.serverCwd` | 自动推断 | `aegis-ai-core` 目录路径 |
 | `aegisAI.enabled` | `true` | 是否启用扩展 |
+| `aegisAI.scanOnSave` | `true` | 保存时自动扫描 |
+| `aegisAI.ai.enabled` | `true` | 是否启用 AI 修复建议 |
+| `aegisAI.severity.minimum` | `Low` | 最低显示严重级别（Critical/High/Medium/Low） |
 
 #### 5. 开始使用
 
-打开任意 `.js`、`.ts`、`.py` 或 `.php` 文件，保存后 Aegis AI 自动扫描。漏洞将显示为波浪线诊断，点击灯泡图标可查看修复建议。
+打开任意 `.js`、`.ts`、`.py`、`.php`、`.java` 或 `.go` 文件，保存后 Aegis AI 自动扫描。漏洞将显示为波浪线诊断，点击灯泡图标可查看修复建议。
 
 ---
 
@@ -240,7 +244,7 @@ response = requests.get(validated_url)  # aegis-ignore: SSRF
 cursor.execute(pre_validated_query)
 ```
 
-同样适用于 JavaScript/TypeScript/Java/Go/PHP：
+同样适用于 JavaScript/TypeScript/PHP（Java/Go 的抑制注释支持为实验性）：
 
 ```javascript
 const resp = await fetch(allowlistedUrl); // aegis-ignore: SSRF
@@ -252,26 +256,37 @@ const resp = await fetch(allowlistedUrl); // aegis-ignore: SSRF
 
 ```
 aegis-ai/
-├── aegis-ai-core/              # Python 核心引擎
+├── aegis-ai-core/              # Python 核心引擎（pyproject.toml, v1.2.0）
 │   ├── src/
+│   │   ├── core/               # 配置、日志、数据模型（Pydantic）
 │   │   ├── analysis/           # 静态分析引擎
-│   │   │   ├── taint/          # 污点分析（TaintAnalyzer、CFG、DominatorTree）
-│   │   │   ├── rules/          # 漏洞规则（SQL、XSS、RCE、NoSQL、PHP 等）
-│   │   │   ├── analyzers/      # 语言分析器（JS/TS/Python/PHP）
-│   │   │   └── cfg/            # 控制流图 + 支配树
+│   │   │   ├── base/           # 基类（SecurityRule、DataflowTracker 等）
+│   │   │   ├── taint/          # 污点分析（TaintAnalyzer、TaintGraph、CrossFileAnalyzer）
+│   │   │   ├── rules/          # 漏洞规则（SQL/XSS/RCE/NoSQL/SSRF/PHP 等 9 类）
+│   │   │   ├── analyzers/      # 语言分析器（JS/TS/Python/PHP/Java/Go）
+│   │   │   ├── cfg/            # 控制流图 + 支配树
+│   │   │   └── dsl/            # DSL 规则引擎（YAML 规则定义）
 │   │   ├── lsp/                # LSP Server（pygls）
-│   │   ├── scanner/            # 扫描器、AI 分析器、RAG 增强
+│   │   ├── scanner/            # CLI 扫描器、AI 分析器、基线管理、报告生成
+│   │   ├── rag/                # RAG 知识库（ChromaDB + sentence-transformers）
+│   │   ├── crawler/            # CVE 数据爬虫
 │   │   └── server/             # FastAPI HTTP 服务（可选）
-│   ├── scripts/                # 基准测试、评估脚本
-│   ├── tests/                  # 测试套件（pytest）
+│   ├── scripts/                # 基准测试、评估脚本、调试工具
+│   ├── tests/                  # 测试套件（pytest，含正/负样本）
 │   └── requirements.txt
 │
 ├── aegis-vscode/               # VSCode/Cursor 扩展（TypeScript）
-│   ├── src/extension.ts        # 扩展主文件
+│   ├── src/
+│   │   ├── extension.ts        # 扩展主文件（LSP 客户端 + Status Bar）
+│   │   ├── findingsTreeProvider.ts  # 侧边栏 Findings 面板
+│   │   └── reportWebview.ts    # HTML 报告查看器
 │   ├── README.md               # Marketplace 展示页
 │   ├── CHANGELOG.md            # 版本历史
 │   └── aegis-ai-security-0.2.0.vsix  # 打包好的扩展
 │
+├── docs/                       # 技术文档、用户指南、排错指南
+├── .github/                    # Issue 模板、PR 模板、GitHub Actions 工作流
+├── LICENSE                     # MIT 许可证
 └── README.md
 ```
 
@@ -283,7 +298,7 @@ aegis-ai/
 |------|------|
 | IDE 扩展 | TypeScript, VSCode API, vscode-languageclient |
 | LSP Server | Python, pygls, lsprotocol |
-| 静态分析 | Tree-sitter（JS/TS/PHP/Python AST）|
+| 静态分析 | Tree-sitter（JS/TS/PHP/Python/Java/Go AST）|
 | 污点分析 | 自研 TaintGraph + Dominator Tree |
 | AI 修复 | DeepSeek API（兼容 OpenAI SDK）|
 | RAG 知识库 | ChromaDB + sentence-transformers（可选）|
@@ -298,6 +313,9 @@ aegis-ai/
 | `tree-sitter==0.21.3` 启动时产生 `FutureWarning: Language(path, name) is deprecated` | 无功能影响，纯日志噪音；LSP Server 启动入口已过滤，不影响 stdio 通信 | 已缓解，待 tree-sitter-languages 兼容 >=0.22 后升级 |
 | PHP 污点分析基于行扫描（非完整 AST 路径分析） | PHP 检出率低于 JS/Python | 规划中 |
 | 跨文件污点传播仅支持 `module.exports` 函数 | 复杂依赖链场景可能漏报 | 规划中 |
+| SSRF 规则仅覆盖 Python 和 JavaScript | Java/Go/PHP 缺少 SSRF 检测 | 规划中 |
+| Java/Go 分析器为实验性，缺少真实靶场基准测试 | 检出率和误报率尚未评估 | 实验性 |
+| 演示 GIF 尚未录制 | README 缺少可视化展示 | 规划中 |
 
 ---
 
@@ -336,18 +354,23 @@ aegis-ai/
 - AI 精准修复（框架感知 prompt + rich context 提取，置信度 ≥ 0.75 直接替换）
 - VSCode/Cursor 扩展（v0.2.0，含 LICENSE、README、CHANGELOG）
 - 真实靶场基准测试（NodeGoat、DVWA、Django、Flask），NodeGoat F1 达到 0.62
-- `tests/rules/` 正/负样本测试套件（7 类漏洞，19 个参数化测试用例，100% 通过）
+- `tests/rules/` 正/负样本测试套件（9 类漏洞，含正负样本参数化测试用例，100% 通过）
 - NoSQL 检测增强：DAO insert 变量参数、update `$set` 嵌套、guard clause 作用域修复
 - **SSRF 检测（CWE-918）**：Python（requests/urllib/httpx）+ JavaScript（fetch/axios/http.get）
 - **多 AI 提供商支持**：DeepSeek（默认）、OpenAI、Ollama（本地免费离线）、自定义端点
 - **内联抑制注释**：`# aegis-ignore` / `// aegis-ignore` 支持行末和行上方两种格式，可按漏洞类型过滤
+- **开源社区基础设施**：CONTRIBUTING.md、CODE_OF_CONDUCT.md、SECURITY.md、Issue 模板（Bug/Feature/FP/Good First Issue）、PR 模板
+- **Java / Go 实验性支持**：8 类 AST 规则（SQL 注入、XSS、RCE、路径穿越、硬编码凭证、反序列化、NoSQL 注入、开放重定向）
+- **CI/CD 工作流**：GitHub Actions（质量检查 + 安全扫描 + 基准测试）、GitLab CI（增量扫描 + 定时全量扫描）、Docker 多阶段构建
 
 ### 规划中
 
-- 开源社区发布：完善贡献指南、issue 模板、演示 GIF
+- 演示 GIF 录制与发布
 - PHP AST 分析升级：接入 Tree-sitter PHP 完整路径分析
 - 跨文件污点传播增强：支持复杂模块依赖链
-- Java / Go 语言支持
+- Java / Go 语言完善：SSRF 规则补全、真实靶场基准测试、污点分析集成
+- SSRF 规则扩展至 PHP
+- PyPI 包发布（`pip install aegis-ai-core`）
 
 ---
 
@@ -364,8 +387,8 @@ aegis-ai/
 
 ## 许可证
 
-MIT License
+[MIT License](LICENSE)
 
 ---
 
-*最后更新: 2026-03-02 — v0.2.0 发布，NodeGoat F1 从 0.36 提升至 0.62，Recall 达到 100%*
+*最后更新: 2026-03-10 — README 与项目实际状态同步：新增 LICENSE 文件、补充 Java/Go 实验性支持描述、修正目录结构与已知问题*

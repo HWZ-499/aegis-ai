@@ -9,8 +9,8 @@
 ## Features
 
 - **Save-to-scan** — diagnostics appear within 1 second of saving a file
-- **10+ vulnerability types** — SQL injection, NoSQL injection, XSS, RCE, path traversal, hardcoded credentials, deserialization, and more
-- **Multi-language** — JavaScript / TypeScript / Python / PHP (full AST); Java / Go / C / C++ (regex)
+- **10+ vulnerability types** — SQL injection, NoSQL injection, XSS, RCE, path traversal, hardcoded credentials, deserialization, SSRF, open redirect (9 categories)
+- **Multi-language** — JavaScript / TypeScript / Python / PHP (full AST); Java / Go (AST rules, experimental)
 - **AI auto-fix** — click the lightbulb (Code Action) on any High/Critical finding; DeepSeek generates framework-aware patch code
 - **Taint analysis** — cross-function and cross-file data-flow tracking via self-developed TaintGraph + Dominator Tree
 - **Status bar** — shows `Aegis: N issues` / `Aegis: Secure` / `Aegis: Scanning…` at a glance
@@ -77,13 +77,15 @@ If the LSP server is not found automatically, set the working directory explicit
 
 | ID | Type | Languages |
 |----|------|-----------|
-| NOSQL_INJECTION | NoSQL Injection | JS/TS |
-| SQL_INJECTION | SQL Injection | JS/TS, Python |
-| XSS_RISK | Cross-Site Scripting | JS/TS, Python, PHP |
-| RCE_COMMAND_EXEC | Remote Code Execution | JS/TS, Python, PHP |
-| PATH_TRAVERSAL | Path Traversal | JS/TS, Python, PHP |
-| HARDCODED_CREDENTIALS | Hardcoded Credentials | JS/TS, Python, PHP |
-| DESERIALIZATION | Unsafe Deserialization | JS/TS, Python |
+| SQL_INJECTION | SQL Injection | JS/TS, Python, Java, Go |
+| NOSQL_INJECTION | NoSQL Injection | JS/TS, Python, Java, Go |
+| XSS_RISK | Cross-Site Scripting | JS/TS, Python, PHP, Java, Go |
+| RCE_COMMAND_EXEC | Remote Code Execution | JS/TS, Python, PHP, Java, Go |
+| PATH_TRAVERSAL | Path Traversal | JS/TS, Python, PHP, Java, Go |
+| HARDCODED_CREDENTIALS | Hardcoded Credentials | JS/TS, Python, PHP, Java, Go |
+| DESERIALIZATION | Unsafe Deserialization | JS/TS, Python, Java, Go |
+| SSRF | Server-Side Request Forgery | JS/TS, Python |
+| OPEN_REDIRECT | Open Redirect | JS/TS, Python, Java, Go |
 
 ---
 
@@ -95,6 +97,11 @@ If the LSP server is not found automatically, set the working directory explicit
 | `aegisAI.pythonPath` | `python` | Path to the Python interpreter |
 | `aegisAI.serverCwd` | `` | Force LSP server working directory (leave blank for auto-detect) |
 | `aegisAI.serverModule` | `src.lsp` | Python module path for the LSP server |
+| `aegisAI.scanOnSave` | `true` | Automatically scan files on save |
+| `aegisAI.scanOnChange` | `true` | Scan files on text change (with debounce) |
+| `aegisAI.ai.enabled` | `true` | Enable AI-powered fix suggestions |
+| `aegisAI.ai.provider` | `deepseek` | AI provider (deepseek / openai) |
+| `aegisAI.severity.minimum` | `Low` | Minimum severity level to display |
 
 ---
 
