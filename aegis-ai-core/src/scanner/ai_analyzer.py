@@ -399,20 +399,14 @@ class AIAnalyzer:
 
         if provider == "ollama" or (not provider and os.getenv("OLLAMA_BASE_URL")):
             resolved_provider = "ollama"
-            resolved_base = (
-                api_base
-                or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-            )
+            resolved_base = api_base or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
             resolved_key = api_key or "ollama"  # Ollama 不需要真实 API Key
             resolved_model = model or os.getenv("OLLAMA_MODEL", "llama3")
             return resolved_provider, resolved_key, resolved_base, resolved_model
 
         # OpenAI：显式指定，或无 DeepSeek Key 时自动降级
         has_openai_only = (
-            not provider
-            and not api_key
-            and bool(os.getenv("OPENAI_API_KEY"))
-            and not os.getenv("DEEPSEEK_API_KEY")
+            not provider and not api_key and bool(os.getenv("OPENAI_API_KEY")) and not os.getenv("DEEPSEEK_API_KEY")
         )
         if provider == "openai" or has_openai_only:
             resolved_provider = "openai"
@@ -430,15 +424,8 @@ class AIAnalyzer:
 
         # 默认：DeepSeek（兼容 OpenAI SDK）
         resolved_provider = "deepseek"
-        resolved_base = (
-            api_base
-            or os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-        )
-        resolved_key = (
-            api_key
-            or os.getenv("DEEPSEEK_API_KEY")
-            or os.getenv("OPENAI_API_KEY")
-        )
+        resolved_base = api_base or os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+        resolved_key = api_key or os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")
         resolved_model = model or os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
         return resolved_provider, resolved_key, resolved_base, resolved_model
 
@@ -464,9 +451,7 @@ class AIAnalyzer:
             - 设置 AI_PROVIDER=deepseek + DEEPSEEK_API_KEY → 使用 DeepSeek（默认）
             - 设置 AI_PROVIDER=custom + AI_BASE_URL + AI_API_KEY → 使用自定义兼容端点
         """
-        self.provider, self.api_key, self.api_base, self.model = self._resolve_provider(
-            api_key, api_base, model
-        )
+        self.provider, self.api_key, self.api_base, self.model = self._resolve_provider(api_key, api_base, model)
         # Ollama 本地模式无需真实 API Key，视为已启用
         is_ollama = self.provider == "ollama"
         self.enabled = enabled and (bool(self.api_key) or is_ollama)
