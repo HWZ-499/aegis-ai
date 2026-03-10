@@ -351,6 +351,12 @@ class AIAnalyzer:
     - 风险等级调整
     - 修复代码生成
 
+    支持的 AI 提供商（通过 AI_PROVIDER 环境变量或自动检测）：
+    - deepseek（默认）：设置 DEEPSEEK_API_KEY，或 AI_PROVIDER=deepseek
+    - openai：设置 OPENAI_API_KEY，或 AI_PROVIDER=openai
+    - ollama（本地，免费，保护隐私）：设置 OLLAMA_BASE_URL（默认 http://localhost:11434/v1），或 AI_PROVIDER=ollama
+    - custom：设置 AI_PROVIDER=custom，同时设置 AI_BASE_URL 和 AI_API_KEY
+
     AI 漏斗策略：
     1. 预筛选：只对 Critical/High 级别进行 AI 分析
     2. 批量处理：相似漏洞合并分析
@@ -365,34 +371,116 @@ class AIAnalyzer:
         "cache_enabled": True,  # 是否启用缓存
     }
 
+    # 各提供商的默认模型
+    _PROVIDER_DEFAULT_MODELS: dict[str, str] = {
+        "deepseek": "deepseek-chat",
+        "openai": "gpt-4o-mini",
+        "ollama": "llama3",
+        "custom": "gpt-4o-mini",
+    }
+
+    @staticmethod
+    def _resolve_provider(
+        api_key: str | None,
+        api_base: str | None,
+        model: str | None,
+    ) -> tuple[str, str | None, str, str]:
+        """
+        自动推断 AI 提供商，返回 (provider, api_key, api_base, model)。
+
+        优先级：
+        1. 显式 AI_PROVIDER 环境变量
+        2. 构造函数传入的 api_base（视为自定义提供商）
+        3. 可用的 API Key（DEEPSEEK_API_KEY > OPENAI_API_KEY）
+        4. OLLAMA_BASE_URL（无需 API Key 的本地部署）
+        5. 降级为 deepseek（即使无密钥也保持原有行为）
+        """
+        provider = os.getenv("AI_PROVIDER", "").lower().strip()
+
+        if provider == "ollama" or (not provider and os.getenv("OLLAMA_BASE_URL")):
+            resolved_provider = "ollama"
+            resolved_base = (
+                api_base
+                or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+            )
+            resolved_key = api_key or "ollama"  # Ollama 不需要真实 API Key
+            resolved_model = model or os.getenv("OLLAMA_MODEL", "llama3")
+            return resolved_provider, resolved_key, resolved_base, resolved_model
+
+        # OpenAI：显式指定，或无 DeepSeek Key 时自动降级
+        has_openai_only = (
+            not provider
+            and not api_key
+            and bool(os.getenv("OPENAI_API_KEY"))
+            and not os.getenv("DEEPSEEK_API_KEY")
+        )
+        if provider == "openai" or has_openai_only:
+            resolved_provider = "openai"
+            resolved_base = api_base or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+            resolved_key = api_key or os.getenv("OPENAI_API_KEY")
+            resolved_model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+            return resolved_provider, resolved_key, resolved_base, resolved_model
+
+        if provider == "custom":
+            resolved_provider = "custom"
+            resolved_base = api_base or os.getenv("AI_BASE_URL", "")
+            resolved_key = api_key or os.getenv("AI_API_KEY")
+            resolved_model = model or os.getenv("AI_MODEL", "gpt-4o-mini")
+            return resolved_provider, resolved_key, resolved_base, resolved_model
+
+        # 默认：DeepSeek（兼容 OpenAI SDK）
+        resolved_provider = "deepseek"
+        resolved_base = (
+            api_base
+            or os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+        )
+        resolved_key = (
+            api_key
+            or os.getenv("DEEPSEEK_API_KEY")
+            or os.getenv("OPENAI_API_KEY")
+        )
+        resolved_model = model or os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+        return resolved_provider, resolved_key, resolved_base, resolved_model
+
     def __init__(
         self,
         api_key: str | None = None,
         api_base: str | None = None,
-        model: str = "deepseek-chat",
+        model: str | None = None,
         enabled: bool = True,
     ) -> None:
         """
         初始化 AI 分析器。
 
         Args:
-            api_key: AI API 密钥（默认从环境变量获取）
-            api_base: API 基础 URL
-            model: 模型名称
+            api_key: AI API 密钥（默认从环境变量获取；Ollama 无需设置）
+            api_base: API 基础 URL（覆盖自动推断的端点）
+            model: 模型名称（覆盖各提供商的默认模型）
             enabled: 是否启用 AI 分析
+
+        提供商选择（按优先级）：
+            - 设置 AI_PROVIDER=ollama + 可选 OLLAMA_BASE_URL → 使用本地 Ollama（免费、保护隐私）
+            - 设置 AI_PROVIDER=openai + OPENAI_API_KEY → 使用 OpenAI
+            - 设置 AI_PROVIDER=deepseek + DEEPSEEK_API_KEY → 使用 DeepSeek（默认）
+            - 设置 AI_PROVIDER=custom + AI_BASE_URL + AI_API_KEY → 使用自定义兼容端点
         """
-        self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")
-        self.api_base = api_base or os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-        self.model = model
-        self.enabled = enabled and bool(self.api_key)
+        self.provider, self.api_key, self.api_base, self.model = self._resolve_provider(
+            api_key, api_base, model
+        )
+        # Ollama 本地模式无需真实 API Key，视为已启用
+        is_ollama = self.provider == "ollama"
+        self.enabled = enabled and (bool(self.api_key) or is_ollama)
 
         # 分析缓存
         self._cache: dict[str, AIAnalysisResult] = {}
 
         if self.enabled:
-            logger.info("AI 分析器已启用 (模型: %s)", model)
+            logger.info("AI 分析器已启用 (提供商: %s, 模型: %s)", self.provider, self.model)
         else:
-            logger.warning("AI 分析器未启用（缺少 API 密钥或已禁用）")
+            logger.warning(
+                "AI 分析器未启用（缺少 API 密钥或已禁用）。"
+                "提示：设置 AI_PROVIDER=ollama 可使用本地免费 LLM，无需 API Key。"
+            )
 
     def should_analyze(self, finding: dict[str, Any]) -> bool:
         """
@@ -801,6 +889,13 @@ def _build_framework_fix_guidance(vuln_type: str, framework_hints: list[str]) ->
 
     if vuln_type == "PATH_TRAVERSAL":
         return "使用 `path.resolve()` 规范化路径后，断言其以允许的根目录开头（`startsWith(allowedBase)`）。"
+
+    if vuln_type == "SSRF":
+        return (
+            "对目标 URL 进行严格校验：1) 解析 URL 获取主机名；2) 使用白名单限制允许访问的域名；"
+            "3) 拒绝访问私有 IP 段（127.x.x.x、10.x.x.x、172.16-31.x.x、169.254.x.x）；"
+            "4) 仅允许 http/https 协议。Python 示例：使用 `ipaddress` 模块校验解析后的 IP。"
+        )
 
     return ""
 
