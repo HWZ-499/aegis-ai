@@ -48,7 +48,6 @@ from .php import (
     PhpXSSRule,
 )
 from .rce import GoRCEAstRule, JavaRCEAstRule, JavaScriptRCEAstRule, PythonRCEAstRule
-from .ssrf import JavaScriptSSRFAstRule, PythonSSRFAstRule
 from .sql_injection import (
     GoSQLInjectionAstRule,
     JavaScriptSQLInjectionAstRule,
@@ -56,6 +55,7 @@ from .sql_injection import (
     PythonSQLInjectionAstRule,
     SQLInjectionRegexRule,
 )
+from .ssrf import JavaScriptSSRFAstRule, PythonSSRFAstRule
 from .xss import GoXSSAstRule, JavaScriptXSSAstRule, JavaXSSAstRule, PythonXSSAstRule
 
 __all__ = [
