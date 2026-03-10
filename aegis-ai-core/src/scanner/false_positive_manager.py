@@ -1,10 +1,23 @@
 # false_positive_manager.py - 误报管理
 """
-误报管理功能：标记误报，忽略特定问题
+误报管理功能：标记误报，忽略特定问题。
+
+支持两种误报标记方式：
+1. JSON 配置文件（.aegis-fp.json）：通过 FalsePositiveManager 管理
+2. 内联注释（行内或行上方）：通过 InlineSuppressor 解析源代码中的注释
+
+内联注释格式：
+  # aegis-ignore               ← 忽略该行所有漏洞
+  # aegis-ignore: VULN_TYPE    ← 仅忽略该行的指定漏洞类型
+  // aegis-ignore              ← JavaScript/TypeScript/PHP/Java/Go 等（同上）
+  // aegis-ignore: SQL_INJECTION
+
+注释可放在漏洞行末尾，或漏洞行的上一行。
 """
 
 import json
 import logging
+import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -188,6 +201,122 @@ class FalsePositiveManager:
             误报标记列表
         """
         return self.false_positives.get("false_positives", [])
+
+
+class InlineSuppressor:
+    """
+    内联注释误报抑制器。
+
+    解析源代码中的 ``# aegis-ignore`` / ``// aegis-ignore`` 注释，
+    在漏洞所在行或上一行查找抑制指令，从而过滤相应 findings。
+
+    支持格式：
+        # aegis-ignore                  ← 抑制该行所有漏洞
+        # aegis-ignore: SQL_INJECTION   ← 仅抑制该行的 SQL_INJECTION
+        // aegis-ignore                 ← JS/TS/PHP/Java/Go 等
+        // aegis-ignore: XSS_RISK
+
+    用法示例：
+        suppressor = InlineSuppressor(source_code)
+        findings = suppressor.filter_findings(findings)
+    """
+
+    # 匹配 "# aegis-ignore" 或 "// aegis-ignore"，可选 ": VULN_TYPE"
+    _PATTERN = re.compile(
+        r"(?:#|//)\s*aegis-ignore(?:\s*:\s*([A-Z_]+))?",
+        re.IGNORECASE,
+    )
+
+    def __init__(self, source_code: str) -> None:
+        """
+        初始化内联抑制器。
+
+        Args:
+            source_code: 完整源代码字符串（用于解析行内注释）
+        """
+        self._lines = source_code.splitlines() if source_code else []
+        # 预构建行号→抑制类型集合的映射（1-indexed）
+        # None 表示抑制所有类型
+        self._suppressed: dict[int, set[str] | None] = {}
+        self._build_index()
+
+    def _build_index(self) -> None:
+        """扫描所有代码行，构建抑制索引。
+
+        规则：
+        - 行内注释（注释前有代码）：仅抑制当前行
+        - 独立注释行（仅含注释，可有前导空白）：抑制下一行
+        """
+        for i, line in enumerate(self._lines, start=1):
+            m = self._PATTERN.search(line)
+            if m is None:
+                continue
+            vuln_type = m.group(1)
+            if vuln_type:
+                vuln_type = vuln_type.upper().strip()
+
+            # 判断是独立注释行还是行内注释
+            # 独立注释行：注释标记前仅有空白字符
+            before_comment = line[: m.start()]
+            is_standalone = before_comment.strip() == ""
+
+            target_lines = (i + 1,) if is_standalone else (i,)
+
+            for target_line in target_lines:
+                if target_line in self._suppressed and self._suppressed[target_line] is None:
+                    # 已被通配符抑制，不做修改
+                    continue
+                if vuln_type is None:
+                    # 通配符：抑制所有类型
+                    self._suppressed[target_line] = None
+                else:
+                    if target_line not in self._suppressed:
+                        self._suppressed[target_line] = set()
+                    if self._suppressed[target_line] is not None:
+                        self._suppressed[target_line].add(vuln_type)  # type: ignore[union-attr]
+
+    def is_suppressed(self, line: int, vuln_type: str) -> bool:
+        """
+        判断指定行的指定漏洞类型是否被内联注释抑制。
+
+        Args:
+            line: 漏洞行号（1-indexed）
+            vuln_type: 漏洞类型字符串（如 "SQL_INJECTION"）
+
+        Returns:
+            True 表示应被抑制（视为误报）
+        """
+        suppressed = self._suppressed.get(line)
+        if line not in self._suppressed:
+            return False
+        if suppressed is None:
+            # 通配符：抑制所有类型
+            return True
+        return vuln_type.upper() in suppressed
+
+    def filter_findings(self, findings: list[dict]) -> list[dict]:
+        """
+        过滤被内联注释抑制的 findings。
+
+        Args:
+            findings: 检测结果列表（每项含 "line" 和 "type" 字段）
+
+        Returns:
+            过滤后的检测结果列表
+        """
+        result = []
+        for finding in findings:
+            line = finding.get("line", 0) or 0
+            vuln_type = finding.get("type", "")
+            if not self.is_suppressed(line, vuln_type):
+                result.append(finding)
+            else:
+                logger.debug(
+                    "内联抑制: 行 %d [%s] 被 aegis-ignore 注释过滤",
+                    line,
+                    vuln_type,
+                )
+        return result
 
 
 if __name__ == "__main__":

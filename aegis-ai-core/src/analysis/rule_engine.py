@@ -7,9 +7,9 @@ rule_engine.py - 规则引擎统一入口
 - 暴露 analyze_python / analyze_javascript / analyze_php 便捷函数，
   供 ProjectScanner、LSP Server、FastAPI 服务层统一调用。
 
-已注册规则（共 16 条 + PHP TaintGraph 4 条）：
-- Python: RCE、SQL 注入、XSS、路径遍历、硬编码凭证、反序列化（含通用正则）
-- JavaScript/TypeScript: RCE、SQL 注入、XSS、路径遍历、硬编码凭证、反序列化、NoSQL 注入
+已注册规则（共 18 条 + PHP TaintGraph 4 条）：
+- Python: RCE、SQL 注入、XSS、路径遍历、硬编码凭证、反序列化、SSRF（含通用正则）
+- JavaScript/TypeScript: RCE、SQL 注入、XSS、路径遍历、硬编码凭证、反序列化、NoSQL 注入、SSRF
 - PHP: SQL 注入、RCE、XSS、开放重定向（TaintGraph 精确层 + Regex 补充层）
 """
 
@@ -48,6 +48,7 @@ from .rules import (
     JavaScriptPathTraversalAstRule,
     JavaScriptRCEAstRule,
     JavaScriptSQLInjectionAstRule,
+    JavaScriptSSRFAstRule,
     JavaScriptXSSAstRule,
     JavaSQLInjectionAstRule,
     JavaXSSAstRule,
@@ -67,6 +68,7 @@ from .rules import (
     PythonPathTraversalAstRule,
     PythonRCEAstRule,
     PythonSQLInjectionAstRule,
+    PythonSSRFAstRule,
     PythonXSSAstRule,
     SQLInjectionRegexRule,
 )
@@ -104,6 +106,7 @@ def get_default_rules_for_language(
             PythonDeserializationAstRule(),
             PythonNoSQLInjectionAstRule(),
             PythonOpenRedirectAstRule(),
+            PythonSSRFAstRule(),
         ]
         if include_dsl:
             rules.extend(
@@ -126,6 +129,7 @@ def get_default_rules_for_language(
             JavaScriptDeserializationAstRule(),
             JavaScriptNoSQLInjectionAstRule(),
             JavaScriptOpenRedirectAstRule(),
+            JavaScriptSSRFAstRule(),
         ]
         if include_dsl:
             rules.extend(
