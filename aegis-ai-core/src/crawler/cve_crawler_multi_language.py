@@ -81,7 +81,7 @@ class MultiLanguageCVECrawler(CVECrawler):
                 count = len(cves)
                 total_count += count
                 print(f"   ✅ 找到 {count} 条相关 CVE")
-            except Exception as e:
+            except (ConnectionError, TimeoutError, RuntimeError, ValueError) as e:
                 print(f"   ❌ 爬取失败: {e}")
                 import traceback
 

@@ -63,14 +63,21 @@ function findLatestScanReport(): string | undefined {
  * 替换 src/href 为 webview 可访问的 URI。
  */
 function getHtmlForWebview(panel: WebviewPanel, filePath: string): string {
-  const uri = Uri.file(filePath);
   const dir = path.dirname(filePath);
   let html = fs.readFileSync(filePath, "utf-8");
 
-  // 若 HTML 内引用相对路径资源，可在此做替换；当前仅展示单文件 HTML
-  // 简单场景下直接返回内容即可
-  const baseUri = panel.webview.asWebviewUri(Uri.file(dir));
-  // 将相对路径的 src="xxx" 转为 webview 可访问的绝对 URI（可选，按需实现）
+  // 注入 Content Security Policy，防止 XSS
+  const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src ${panel.webview.cspSource} data: https:; font-src ${panel.webview.cspSource}; script-src 'none';">`;
+
+  // 插入 CSP 到 <head> 中（若存在），否则前置到 HTML 开头
+  if (html.includes("<head>")) {
+    html = html.replace("<head>", `<head>\n${csp}`);
+  } else if (html.includes("<HEAD>")) {
+    html = html.replace("<HEAD>", `<HEAD>\n${csp}`);
+  } else {
+    html = csp + "\n" + html;
+  }
+
   return html;
 }
 
@@ -90,7 +97,7 @@ function showReportInPanel(htmlFilePath: string): void {
     "Aegis 扫描报告",
     ViewColumn.One,
     {
-      enableScripts: true,
+      enableScripts: false,
       localResourceRoots: [Uri.file(path.dirname(htmlFilePath))],
     }
   );

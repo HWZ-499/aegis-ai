@@ -49,7 +49,7 @@ class JavaAnalyzer:
                 java_lang = get_language("java")
                 self._parser = Parser()
                 self._parser.set_language(java_lang)
-            except Exception:
+            except (ImportError, RuntimeError, OSError):
                 self._parser = None
 
     def analyze(self, code: str, file_path: Path) -> list[dict]:
@@ -80,7 +80,7 @@ class JavaAnalyzer:
                 taint_analyzer.analyze_tree(ts_tree.root_node, str(file_path), code)
                 context.taint_graph = taint_analyzer.get_graph()
                 context.dataflow_tracker = None
-            except Exception:
+            except (ImportError, RuntimeError, ValueError):
                 context.taint_graph = None
 
         # 3. before_file 钩子
@@ -92,7 +92,7 @@ class JavaAnalyzer:
             try:
                 ts_tree = self._parser.parse(bytes(code, "utf8"))
                 self._traverse_tree(ts_tree.root_node, context)
-            except Exception:
+            except (RuntimeError, ValueError):
                 # AST 失败不应影响行级/模式规则
                 pass
 

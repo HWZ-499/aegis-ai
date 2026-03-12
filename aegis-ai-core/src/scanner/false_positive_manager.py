@@ -18,6 +18,7 @@
 import json
 import logging
 import re
+from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,7 @@ class FalsePositiveManager:
                 with open(self.config_path, encoding="utf-8") as f:
                     config = json.load(f)
                     return config
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 logger.warning("加载误报配置文件失败: %s，使用默认配置", e)
                 return default_config
 
@@ -135,7 +136,7 @@ class FalsePositiveManager:
             "type": vuln_type,
             "details": details,
             "reason": reason,
-            "created_at": str(Path.cwd()),  # 可以改为时间戳
+            "created_at": datetime.now().isoformat(),
         }
 
         fp_list.append(fp_entry)

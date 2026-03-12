@@ -115,7 +115,7 @@ class ScanCache:
                 if cache_data.get("file_path") == str(file_path):
                     return cache_data.get("findings", [])
 
-        except Exception as e:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
             logger.warning("读取缓存失败 %s: %s", cache_file, e)
             return None
 
@@ -138,7 +138,7 @@ class ScanCache:
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(cache_data, f, indent=2, ensure_ascii=False)
 
-        except Exception as e:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
             logger.warning("保存缓存失败 %s: %s", cache_file, e)
 
     def clear_cache(self, older_than_hours: int | None = None):
@@ -162,7 +162,7 @@ class ScanCache:
                 else:
                     cache_file.unlink()
                     cleared_count += 1
-            except Exception as e:
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
                 logger.warning("删除缓存文件失败 %s: %s", cache_file, e)
 
         logger.info("已清理 %s 个缓存文件", cleared_count)
@@ -203,10 +203,9 @@ class ParallelScanner:
         file_path, project_path, supported_extensions = args_tuple
 
         # 导入扫描逻辑
-        from src.analysis.ast_analyzer import analyze_code_ast
         from src.analysis.multi_language_ast import analyze_code_multi_language
         from src.analysis.rule_based_audit import merge_findings
-        from src.analysis.security_rules import scan_code_locally
+        from src.analysis.rule_engine import analyze_code_ast, scan_code_locally
 
         try:
             # 读取文件内容
@@ -236,7 +235,7 @@ class ParallelScanner:
 
             return (file_path, merged_findings)
 
-        except Exception as e:
+        except (OSError, UnicodeDecodeError, RuntimeError) as e:
             logger.warning("扫描文件失败 %s: %s", file_path, e)
             return (file_path, [])
 
@@ -285,7 +284,7 @@ class ParallelScanner:
                     if progress_callback:
                         progress_callback(completed, total_files, file_path)
 
-                except Exception as e:
+                except (OSError, UnicodeDecodeError, RuntimeError) as e:
                     logger.warning("处理文件失败 %s: %s", file_path, e)
                     results[file_path] = []
 

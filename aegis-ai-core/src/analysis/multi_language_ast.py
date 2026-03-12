@@ -34,7 +34,7 @@ except ImportError:
         _import_logger.warning("tree-sitter-languages 未安装，将使用正则规则。安装: pip install tree-sitter-languages")
 
 # Python AST 分析（已有实现）
-from src.analysis.ast_analyzer import analyze_code_ast as analyze_python_ast
+from src.analysis.rule_engine import analyze_code_ast as analyze_python_ast
 
 
 class MultiLanguageASTAnalyzer:
@@ -77,7 +77,7 @@ class MultiLanguageASTAnalyzer:
                     self.parsers["javascript"] = js_parser
                     self.parsers["typescript"] = js_parser  # TypeScript 使用 JavaScript 解析器
                     logger.info("JavaScript/TypeScript parser 初始化成功")
-                except Exception as e:
+                except (ImportError, RuntimeError, OSError) as e:
                     logger.warning("JavaScript parser 初始化失败: %s", e)
                     import traceback
 
@@ -90,7 +90,7 @@ class MultiLanguageASTAnalyzer:
                     java_parser.set_language(java_lang)
                     self.parsers["java"] = java_parser
                     logger.info("Java parser 初始化成功")
-                except Exception as e:
+                except (ImportError, RuntimeError, OSError) as e:
                     logger.warning("Java parser 初始化失败: %s", e)
 
                 # C/C++
@@ -101,7 +101,7 @@ class MultiLanguageASTAnalyzer:
                     self.parsers["cpp"] = cpp_parser
                     self.parsers["c"] = cpp_parser  # C 使用 C++ 解析器
                     logger.info("C/C++ parser 初始化成功")
-                except Exception as e:
+                except (ImportError, RuntimeError, OSError) as e:
                     logger.warning("C/C++ parser 初始化失败: %s", e)
 
                 # Go
@@ -111,14 +111,14 @@ class MultiLanguageASTAnalyzer:
                     go_parser.set_language(go_lang)
                     self.parsers["go"] = go_parser
                     logger.info("Go parser 初始化成功")
-                except Exception as e:
+                except (ImportError, RuntimeError, OSError) as e:
                     logger.warning("Go parser 初始化失败: %s", e)
             else:
                 logger.warning(
                     "tree-sitter-languages 未安装，无法使用预编译语言库。安装: pip install tree-sitter-languages"
                 )
 
-        except Exception as e:
+        except (ImportError, RuntimeError, OSError) as e:
             logger.warning("Tree-sitter 初始化失败: %s", e)
             import traceback
 
@@ -211,7 +211,7 @@ class MultiLanguageASTAnalyzer:
             return self._analyze_php(code_content, file_path)
         else:
             # 不支持的语言，使用通用正则规则
-            from src.analysis.security_rules import scan_code_locally
+            from src.analysis.rule_engine import scan_code_locally
 
             regex_findings = scan_code_locally(code_content, file_path=file_path)
             # 转换为统一格式（保留严重程度）
@@ -238,7 +238,7 @@ class MultiLanguageASTAnalyzer:
         findings = []
 
         # 使用正则规则检测（临时方案）
-        from src.analysis.security_rules import scan_code_locally
+        from src.analysis.rule_engine import scan_code_locally
 
         regex_findings = scan_code_locally(code_content, file_path=file_path)
 
@@ -261,7 +261,7 @@ class MultiLanguageASTAnalyzer:
                 tree = parser.parse(bytes(code_content, "utf8"))
                 ast_findings = self._traverse_javascript_tree(tree.root_node)
                 findings.extend(ast_findings)
-            except Exception as e:
+            except (RuntimeError, ValueError) as e:
                 logger.debug("JavaScript AST analysis failed, falling back to regex: %s", e)
 
         return findings
@@ -614,7 +614,7 @@ class MultiLanguageASTAnalyzer:
                 for pattern in patterns:
                     if re.search(pattern, line, re.IGNORECASE):
                         # 使用 VULN_SEVERITY 字典获取严重程度
-                        from src.analysis.security_rules import VULN_SEVERITY
+                        from src.analysis.rule_engine import VULN_SEVERITY
 
                         severity = VULN_SEVERITY.get(vuln_type, "Medium")
 
@@ -636,7 +636,7 @@ class MultiLanguageASTAnalyzer:
                 tree = parser.parse(bytes(code_content, "utf8"))
                 ast_findings = self._traverse_java_tree(tree.root_node)
                 findings.extend(ast_findings)
-            except Exception as e:
+            except (RuntimeError, ValueError) as e:
                 logger.debug("Java AST analysis failed, falling back to regex: %s", e)
 
         return findings
@@ -764,7 +764,7 @@ class MultiLanguageASTAnalyzer:
         findings = []
 
         # 使用正则规则检测
-        from src.analysis.security_rules import scan_code_locally
+        from src.analysis.rule_engine import scan_code_locally
 
         regex_findings = scan_code_locally(code_content, file_path=file_path)
 

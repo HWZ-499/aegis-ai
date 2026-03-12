@@ -186,5 +186,5 @@ while True:
 
     except KeyboardInterrupt:
         break
-    except Exception as e:
+    except Exception as e:  # Intentional: top-level defensive catch
         print(f"Error: {e}")

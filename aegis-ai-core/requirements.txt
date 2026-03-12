@@ -26,6 +26,9 @@ scikit-learn>=1.0.0
 tree-sitter==0.21.3
 tree-sitter-languages>=1.0.0
 
+# 可选：AI 修复建议（需要 OpenAI 兼容 API）
+# openai>=1.0.0
+
 # LSP Server（IDE 集成）
 pygls>=2.0.0
 lsprotocol>=2025.0.0

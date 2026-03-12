@@ -49,7 +49,7 @@ class PythonAnalyzer:
                 py_lang = get_language("python")
                 self._ts_parser = Parser()
                 self._ts_parser.set_language(py_lang)
-            except Exception:
+            except (ImportError, RuntimeError, OSError):
                 self._ts_parser = None
 
     def analyze(self, code: str, file_path: Path) -> list[dict]:
@@ -84,7 +84,7 @@ class PythonAnalyzer:
                 context.taint_graph = taint_analyzer.get_graph()
                 # 统一污点系统：Python 也只使用 taint_graph，废弃 DataFlowTracker
                 context.dataflow_tracker = None
-            except Exception as e:
+            except (ImportError, RuntimeError, ValueError) as e:
                 logger.debug("Python TaintAnalyzer 构建失败 [%s]: %s", file_path, e)
                 context.taint_graph = None
 

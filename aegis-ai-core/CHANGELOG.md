@@ -19,11 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI default engine: `new` (legacy remains available via `--engine legacy`)
 - LSP/extension: scanError notification, file size limit, scan timeout
 - Core modules: `print()` migrated to `logging` in analysis/scanner (CLI user output unchanged)
+- **Exception handling**: narrowed 120+ broad `except Exception` to specific types across 36 source files; only 7 intentional top-level defensive catches remain
+- **Import migration**: all imports from deprecated `ast_analyzer` / `security_rules` migrated to `rule_engine`
+- **Module hygiene**: `aegis_server.py` ChromaDB lazy init (no import-time side effects); `rag_system.py` wrapped in `__main__` guard
+- **Test normalization**: 10 test files standardized to pure pytest style (removed script-style `main()`, `sys.path` hacks)
+- **CORS hardening**: default origins changed from `*` to `localhost:3000,localhost:8080`
+- **VSCode Webview security**: injected CSP meta tag, disabled `enableScripts`
+- **Dependency docs**: `openai` optional dependency documented in `requirements.txt`
 
 ### Fixed
 
 - Silent exception handling in LSP server (replaced `except Exception: pass` with logger)
 - Build backend in pyproject.toml: `setuptools.build_meta`
+- `false_positive_manager.py`: `created_at` field now stores ISO timestamp instead of `str(Path.cwd())`
+- `aegis_server.py`: removed duplicate `MAX_CODE_LENGTH` definition in `audit_code()`
 
 ## [1.1.0] - 2026-02
 

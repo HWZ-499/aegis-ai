@@ -46,7 +46,7 @@ try:
     from ..scanner.ai_analyzer import AIAnalyzer
 
     AI_ANALYZER_AVAILABLE = True
-except Exception:  # ImportError 或 openai 未安装等
+except ImportError:
     AI_ANALYZER_AVAILABLE = False
     AIAnalyzer = None  # type: ignore[misc,assignment]
 
@@ -153,7 +153,7 @@ class WorkspaceContext:
                 with self._lock:
                     self._analyzer = analyzer
                 logger.info("Cross-file dependency graph built for %s", project_path)
-            except Exception:
+            except (ImportError, RuntimeError, OSError):
                 logger.exception("Failed to build cross-file graph")
             finally:
                 with self._lock:
@@ -198,7 +198,7 @@ class WorkspaceContext:
                         }
                     )
             return results
-        except Exception:
+        except (RuntimeError, AttributeError, KeyError):
             logger.debug("Cross-file findings retrieval failed", exc_info=True)
             return []
 
@@ -322,7 +322,7 @@ def finding_to_diagnostic(
             message += "\n修复建议: " + smart.message
             if smart.suggested_code:
                 message += "\n建议修复代码:\n" + smart.suggested_code
-        except Exception as e:
+        except (RuntimeError, ValueError, KeyError) as e:
             logger.debug("Smart remediation failed for %s: %s", fp, e)
     if not (source_code and fp) or not message.count("建议修复代码"):
         remediation = _get_remediation_for_rule(str(code).strip())
@@ -449,7 +449,7 @@ def _pick_framework_suggested_code(remediation: dict[str, Any], file_path: str) 
                     break
                 header += line
         header_lower = header.lower()
-    except Exception as e:
+    except OSError as e:
         logger.debug("Failed to read file header for framework detection: %s", e)
         return None
 
@@ -582,7 +582,7 @@ def scan_document(
                 extra_rule_dirs=extra_rule_dirs,
                 rules_allowed_root=rules_allowed_root,
             )
-    except Exception as e:
+    except Exception as e:  # Intentional: re-raises as ScanError
         logger.exception("Scan failed for %s", file_path)
         raise ScanError(str(e)) from e
 
@@ -663,7 +663,7 @@ def create_server() -> LanguageServer:
         try:
             doc = server.workspace.get_text_document(uri)
             _validate_document(server, uri, doc.source)
-        except Exception as e:
+        except (RuntimeError, KeyError) as e:
             logger.warning("Manual scan failed for %s: %s", uri, e)
 
     # P1-2 / P5-4：扩展命令「扫描工作区」触发的自定义通知（遍历已打开的文档，发送进度）
@@ -685,9 +685,9 @@ def create_server() -> LanguageServer:
                         {"current": idx + 1, "total": total, "uri": uri},
                     )
                     _validate_document(server, uri, doc.source)
-                except Exception as e:
+                except (RuntimeError, KeyError) as e:
                     logger.warning("Workspace scan failed for %s: %s", uri, e)
-        except Exception as e:
+        except (RuntimeError, KeyError) as e:
             logger.warning("Workspace scan failed: %s", e)
 
     @server.feature(
@@ -715,7 +715,7 @@ def create_server() -> LanguageServer:
             try:
                 ai_analyzer = AIAnalyzer()
                 server._ai_analyzer = ai_analyzer
-            except Exception:
+            except (ImportError, RuntimeError):
                 ai_analyzer = None
 
         for diag in aegis_diagnostics:
@@ -811,7 +811,7 @@ def create_server() -> LanguageServer:
                             try:
                                 doc = server.workspace.get_text_document(uri)
                                 doc_source = doc.source
-                            except Exception as e:
+                            except (RuntimeError, KeyError) as e:
                                 logger.debug("Failed to get document source for AI analysis: %s", e)
                             result = ai_analyzer.analyze_finding(
                                 finding_like,
@@ -902,7 +902,7 @@ def create_server() -> LanguageServer:
                                         edit=ai_edit,
                                     )
                                 )
-                except Exception:
+                except (RuntimeError, KeyError, ValueError):
                     # AI 分析失败时静默忽略，不影响其他 CodeAction
                     logger.exception("AI remediation generation failed for %s", rule_id)
         return actions
@@ -917,7 +917,7 @@ def _cancel_pending_validation(uri: str) -> None:
     if timer is not None:
         try:
             timer.cancel()
-        except Exception as e:
+        except RuntimeError as e:
             logger.debug("Failed to cancel pending timer for %s: %s", uri, e)
 
 
@@ -928,7 +928,7 @@ def _debounced_validate(server: LanguageServer, uri: str) -> None:
     try:
         doc = server.workspace.get_text_document(uri)
         source = doc.source
-    except Exception:
+    except (RuntimeError, KeyError):
         server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
         return
     _validate_document(server, uri, source)
@@ -966,7 +966,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
     # ── 通知前端：扫描开始 ───────────────────────────────────────────────────
     try:
         server.send_notification("aegis/scanStart", {"uri": uri})
-    except Exception as e:
+    except RuntimeError as e:
         logger.debug("Failed to send scanStart notification: %s", e)
 
     # 记录扫描开始时的文档版本（若有）
@@ -974,7 +974,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
     try:
         doc = server.workspace.get_text_document(uri)
         version_before = doc.version
-    except Exception as e:
+    except RuntimeError as e:
         logger.debug("Failed to get document version: %s", e)
 
     # 可选：从 initializationOptions.rules_dirs 解析额外规则目录
@@ -998,7 +998,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
                         extra_rule_dirs.append(p)
                     except ValueError:
                         logger.debug("Skip rules_dir outside workspace: %s", p)
-    except Exception as e:
+    except RuntimeError as e:
         logger.debug("Resolving rules_dirs: %s", e)
 
     # P1-3：单次扫描超时，避免巨型或复杂文件拖死
@@ -1026,7 +1026,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
                 NOTIFICATION_SCAN_ERROR,
                 {"uri": uri, "message": str(e)},
             )
-        except Exception as send_err:
+        except RuntimeError as send_err:
             logger.debug("Failed to send scanError notification: %s", send_err)
         server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
         return
@@ -1065,10 +1065,10 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
             server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
             try:
                 server.send_notification("aegis/scanEnd", {"uri": uri, "issueCount": 0})
-            except Exception as e:
+            except RuntimeError as e:
                 logger.debug("Failed to send scanEnd notification: %s", e)
             return
-    except Exception as e:
+    except RuntimeError as e:
         logger.debug("Failed to check document version: %s", e)
 
     diagnostics = [finding_to_diagnostic(f, uri, source_code=source, file_path=file_path) for f in findings]
@@ -1084,7 +1084,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
     # ── 通知前端：扫描结束（含问题数量，驱动 Status Bar 更新）─────────────
     try:
         server.send_notification("aegis/scanEnd", {"uri": uri, "issueCount": issue_count})
-    except Exception as e:
+    except RuntimeError as e:
         logger.debug("Failed to send scanEnd notification: %s", e)
 
     # ── B3：后台预缓存 Critical/High 的 AI 修复结果，Code Action 时即显 ──
@@ -1127,9 +1127,9 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
                     )
                     if result:
                         cache[key] = result
-                except Exception as e:
+                except (RuntimeError, KeyError, ValueError) as e:
                     logger.warning("AI precache failed for %s: %s", key, e)
-        except Exception as e:
+        except Exception as e:  # Intentional: top-level thread safety catch
             logger.warning("AI precache thread failed: %s", e)
 
     t = threading.Thread(target=_precache_ai, daemon=True)

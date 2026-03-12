@@ -82,7 +82,7 @@ def _extract_rich_context(
     if code is None:
         try:
             code = Path(file_path).read_text(encoding="utf-8", errors="replace")
-        except Exception as exc:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
             logger.debug("_extract_rich_context: 读取文件失败 %s: %s", file_path, exc)
             return {
                 "vuln_snippet": "",
@@ -645,7 +645,7 @@ class AIAnalyzer:
 
             return self._parse_ai_response(response.choices[0].message.content, finding)
 
-        except Exception as e:
+        except (RuntimeError, KeyError, ValueError) as e:
             logger.warning("AI 分析失败: %s", e)
             return self._default_analysis(finding)
 

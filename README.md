@@ -7,10 +7,7 @@
 
 > 开源的 VSCode/Cursor 安全扫描插件，在编写代码的同时实时检测漏洞，并由 AI 生成框架感知的精准修复建议。
 
-**当前版本**: v0.2.0 | **扩展 ID**: `aegis-ai.aegis-ai-security` | **状态**: 预览版，积极开发中 | [查看路线图 →](ROADMAP.md)
-
-<!-- 演示 GIF：录制后放置于 docs/assets/demo.gif，详见 docs/guides/DEMO_GIF.md -->
-![Demo](docs/assets/demo.gif)
+**当前版本**: v1.2.0 | **扩展 ID**: `aegis-ai.aegis-ai-security` | **状态**: 积极开发中 | [查看路线图 →](ROADMAP.md)
 
 ---
 
@@ -20,9 +17,10 @@
 - **Status Bar 状态显示**：`$(shield) 就绪` / `$(loading~spin) 扫描中` / `$(error) N 个问题` / `$(check) 安全`
 - **AI 精准修复**：Code Action 直接替换漏洞行（置信度 >= 0.75），生成复用原变量名和框架 API 的修复代码
 - **框架感知**：自动识别 mysql2、Sequelize、Mongoose、pymysql、SQLAlchemy 等框架，提供专用修复示例
-- **多语言支持**：JavaScript / TypeScript / Python / PHP（基于 Tree-sitter AST）
+- **六语言支持**：JavaScript / TypeScript / Python / PHP / Java / Go（基于 Tree-sitter AST）
 - **多漏洞类型**：SQL 注入、NoSQL 注入、XSS、RCE、路径穿越、反序列化、硬编码凭证、**SSRF**（CWE-918）等 10+ 种
-- **污点分析**：跨函数污点追踪、Guard Clause 净化识别、Dominator Tree 支持
+- **多层分析管道**：正则扫描 → AST 分析 → 污点追踪（Guard Clause + Dominator Tree）→ AI 增强
+- **RAG 知识库**：基于 ChromaDB + sentence-transformers 的 CVE 知识库增强分析
 - **CI/CD 集成**：GitHub Actions + GitLab CI，支持 SARIF 格式上报
 
 ---
@@ -93,7 +91,7 @@ code --install-extension aegis-vscode/aegis-ai-security-0.2.0.vsix
 
 #### 5. 开始使用
 
-打开任意 `.js`、`.ts`、`.py` 或 `.php` 文件，保存后 Aegis AI 自动扫描。漏洞将显示为波浪线诊断，点击灯泡图标可查看修复建议。
+打开任意 `.js`、`.ts`、`.py`、`.php`、`.java` 或 `.go` 文件，保存后 Aegis AI 自动扫描。漏洞将显示为波浪线诊断，点击灯泡图标可查看修复建议。
 
 ---
 
@@ -255,23 +253,29 @@ aegis-ai/
 ├── aegis-ai-core/              # Python 核心引擎
 │   ├── src/
 │   │   ├── analysis/           # 静态分析引擎
-│   │   │   ├── taint/          # 污点分析（TaintAnalyzer、CFG、DominatorTree）
-│   │   │   ├── rules/          # 漏洞规则（SQL、XSS、RCE、NoSQL、PHP 等）
-│   │   │   ├── analyzers/      # 语言分析器（JS/TS/Python/PHP）
-│   │   │   └── cfg/            # 控制流图 + 支配树
+│   │   │   ├── analyzers/      # 语言分析器（JS/TS/Python/PHP/Java/Go）
+│   │   │   ├── taint/          # 污点分析（TaintAnalyzer、CrossFileAnalyzer）
+│   │   │   ├── rules/          # 漏洞规则（SQL/XSS/RCE/NoSQL/反序列化 等）
+│   │   │   ├── cfg/            # 控制流图 + 支配树（Dominator Tree）
+│   │   │   ├── dsl/            # DSL 规则引擎（YAML 自定义规则）
+│   │   │   └── base/           # 规则基类 + Finding 模型
 │   │   ├── lsp/                # LSP Server（pygls）
-│   │   ├── scanner/            # 扫描器、AI 分析器、RAG 增强
+│   │   ├── scanner/            # 扫描器、AI 分析器、RAG 增强、基线管理
+│   │   ├── rag/                # RAG 系统（ChromaDB + 本地 Embedding）
+│   │   ├── crawler/            # CVE 知识库爬虫
+│   │   ├── core/               # 配置管理（pydantic-settings）
 │   │   └── server/             # FastAPI HTTP 服务（可选）
-│   ├── scripts/                # 基准测试、评估脚本
+│   ├── scripts/                # 基准测试、评估、调试脚本
 │   ├── tests/                  # 测试套件（pytest）
+│   ├── data/                   # CVE 知识库数据
 │   └── requirements.txt
 │
 ├── aegis-vscode/               # VSCode/Cursor 扩展（TypeScript）
 │   ├── src/extension.ts        # 扩展主文件
 │   ├── README.md               # Marketplace 展示页
-│   ├── CHANGELOG.md            # 版本历史
-│   └── aegis-ai-security-0.2.0.vsix  # 打包好的扩展
+│   └── CHANGELOG.md            # 版本历史
 │
+├── docs/                       # 技术文档
 └── README.md
 ```
 
@@ -283,11 +287,29 @@ aegis-ai/
 |------|------|
 | IDE 扩展 | TypeScript, VSCode API, vscode-languageclient |
 | LSP Server | Python, pygls, lsprotocol |
-| 静态分析 | Tree-sitter（JS/TS/PHP/Python AST）|
-| 污点分析 | 自研 TaintGraph + Dominator Tree |
+| 静态分析 | Tree-sitter（JS/TS/PHP/Python/Java/Go AST）|
+| 污点分析 | 自研 TaintGraph + Dominator Tree + CrossFileAnalyzer |
 | AI 修复 | DeepSeek API（兼容 OpenAI SDK）|
 | RAG 知识库 | ChromaDB + sentence-transformers（可选）|
+| 配置管理 | pydantic-settings + .env |
 | CI/CD | GitHub Actions, GitLab CI, SARIF |
+| 代码质量 | ruff（lint + format）, mypy, pytest |
+
+---
+
+## 代码质量
+
+v1.2.0 进行了一轮全面的代码质量优化：
+
+- **异常处理收紧**：120+ 处 `except Exception` 宽泛捕获收紧为具体异常类型（`OSError`、`ImportError`、`ValueError` 等），仅保留 7 处有意的顶层防御性捕获
+- **Bug 修复**：修复 `false_positive_manager` 的 `created_at` 时间戳 bug（此前存储的是工作目录路径）
+- **安全加固**：CORS 默认值从 `*` 收紧为 localhost、VSCode Webview 注入 CSP 防止 XSS
+- **模块卫生**：`aegis_server.py` ChromaDB 延迟初始化（避免 import 副作用）、`rag_system.py` 加入 `__main__` 保护
+- **导入迁移**：废弃模块 `ast_analyzer` / `security_rules` 的导入统一迁移至 `rule_engine`
+- **测试规范化**：10 个测试文件从脚本式 / 混合式风格统一为标准 pytest
+- **依赖声明**：`openai` 可选依赖在 `requirements.txt` 中明确标注
+
+详细优化记录见 [docs/technical/OPTIMIZATION_PLAN.md](docs/technical/OPTIMIZATION_PLAN.md)。
 
 ---
 
@@ -295,7 +317,7 @@ aegis-ai/
 
 | 问题 | 影响 | 状态 |
 |------|------|------|
-| `tree-sitter==0.21.3` 启动时产生 `FutureWarning: Language(path, name) is deprecated` | 无功能影响，纯日志噪音；LSP Server 启动入口已过滤，不影响 stdio 通信 | 已缓解，待 tree-sitter-languages 兼容 >=0.22 后升级 |
+| `tree-sitter==0.21.3` 启动时产生 `FutureWarning` | 无功能影响，LSP 入口已过滤 | 已缓解，待上游兼容后升级 |
 | PHP 污点分析基于行扫描（非完整 AST 路径分析） | PHP 检出率低于 JS/Python | 规划中 |
 | 跨文件污点传播仅支持 `module.exports` 函数 | 复杂依赖链场景可能漏报 | 规划中 |
 
@@ -322,32 +344,33 @@ aegis-ai/
 | v3 | 2026-03-02 | 1 | 4 | 12 | 66.7% | 0.36 |
 | **v6 (当前)** | **2026-03-02** | **3** | **8** | **10** | **100%** | **0.62** |
 
-改进来源：NoSQL `insert` 变量参数 DAO 感知检测、`$set` 嵌套操作符污点追踪、ground truth 补充 HARDCODED_CREDENTIALS 漏洞。
-
 ---
 
 ## 开发状态
 
 ### 已完成
 
-- 核心静态分析引擎（JS/TS/Python/PHP，基于 Tree-sitter AST）
-- 污点分析系统（TaintGraph + Guard Clause + Dominator Tree，跨函数追踪）
+- 核心静态分析引擎（JS/TS/Python/PHP/Java/Go，基于 Tree-sitter AST）
+- 污点分析系统（TaintGraph + Guard Clause + Dominator Tree，跨函数/跨文件追踪）
 - LSP Server（实时诊断 + Code Action + Status Bar）
-- AI 精准修复（框架感知 prompt + rich context 提取，置信度 ≥ 0.75 直接替换）
-- VSCode/Cursor 扩展（v0.2.0，含 LICENSE、README、CHANGELOG）
+- AI 精准修复（框架感知 prompt + rich context 提取，置信度 >= 0.75 直接替换）
+- VSCode/Cursor 扩展（含 LICENSE、README、CHANGELOG）
 - 真实靶场基准测试（NodeGoat、DVWA、Django、Flask），NodeGoat F1 达到 0.62
-- `tests/rules/` 正/负样本测试套件（7 类漏洞，19 个参数化测试用例，100% 通过）
+- `tests/rules/` 正/负样本测试套件（7 类漏洞，19 个参数化测试用例）
 - NoSQL 检测增强：DAO insert 变量参数、update `$set` 嵌套、guard clause 作用域修复
 - **SSRF 检测（CWE-918）**：Python（requests/urllib/httpx）+ JavaScript（fetch/axios/http.get）
 - **多 AI 提供商支持**：DeepSeek（默认）、OpenAI、Ollama（本地免费离线）、自定义端点
 - **内联抑制注释**：`# aegis-ignore` / `// aegis-ignore` 支持行末和行上方两种格式，可按漏洞类型过滤
+- 基线管理 + 增量扫描 + 自定义规则目录
+- DSL 规则引擎（YAML 格式自定义规则）
+- RAG 知识库（ChromaDB CVE 检索增强）
+- v1.2.0 代码质量大扫除（异常处理、模块卫生、测试规范化）
 
 ### 规划中
 
 - 开源社区发布：完善贡献指南、issue 模板、演示 GIF
 - PHP AST 分析升级：接入 Tree-sitter PHP 完整路径分析
 - 跨文件污点传播增强：支持复杂模块依赖链
-- Java / Go 语言支持
 
 ---
 
@@ -357,8 +380,9 @@ aegis-ai/
 
 在提交 PR 之前，请确保：
 1. 运行测试套件：`cd aegis-ai-core && python -m pytest tests/ -v`
-2. 新规则需提供正样本（应报告）和负样本（不应报告）测试用例
-3. TypeScript 扩展修改后需重新编译：`cd aegis-vscode && npm run compile`
+2. 通过 lint 检查：`cd aegis-ai-core && ruff check src/ tests/`
+3. 新规则需提供正样本（应报告）和负样本（不应报告）测试用例
+4. TypeScript 扩展修改后需重新编译：`cd aegis-vscode && npm run compile`
 
 ---
 
@@ -368,4 +392,4 @@ MIT License
 
 ---
 
-*最后更新: 2026-03-02 — v0.2.0 发布，NodeGoat F1 从 0.36 提升至 0.62，Recall 达到 100%*
+*最后更新: 2026-03-12 — v1.2.0 代码质量优化，六语言支持（JS/TS/Python/PHP/Java/Go），120+ 处异常处理收紧*

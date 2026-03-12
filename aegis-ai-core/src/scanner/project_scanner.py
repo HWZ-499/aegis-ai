@@ -21,9 +21,9 @@ _project_root = _current_dir.parent.parent.parent  # aegis-ai-core
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from src.analysis.ast_analyzer import analyze_code_ast
 from src.analysis.multi_language_ast import analyze_code_multi_language
 from src.analysis.rule_based_audit import merge_findings
+from src.analysis.rule_engine import analyze_code_ast, scan_code_locally
 from src.analysis.rule_engine import (
     analyze_go as analyze_go_new,
 )
@@ -39,7 +39,6 @@ from src.analysis.rule_engine import (
 from src.analysis.rule_engine import (
     analyze_python as analyze_python_new,
 )
-from src.analysis.security_rules import scan_code_locally
 from src.scanner.false_positive_manager import InlineSuppressor
 from src.scanner.performance_optimizer import PerformanceOptimizer
 
@@ -509,7 +508,7 @@ class ProjectScanner:
 
             return merged_findings
 
-        except Exception as e:
+        except (OSError, UnicodeDecodeError, RuntimeError) as e:
             logger.warning("扫描文件失败 %s: %s", file_path, e)
             return []
 
@@ -698,7 +697,7 @@ class ProjectScanner:
 
             return findings
 
-        except Exception as e:
+        except (OSError, UnicodeDecodeError, RuntimeError) as e:
             logger.warning("跨文件污点分析失败: %s", e)
             return []
 

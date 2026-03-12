@@ -583,7 +583,7 @@ class PhpTaintGraph:
             parser.set_language(lang)
             cls._php_parser = parser
             logger.debug("PHP tree-sitter 解析器初始化成功")
-        except Exception as exc:
+        except (ImportError, RuntimeError, OSError) as exc:
             logger.debug("PHP tree-sitter 解析器不可用（%s），将使用正则 fallback", exc)
             cls._php_parser = None
         return cls._php_parser
@@ -702,7 +702,7 @@ class PhpTaintGraph:
             try:
                 self._apply_guard_conditions_ast(parser)
                 return
-            except Exception as exc:
+            except (RuntimeError, ValueError) as exc:
                 logger.debug("PHP AST 守护分析失败（%s），降级到正则", exc)
 
         # ── Fallback：正则行扫描（保守：不区分正向/否定，均降级）──

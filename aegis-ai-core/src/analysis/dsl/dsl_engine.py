@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pydantic
 import yaml
 
 from .rule_schema import DslPattern, DslRule
@@ -35,13 +36,13 @@ def load_rules_from_directory(root: Path) -> list[DslRule]:
     for path in sorted(root.rglob("*.yml")) + sorted(root.rglob("*.yaml")):
         try:
             data = yaml.safe_load(path.read_text(encoding="utf-8"))
-        except Exception:
+        except (yaml.YAMLError, OSError, UnicodeDecodeError):
             continue
         if not isinstance(data, dict):
             continue
         try:
             rule = DslRule.model_validate(data)
-        except Exception:
+        except pydantic.ValidationError:
             continue
         rules.append(rule)
     return rules

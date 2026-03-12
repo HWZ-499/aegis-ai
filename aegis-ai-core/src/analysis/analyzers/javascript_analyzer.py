@@ -52,7 +52,7 @@ class JavaScriptAnalyzer:
                 js_lang = get_language("javascript")
                 self._parser = Parser()
                 self._parser.set_language(js_lang)
-            except Exception:
+            except (ImportError, RuntimeError, OSError):
                 # Tree-sitter 不可用时，规则仍然可以工作（例如行级规则）
                 self._parser = None
 
@@ -96,12 +96,12 @@ class JavaScriptAnalyzer:
                     context.taint_graph = taint_analyzer.get_graph()
                     # 阶段二污点统一：JS/TS 仅用 taint_graph，不回退到 DataFlowTracker
                     context.dataflow_tracker = None
-                except Exception:
+                except (ImportError, RuntimeError, ValueError):
                     context.taint_graph = None
 
                 # 4. 统一遍历 AST 节点
                 self._traverse_tree(root, context)
-            except Exception:
+            except (RuntimeError, ValueError):
                 # AST 解析失败时，规则仍然可以工作（例如行级规则）
                 pass
 

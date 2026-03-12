@@ -226,7 +226,7 @@ def _analyze_with(
         else:
             raw = analyzer.analyze(code, path)
         return cast(list[dict[str, Any]], filter_suppressed_findings(raw, code))
-    except Exception:
+    except (RuntimeError, ValueError):
         logger.exception("_analyze_with(%s) failed for %s", language, path)
         return []
 
@@ -346,13 +346,13 @@ def analyze_php(code: str, file_path: Path | str) -> list[dict]:
             for f in analyze_fn(code, path):
                 results.append(f)
                 taint_covered.add((f["line"], f["type"]))
-        except Exception:
+        except (RuntimeError, ValueError):
             logger.exception("PHP TaintGraph rule %s failed for %s", type(rule).__name__, path)
 
     # ── 2. Regex 补充层 ──
     try:
         raw_findings = scan_code_locally(code, file_path=str(path))
-    except Exception:
+    except (RuntimeError, ValueError):
         logger.exception("analyze_php (regex) failed for %s", path)
         raw_findings = []
 
@@ -405,4 +405,17 @@ __all__ = [
     "PhpRCERule",
     "PhpXSSRule",
     "PhpOpenRedirectRule",
+    # Backward-compatible re-exports from deprecated modules
+    "analyze_code_ast",
+    "scan_code_locally",
+    "VULN_SIGNATURES",
+    "VULN_SEVERITY",
 ]
+
+# ---------------------------------------------------------------------------
+# Backward-compatible re-exports from deprecated modules
+# ---------------------------------------------------------------------------
+from .ast_analyzer import analyze_code_ast as analyze_code_ast  # noqa: E402, F401
+from .security_rules import VULN_SEVERITY as VULN_SEVERITY  # noqa: E402, F401
+from .security_rules import VULN_SIGNATURES as VULN_SIGNATURES  # noqa: E402, F401
+from .security_rules import scan_code_locally as scan_code_locally  # noqa: E402, F401

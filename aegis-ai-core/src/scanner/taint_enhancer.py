@@ -93,7 +93,7 @@ class TaintEnhancer:
             # 转换为标准格式
             return [self._convert_finding(f) for f in findings]
 
-        except Exception as e:
+        except (RuntimeError, AttributeError, ValueError, KeyError) as e:
             logger.warning("污点分析失败 %s: %s", file_path, e)
             return []
 
@@ -121,7 +121,7 @@ class TaintEnhancer:
             # 转换为标准格式
             return [self._convert_finding(f) for f in findings]
 
-        except Exception as e:
+        except (RuntimeError, AttributeError, ValueError, KeyError) as e:
             logger.warning("污点分析失败: %s", e)
             return []
 
@@ -168,7 +168,7 @@ class TaintEnhancer:
 
             return enhanced
 
-        except Exception as e:
+        except (RuntimeError, AttributeError, ValueError, KeyError) as e:
             logger.warning("污点增强失败: %s", e)
             return findings
 
@@ -213,7 +213,7 @@ class TaintEnhancer:
 
             return None
 
-        except Exception:
+        except (RuntimeError, AttributeError, ValueError, KeyError):
             return None
 
     def _convert_finding(self, finding: Any) -> dict:
@@ -305,7 +305,7 @@ def enhance_scan_results(
             enhanced_findings = enhancer.enhance_findings(findings, code, str(file_path))
             enhanced_results[rel_path] = enhanced_findings
 
-        except Exception as e:
+        except (OSError, UnicodeDecodeError, RuntimeError) as e:
             logger.warning("增强失败 %s: %s", rel_path, e)
             enhanced_results[rel_path] = findings
 

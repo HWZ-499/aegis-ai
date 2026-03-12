@@ -83,8 +83,16 @@ class AegisSettings(BaseSettings):
 
     # ── CORS ─────────────────────────────────────────────────────
     cors_allow_origins: list[str] = Field(
-        default_factory=lambda: [o.strip() for o in os.getenv("CORS_ALLOW_ORIGINS", "*").split(",") if o.strip()],
-        description="Allowed CORS origins (comma-separated in env var)",
+        default_factory=lambda: [
+            o.strip()
+            for o in os.getenv(
+                "CORS_ALLOW_ORIGINS",
+                "http://localhost:3000,http://localhost:8080",
+            ).split(",")
+            if o.strip()
+        ],
+        description="Allowed CORS origins (comma-separated in env var). "
+        "Production deployments must set CORS_ALLOW_ORIGINS explicitly.",
     )
 
     # ── Logging ──────────────────────────────────────────────────

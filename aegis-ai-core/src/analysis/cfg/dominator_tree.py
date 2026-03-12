@@ -450,7 +450,7 @@ def build_cfg_from_taint_graph(taint_graph: Any) -> CFG | None:
 
         return cfg
 
-    except Exception as e:
+    except (RuntimeError, ValueError) as e:
         logger.debug("build_cfg_from_taint_graph 失败: %s", e)
         return None
 
@@ -512,7 +512,7 @@ def build_cfg_from_ast_if_statements(
 
         return cfg
 
-    except Exception as e:
+    except (RuntimeError, ValueError) as e:
         logger.debug("build_cfg_from_ast_if_statements 失败: %s", e)
         return None
 

@@ -5,15 +5,13 @@ test_php_sqli_benchmark.py - PHP SQLi 基准用例（防回归）
 且参数化/安全写法不被误报（TN）。依赖 security_rules.scan_code_locally 对 PHP 使用原始行匹配。
 """
 
-import pytest
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in __import__("sys").path:
     __import__("sys").path.insert(0, str(PROJECT_ROOT))
 
-from src.analysis.security_rules import scan_code_locally
-
+from src.analysis.rule_engine import scan_code_locally
 
 # TP：DVWA low 风格，应检出 SQL_INJECTION
 PHP_TP_SQLI = '''

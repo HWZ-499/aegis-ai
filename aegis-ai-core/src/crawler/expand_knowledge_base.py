@@ -420,7 +420,7 @@ class KnowledgeBaseExpander:
 
             return cves
 
-        except Exception as e:
+        except (ConnectionError, TimeoutError, httpx.HTTPError) as e:
             print(f"❌ 获取 {cwe_id} 的 CVE 失败: {e}")
             return []
 

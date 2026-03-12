@@ -189,7 +189,7 @@ class IncrementalScanner:
                     rel_path = str(file_path.relative_to(self.project_path)).replace("\\", "/")
                     results[rel_path] = findings
 
-            except Exception as e:
+            except (OSError, UnicodeDecodeError, RuntimeError) as e:
                 if verbose:
                     print(f"⚠️  扫描文件失败 {file_path}: {e}")
 

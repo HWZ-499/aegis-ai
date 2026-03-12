@@ -340,7 +340,7 @@ def main():
                         code = file_path.read_text(encoding="utf-8", errors="ignore")
                         # 使用相对路径作为 key，与 finding['file'] 对齐
                         code_contexts[rel_path] = code
-                    except Exception:
+                    except (OSError, UnicodeDecodeError):
                         continue
 
                 # 批量分析（携带代码上下文）
@@ -453,7 +453,7 @@ def main():
     except KeyboardInterrupt:
         print("\n\n⚠️ 扫描被用户中断")
         sys.exit(130)
-    except Exception as e:
+    except Exception as e:  # Intentional: top-level catch-all
         print(f"\n❌ 错误: {e}")
         if args.verbose:
             import traceback

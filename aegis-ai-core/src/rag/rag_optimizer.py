@@ -128,7 +128,7 @@ def freshness_score(date_str: str = None) -> float:
             return 0.5
         else:
             return 0.3
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         logger.debug("日期解析失败，使用默认权重: %s", e)
         return 0.5
 

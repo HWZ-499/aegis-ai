@@ -1,15 +1,11 @@
 """快速验证 vulnerable-nodejs-express-mysql 风格代码的规则检出。"""
-from pathlib import Path
-import sys
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+import pytest
 
 from src.analysis.rule_engine import analyze_javascript
 
 # 模拟 vulnerable-nodejs-express-mysql/service/login.js 全量
-CODE = """
+_CODE = """
 var mysql = require("mysql");
 var express = require("express");
 var session = require("express-session");
@@ -72,8 +68,19 @@ app.get("/home", function (request, response) {
 app.listen(3000);
 """
 
-if __name__ == "__main__":
-    findings = analyze_javascript(CODE, "login.js")
-    print("Findings count:", len(findings))
+
+def test_express_mysql_findings_count():
+    """Express+MySQL login code should produce at least one finding."""
+    findings = analyze_javascript(_CODE, "login.js")
+    assert len(findings) >= 1, "Expected at least one finding from vulnerable express code"
+
+
+def test_express_mysql_finding_fields():
+    """Each finding should have the required 'type' field."""
+    findings = analyze_javascript(_CODE, "login.js")
     for f in findings:
-        print(" ", f.get("type"), "L" + str(f.get("line", "")), (f.get("details") or "")[:70])
+        assert "type" in f, f"Finding missing 'type' key: {f}"
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

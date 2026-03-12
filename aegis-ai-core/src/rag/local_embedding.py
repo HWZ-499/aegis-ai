@@ -57,7 +57,7 @@ class LocalEmbedder:
                 logger.info(f"📥 正在加载向量化模型: {model_name}...")
                 self.model = SentenceTransformer(model_name)
                 logger.info(f"✅ 模型加载成功！向量维度: {self.model.get_sentence_embedding_dimension()}")
-            except Exception as e:
+            except (ImportError, OSError, RuntimeError) as e:
                 logger.error(f"❌ 模型加载失败: {e}")
                 logger.info("💡 将使用 ChromaDB 默认向量化")
                 self.model = None
@@ -87,7 +87,7 @@ class LocalEmbedder:
                 texts, batch_size=batch_size, show_progress_bar=show_progress, convert_to_numpy=True
             )
             return embeddings
-        except Exception as e:
+        except (RuntimeError, ValueError) as e:
             logger.error(f"❌ 向量化失败: {e}")
             raise
 
@@ -136,7 +136,7 @@ class EmbeddingModelComparator:
                 if embedder.model:
                     self.models[name] = embedder
                     logger.info(f"✅ 模型 {name} 加载成功")
-            except Exception as e:
+            except (ImportError, OSError, RuntimeError) as e:
                 logger.warning(f"⚠️ 模型 {name} 加载失败: {e}")
 
     def compare_embeddings(self, text: str) -> dict[str, np.ndarray]:
@@ -154,7 +154,7 @@ class EmbeddingModelComparator:
             try:
                 vector = embedder.encode_single(text)
                 results[name] = vector
-            except Exception as e:
+            except (RuntimeError, ValueError) as e:
                 logger.error(f"❌ 模型 {name} 向量化失败: {e}")
 
         return results
@@ -179,7 +179,7 @@ class EmbeddingModelComparator:
                 vec2 = embedder.encode_single(text2)
                 similarity = cosine_similarity([vec1], [vec2])[0][0]
                 results[name] = float(similarity)
-            except Exception as e:
+            except (RuntimeError, ValueError) as e:
                 logger.error(f"❌ 模型 {name} 相似度计算失败: {e}")
 
         return results

@@ -11,8 +11,7 @@
 import logging
 from typing import Any
 
-from src.analysis.ast_analyzer import analyze_code_ast
-from src.analysis.security_rules import scan_code_locally
+from src.analysis.rule_engine import analyze_code_ast, scan_code_locally
 
 logger = logging.getLogger("aegis")
 

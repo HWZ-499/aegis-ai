@@ -165,7 +165,7 @@ class SimpleCVECrawler:
             try:
                 existing_data = self.collection.get()
                 existing_ids = set(existing_data.get("ids", []))
-            except Exception as e:
+            except (RuntimeError, ValueError, KeyError) as e:
                 logger.debug("获取现有 CVE ID 失败，将全量更新: %s", e)
 
         # 准备数据

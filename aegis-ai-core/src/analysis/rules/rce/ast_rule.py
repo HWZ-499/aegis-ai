@@ -152,7 +152,7 @@ def _is_setup_script(file_path: Any) -> bool:
     try:
         name = Path(str(file_path)).stem.lower()
         return any(name.startswith(n) or name == n for n in _SETUP_NAMES)
-    except Exception:
+    except (RuntimeError, ValueError):
         return False
 
 

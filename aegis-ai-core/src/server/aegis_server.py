@@ -77,10 +77,19 @@ DEEPSEEK_CACHE_MAX_ITEMS = _settings.cache_max_items
 RATE_LIMIT_CHAT_PER_MIN = _settings.rate_limit_chat_per_min
 RATE_LIMIT_AUDIT_PER_MIN = _settings.rate_limit_audit_per_min
 
-# 数据库连接
-logger.info("正在挂载本地向量数据库: %s", _settings.db_path)
-client = chromadb.PersistentClient(path=str(_settings.db_path))
-collection = client.get_collection(name="cve_core")
+# 数据库连接（延迟初始化，避免 import 时触发网络 I/O）
+_chroma_client: chromadb.ClientAPI | None = None
+_chroma_collection: chromadb.Collection | None = None
+
+
+def _get_collection() -> chromadb.Collection:
+    """获取或创建 ChromaDB collection（延迟初始化）。"""
+    global _chroma_client, _chroma_collection
+    if _chroma_collection is None:
+        logger.info("正在挂载本地向量数据库: %s", _settings.db_path)
+        _chroma_client = chromadb.PersistentClient(path=str(_settings.db_path))
+        _chroma_collection = _chroma_client.get_collection(name="cve_core")
+    return _chroma_collection
 
 
 class SimpleTTLCache:
@@ -238,7 +247,7 @@ async def call_deepseek(system_prompt: str, user_message: str) -> str:
                 error_msg = f"网络连接失败: {e}"
                 logger.error(error_msg, extra={"elapsed_ms": elapsed})
                 return f"❌ {error_msg}"
-        except Exception as e:
+        except (RuntimeError, ValueError, KeyError) as e:
             elapsed = (time.time() - start_time) * 1000
             error_msg = f"未知错误: {e}"
             logger.error(error_msg, extra={"elapsed_ms": elapsed, "error": str(e)})
@@ -454,7 +463,7 @@ class ChatRequest(BaseModel):
 def health_check():
     """健康检查接口"""
     try:
-        db_count = collection.count()
+        db_count = _get_collection().count()
         api_key_configured = bool(DEEPSEEK_API_KEY)
         return {
             "status": "healthy",
@@ -462,7 +471,7 @@ def health_check():
             "api_key_configured": api_key_configured,
             "timestamp": datetime.now().isoformat(),
         }
-    except Exception as e:
+    except (RuntimeError, ValueError, KeyError) as e:
         logger.error("健康检查失败", extra={"error": str(e)})
         return JSONResponse(status_code=503, content={"status": "unhealthy", "error": str(e)})
 
@@ -509,7 +518,7 @@ async def chat_endpoint(req: ChatRequest, request: Request):
         # === 🔥 优化的 RAG 检索流程 ===
         vector_start = time.time()
         rag_result = optimized_rag_retrieval(
-            collection=collection,
+            collection=_get_collection(),
             query=user_query,
             top_k=5,  # 初始检索 5 条
             return_top_n=3,  # 返回前 3 条
@@ -560,7 +569,7 @@ async def chat_endpoint(req: ChatRequest, request: Request):
 
         return {"reply": reply, "mode": mode, "distance": distance}
 
-    except Exception as e:
+    except Exception as e:  # Intentional: top-level defensive catch
         elapsed = (time.time() - start_time) * 1000
         logger.error(
             "请求处理失败",
@@ -642,28 +651,19 @@ async def audit_code(file: UploadFile = File(...), request: Request = None):
 
         if use_ai:
             try:
-                # 限制代码长度（避免 token 超限）
-                MAX_CODE_LENGTH = 10000
-                code_preview = code_text[:MAX_CODE_LENGTH]
-                if len(code_text) > MAX_CODE_LENGTH:
-                    logger.warning(
-                        "代码过长，已截断",
-                        extra={"original_length": len(code_text), "truncated_length": MAX_CODE_LENGTH},
-                    )
-
                 user_msg = f"""
                 {local_report_str}
-                
+
                 --------------------------------------------------
                 【源代码】：
-                {code_preview} 
+                {code_preview}
                 """
 
                 logger.info("提交 AI 增强审计", extra={"code_length": len(code_preview)})
                 reply = await call_deepseek(system_prompt, user_msg)
                 logger.info("AI 增强审计完成")
 
-            except Exception as e:
+            except (RuntimeError, KeyError, ValueError) as e:
                 logger.warning("AI 审计失败，降级到纯规则审计", extra={"error": str(e)})
                 use_ai = False
 
@@ -709,7 +709,7 @@ async def audit_code(file: UploadFile = File(...), request: Request = None):
         logger.error(error_msg, extra={"file_name": file.filename, "elapsed_ms": elapsed})
         raise HTTPException(status_code=400, detail=error_msg)
 
-    except Exception as e:
+    except Exception as e:  # Intentional: top-level defensive catch
         elapsed = (time.time() - start_time) * 1000
         logger.error(
             "审计处理失败",
@@ -719,13 +719,16 @@ async def audit_code(file: UploadFile = File(...), request: Request = None):
         raise HTTPException(status_code=500, detail=f"审计处理时发生错误: {str(e)}")
 
 
-# 启动提示
-logger.info("=" * 60)
-logger.info("Aegis Server 启动成功")
-logger.info("数据库记录数: %d", collection.count())
-logger.info("AI 可用: %s", _settings.has_ai)
-logger.info("运行命令: uvicorn src.server.aegis_server:app --reload")
-logger.info("=" * 60)
+# 启动提示（延迟到服务实际启动时执行）
+@app.on_event("startup")
+async def _startup_banner() -> None:
+    """服务启动时输出状态信息。"""
+    logger.info("=" * 60)
+    logger.info("Aegis Server 启动成功")
+    logger.info("数据库记录数: %d", _get_collection().count())
+    logger.info("AI 可用: %s", _settings.has_ai)
+    logger.info("运行命令: uvicorn src.server.aegis_server:app --reload")
+    logger.info("=" * 60)
 
 
 @app.on_event("shutdown")

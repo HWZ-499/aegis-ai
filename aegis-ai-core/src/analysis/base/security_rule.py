@@ -98,6 +98,6 @@ def safe_find_paths(graph: Any, rule_id: str) -> list:
     """
     try:
         return cast(list, graph.find_paths_to_sinks())
-    except Exception as e:
+    except (RuntimeError, ValueError) as e:
         _rule_logger.debug("find_paths_to_sinks failed in rule %s: %s", rule_id, e)
         return []

@@ -11,7 +11,7 @@ import json
 import re
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 
 class BaselineFinding(BaseModel):
@@ -91,7 +91,7 @@ class Baseline:
             if isinstance(item, dict):
                 try:
                     entries.append(BaselineFinding.model_validate(item))
-                except Exception:
+                except ValidationError:
                     continue
         return cls(entries)
 

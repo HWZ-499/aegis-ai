@@ -161,7 +161,7 @@ class TaintAnalyzer:
 
                 self._parser = Parser()
                 self._parser.set_language(lang)
-            except Exception:
+            except (ImportError, RuntimeError, OSError):
                 self._parser = None
 
     def analyze_file(self, file_path: Path) -> list[TaintFinding]:
@@ -177,7 +177,7 @@ class TaintAnalyzer:
         try:
             code = file_path.read_text(encoding="utf-8", errors="ignore")
             return self.analyze_code(code, str(file_path))
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.warning("污点分析文件失败 %s: %s", file_path, e)
             return []
 
@@ -209,7 +209,7 @@ class TaintAnalyzer:
             tree = self._parser.parse(bytes(code, "utf8"))
             root = tree.root_node
             return self._analyze_from_root(root, file_path, code)
-        except Exception as e:
+        except (RuntimeError, ValueError) as e:
             logger.warning("污点分析代码失败 [%s]: %s", file_path or "<inline>", e)
             return []
 
@@ -233,7 +233,7 @@ class TaintAnalyzer:
             self._identify_sources_and_sinks(root_node)
             self._build_dataflow_edges()
             self._build_and_apply_dominator_tree()
-        except Exception as e:
+        except (RuntimeError, ValueError) as e:
             logger.warning("analyze_tree 构建污点图失败 [%s]: %s", file_path, e)
 
     def _analyze_from_root(self, root: Any, file_path: str, code: str) -> list[TaintFinding]:
@@ -1775,7 +1775,7 @@ class TaintAnalyzer:
                 len(sanitized_by_guard),
             )
 
-        except Exception as e:
+        except (RuntimeError, ValueError) as e:
             logger.debug("Dominator Tree 构建或应用失败: %s", e)
 
     def _generate_findings(self, paths: list[TaintPath]) -> list[TaintFinding]:

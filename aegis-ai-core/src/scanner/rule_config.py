@@ -9,7 +9,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-from src.analysis.security_rules import VULN_SIGNATURES
+from src.analysis.rule_engine import VULN_SIGNATURES
 
 
 class RuleConfig:
@@ -49,7 +49,7 @@ class RuleConfig:
                     # 合并默认配置
                     default_config.update(config)
                     return default_config
-            except Exception as e:
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
                 logger.warning("加载配置文件失败: %s，使用默认配置", e)
                 return default_config
 

@@ -54,7 +54,7 @@ class PhpAnalyzer:
                 php_lang = get_language("php")
                 self._parser = Parser()
                 self._parser.set_language(php_lang)
-            except Exception as e:
+            except (ImportError, RuntimeError, OSError) as e:
                 logger.debug("PHP Tree-sitter 初始化失败: %s", e)
                 self._parser = None
 
@@ -86,7 +86,7 @@ class PhpAnalyzer:
                 ts_tree = self._parser.parse(bytes(code, "utf8"))
                 taint_analyzer.analyze_tree(ts_tree.root_node, str(file_path), code)
                 context.taint_graph = taint_analyzer.get_graph()
-            except Exception as e:
+            except (ImportError, RuntimeError, ValueError) as e:
                 logger.debug("PHP TaintAnalyzer 构建失败 [%s]: %s", file_path, e)
                 context.taint_graph = None
 
@@ -99,7 +99,7 @@ class PhpAnalyzer:
             try:
                 ts_tree = self._parser.parse(bytes(code, "utf8"))
                 self._traverse_tree(ts_tree.root_node, context)
-            except Exception as e:
+            except (RuntimeError, ValueError) as e:
                 logger.debug("PHP AST 遍历失败 [%s]: %s", file_path, e)
 
         # 5. after_file 钩子

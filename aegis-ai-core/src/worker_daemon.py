@@ -47,7 +47,7 @@ def current_memory_mb() -> float:
         import psutil
 
         return psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
-    except Exception:
+    except (ImportError, OSError):
         return 0.0
 
 
@@ -87,7 +87,7 @@ def main() -> None:
             conn, _ = sock.accept()
         except TimeoutError:
             continue
-        except Exception as e:
+        except OSError as e:
             logger.exception("Accept error: %s", e)
             break
 
@@ -113,11 +113,11 @@ def main() -> None:
                 request_count += 1
                 out = json.dumps({"findings": findings}, ensure_ascii=False) + "\n"
                 conn.sendall(out.encode("utf-8"))
-        except Exception as e:
+        except Exception as e:  # Intentional: top-level defensive catch
             logger.exception("Request error: %s", e)
             try:
                 conn.sendall(json.dumps({"findings": [], "error": str(e)}).encode("utf-8") + b"\n")
-            except Exception as send_err:
+            except OSError as send_err:
                 logger.debug("Failed to send error response to client: %s", send_err)
 
     sock.close()

@@ -545,7 +545,7 @@ class RAGEnhancer:
             client = chromadb.PersistentClient(path=db_path)
             self.collection = client.get_collection(name="cve_core")
             logger.info("RAG 知识库已连接，包含 %d 条 CVE 记录", self.collection.count())
-        except Exception as e:
+        except (RuntimeError, ValueError, KeyError) as e:
             logger.warning("RAG 知识库连接失败: %s，将使用内置修复建议", e)
             self.collection = None
 
@@ -560,7 +560,7 @@ class RAGEnhancer:
                 enhanced_finding = self._enhance_single_finding(finding)
                 enhanced.append(enhanced_finding)
             return enhanced
-        except Exception as e:
+        except (OSError, UnicodeDecodeError, RuntimeError) as e:
             logger.warning("RAG 增强过程异常，返回原始 findings: %s", e)
             return findings
 
@@ -613,7 +613,7 @@ class RAGEnhancer:
                     vuln_type,
                 )
                 return []
-            except Exception as e:
+            except (RuntimeError, ValueError, KeyError) as e:
                 logger.warning("RAG 检索异常，跳过 CVE 增强: %s", e)
                 return []
 
@@ -655,7 +655,7 @@ class RAGEnhancer:
                 )
 
             return cves
-        except Exception as e:
+        except (RuntimeError, ValueError, KeyError) as e:
             logger.debug("CVE 查询失败: %s", e)
             return []
 

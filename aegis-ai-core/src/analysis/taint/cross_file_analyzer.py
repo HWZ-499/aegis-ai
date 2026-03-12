@@ -179,7 +179,7 @@ class CrossFileAnalyzer:
                 py_lang = get_language("python")
                 self._py_parser = Parser()
                 self._py_parser.set_language(py_lang)
-            except Exception as e:
+            except (ImportError, RuntimeError, OSError) as e:
                 logger.debug("Failed to init Tree-sitter parsers for cross-file analysis: %s", e)
 
     def scan_project(self) -> None:
@@ -231,7 +231,7 @@ class CrossFileAnalyzer:
 
             self._traverse_js_ast(tree.root_node, file_str)
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.warning("分析失败 %s: %s", file_path, e)
 
     def _traverse_js_ast(self, node: Any, file_path: str) -> None:
@@ -425,7 +425,7 @@ class CrossFileAnalyzer:
 
             self._traverse_py_ast(tree.root_node, file_str)
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.warning("分析失败 %s: %s", file_path, e)
 
     def _traverse_py_ast(self, node: Any, file_path: str) -> None:
