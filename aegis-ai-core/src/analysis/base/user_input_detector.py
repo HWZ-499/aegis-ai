@@ -67,6 +67,49 @@ _PY_USER_INPUT_ROOTS: list[tuple[tuple[str, ...], str]] = [
     (("request",), "FILES"),
 ]
 
+_JAVA_USER_INPUT_ROOTS: list[tuple[tuple[str, ...], str]] = [
+    # Servlet API
+    (("request",), "getParameter"),
+    (("request",), "getParameterValues"),
+    (("request",), "getHeader"),
+    (("request",), "getCookies"),
+    (("request",), "getInputStream"),
+    (("request",), "getReader"),
+    (("request",), "getQueryString"),
+    (("request",), "getRequestURI"),
+    (("request",), "getPathInfo"),
+    (("req",), "getParameter"),
+    (("req",), "getParameterValues"),
+    (("req",), "getHeader"),
+    # Spring MVC
+    (("request",), "getBody"),
+]
+
+_GO_USER_INPUT_ROOTS: list[tuple[tuple[str, ...], str]] = [
+    # net/http
+    (("r",), "FormValue"),
+    (("r",), "URL"),
+    (("r",), "Body"),
+    (("r",), "Header"),
+    (("r",), "PostFormValue"),
+    (("req",), "FormValue"),
+    (("req",), "URL"),
+    (("req",), "Body"),
+    (("req",), "Header"),
+    (("request",), "FormValue"),
+    (("request",), "URL"),
+    (("request",), "Body"),
+    # Gin framework
+    (("c",), "Query"),
+    (("c",), "Param"),
+    (("c",), "PostForm"),
+    (("c",), "DefaultQuery"),
+    (("c",), "BindJSON"),
+    (("ctx",), "Query"),
+    (("ctx",), "Param"),
+    (("ctx",), "PostForm"),
+]
+
 
 def _get_node_text(node: Any) -> str:
     """
@@ -160,6 +203,10 @@ def is_user_input_node(
         roots = _JS_USER_INPUT_ROOTS
     elif language == "python":
         roots = _PY_USER_INPUT_ROOTS
+    elif language == "java":
+        roots = _JAVA_USER_INPUT_ROOTS
+    elif language == "go":
+        roots = _GO_USER_INPUT_ROOTS
     else:
         roots = _JS_USER_INPUT_ROOTS + _PY_USER_INPUT_ROOTS
 
@@ -214,6 +261,10 @@ def is_user_input_expr(
         roots = _JS_USER_INPUT_ROOTS
     elif language == "python":
         roots = _PY_USER_INPUT_ROOTS
+    elif language == "java":
+        roots = _JAVA_USER_INPUT_ROOTS
+    elif language == "go":
+        roots = _GO_USER_INPUT_ROOTS
     else:
         roots = _JS_USER_INPUT_ROOTS + _PY_USER_INPUT_ROOTS
 
