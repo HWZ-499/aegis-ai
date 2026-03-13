@@ -21,6 +21,7 @@ import {
   DiagnosticSeverity,
   Uri,
   Disposable,
+  ProgressLocation,
 } from "vscode";
 import { FindingsTreeProvider } from "./findingsTreeProvider";
 import { showReport } from "./reportWebview";
@@ -181,15 +182,15 @@ export function activate(context: ExtensionContext): void {
     })
   );
   context.subscriptions.push(
-    commands.registerCommand("aegisAI.scanCurrentFile", () => {
-      const editor = window.activeTextEditor;
-      if (!editor) return;
+    commands.registerCommand("aegisAI.scanCurrentFile", (resourceUri?: Uri) => {
+      // Support both editor context and explorer context menu
+      const uri = resourceUri?.toString() ?? window.activeTextEditor?.document.uri.toString();
+      if (!uri) return;
       if (!client) {
         outputChannel.appendLine("[Aegis] 未连接，无法扫描。请等待 LSP 连接后再试。");
         outputChannel.show();
         return;
       }
-      const uri = editor.document.uri.toString();
       client.sendNotification("aegis/requestScan", { uri });
       outputChannel.appendLine(`[Aegis] 手动触发扫描: ${uri}`);
     }),
@@ -203,7 +204,7 @@ export function activate(context: ExtensionContext): void {
       window.withProgress(
         {
           title: "Aegis: 扫描工作区",
-          location: 15, // Notification location
+          location: ProgressLocation.Notification,
           cancellable: false,
         },
         (progress) => {
@@ -307,6 +308,8 @@ export function activate(context: ExtensionContext): void {
       { scheme: "file", language: "typescriptreact" },
       { scheme: "file", language: "python" },
       { scheme: "file", language: "php" },
+      { scheme: "file", language: "java" },
+      { scheme: "file", language: "go" },
     ],
     outputChannel: outputChannel,
     revealOutputChannelOn: RevealOutputChannelOn.Error,
@@ -321,7 +324,7 @@ export function activate(context: ExtensionContext): void {
     },
     synchronize: {
       fileEvents: workspace.createFileSystemWatcher(
-        "**/*.{js,jsx,ts,tsx,py,php,phtml}"
+        "**/*.{js,jsx,ts,tsx,py,php,phtml,java,go}"
       ),
     },
   };

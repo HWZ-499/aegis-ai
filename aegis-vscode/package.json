@@ -36,6 +36,8 @@
     "typescript",
     "python",
     "php",
+    "java",
+    "go",
     "nosql injection",
     "sql injection",
     "xss",
@@ -49,6 +51,8 @@
     "onLanguage:typescriptreact",
     "onLanguage:python",
     "onLanguage:php",
+    "onLanguage:java",
+    "onLanguage:go",
     "onCommand:aegisAI.scanCurrentFile",
     "onCommand:aegisAI.scanWorkspace",
     "onCommand:aegisAI.showOutput",
@@ -81,8 +85,8 @@
     "keybindings": [
       {
         "command": "aegisAI.scanCurrentFile",
-        "key": "ctrl+shift+s",
-        "mac": "cmd+shift+s"
+        "key": "ctrl+alt+s",
+        "mac": "cmd+alt+s"
       }
     ],
     "viewsContainers": {

@@ -10,7 +10,7 @@
 
 - **Save-to-scan** — diagnostics appear within 1 second of saving a file
 - **10+ vulnerability types** — SQL injection, NoSQL injection, XSS, RCE, path traversal, hardcoded credentials, deserialization, and more
-- **Multi-language** — JavaScript / TypeScript / Python / PHP (full AST); Java / Go / C / C++ (regex)
+- **Multi-language** — JavaScript / TypeScript / Python / Java / Go (full AST + taint analysis); PHP (line-level taint)
 - **AI auto-fix** — click the lightbulb (Code Action) on any High/Critical finding; DeepSeek generates framework-aware patch code
 - **Taint analysis** — cross-function and cross-file data-flow tracking via self-developed TaintGraph + Dominator Tree
 - **Status bar** — shows `Aegis: N issues` / `Aegis: Secure` / `Aegis: Scanning…` at a glance
@@ -56,7 +56,7 @@ echo DEEPSEEK_API_KEY=your_key > .env
 
 1. Install the extension from VS Code Marketplace (`aegis-ai.aegis-ai-security`)
 2. Open the `aegis-ai-core` directory so the extension can locate the LSP server
-3. Open any `.js`, `.ts`, `.py`, or `.php` file — diagnostics appear on save
+3. Open any `.js`, `.ts`, `.py`, `.php`, `.java`, or `.go` file — diagnostics appear on save
 4. Click the **lightbulb** on any finding → **Apply AI Fix** to auto-patch
 
 ### Manual Configuration
@@ -77,13 +77,15 @@ If the LSP server is not found automatically, set the working directory explicit
 
 | ID | Type | Languages |
 |----|------|-----------|
-| NOSQL_INJECTION | NoSQL Injection | JS/TS |
-| SQL_INJECTION | SQL Injection | JS/TS, Python |
-| XSS_RISK | Cross-Site Scripting | JS/TS, Python, PHP |
-| RCE_COMMAND_EXEC | Remote Code Execution | JS/TS, Python, PHP |
-| PATH_TRAVERSAL | Path Traversal | JS/TS, Python, PHP |
-| HARDCODED_CREDENTIALS | Hardcoded Credentials | JS/TS, Python, PHP |
-| DESERIALIZATION | Unsafe Deserialization | JS/TS, Python |
+| SQL_INJECTION | SQL Injection | JS/TS, Python, Java, Go |
+| NOSQL_INJECTION | NoSQL Injection | JS/TS, Java, Go |
+| XSS_RISK | Cross-Site Scripting | JS/TS, Python, PHP, Java, Go |
+| RCE_COMMAND_EXEC | Remote Code Execution | JS/TS, Python, PHP, Java, Go |
+| PATH_TRAVERSAL | Path Traversal | JS/TS, Python, PHP, Java, Go |
+| HARDCODED_CREDENTIALS | Hardcoded Credentials | JS/TS, Python, PHP, Java, Go |
+| DESERIALIZATION | Unsafe Deserialization | JS/TS, Python, Java, Go |
+| SSRF | Server-Side Request Forgery | JS/TS, Python |
+| OPEN_REDIRECT | Open Redirect | JS/TS, Python, Java, Go |
 
 ---
 
