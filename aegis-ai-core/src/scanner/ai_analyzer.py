@@ -568,10 +568,13 @@ class AIAnalyzer:
         return results
 
     def _get_cache_key(self, finding: dict[str, Any]) -> str:
-        """生成缓存键"""
+        """生成缓存键（使用 hashlib 确保跨进程稳定）"""
+        import hashlib
+
         vuln_type = finding.get("type", "")
         details = finding.get("details", "")[:100]
-        return f"{vuln_type}:{hash(details)}"
+        digest = hashlib.md5(details.encode("utf-8", errors="replace")).hexdigest()
+        return f"{vuln_type}:{digest}"
 
     def _default_analysis(self, finding: dict[str, Any]) -> AIAnalysisResult:
         """生成默认分析结果（不使用 AI）"""
@@ -626,12 +629,16 @@ class AIAnalyzer:
                 ],
                 temperature=0.3,
                 max_tokens=2000,
+                timeout=30,
             )
 
             return self._parse_ai_response(response.choices[0].message.content, finding)
 
-        except (RuntimeError, KeyError, ValueError) as e:
+        except (RuntimeError, KeyError, ValueError, ImportError, OSError) as e:
             logger.warning("AI 分析失败: %s", e)
+            return self._default_analysis(finding)
+        except Exception as e:
+            logger.warning("AI 分析未预期异常: %s: %s", type(e).__name__, e)
             return self._default_analysis(finding)
 
     def _build_analysis_prompt(

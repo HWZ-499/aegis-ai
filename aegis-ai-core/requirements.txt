@@ -1,9 +1,6 @@
 # Aegis-AI Core 依赖包
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-chromadb>=0.4.0
-httpx>=0.27.0
-certifi>=2023.0.0
+
+# 核心配置
 pydantic>=2.0.0
 python-dotenv>=1.0.0
 
@@ -13,11 +10,7 @@ python-json-logger>=2.0.0
 # 可选：高级重试机制（推荐安装）
 tenacity>=8.2.0
 
-# 可选：本地向量化（推荐安装，用于自定义 embedding 模型）
-sentence-transformers>=2.2.0
-scikit-learn>=1.0.0
-
-# 可选：多语言 AST 分析（推荐安装，用于支持 JavaScript、Java、C/C++ 等）
+# 多语言 AST 分析（JS/TS/Python/Java/Go/PHP）
 # 注意：tree-sitter 0.21.3 与 tree-sitter-languages 1.10.2 兼容
 # 已知问题：tree-sitter==0.21.3 内部使用旧版 Language(path, name) API，
 #   启动时会产生 FutureWarning: Language(path, name) is deprecated.
@@ -27,6 +20,7 @@ tree-sitter==0.21.3
 tree-sitter-languages>=1.0.0
 
 # 可选：AI 修复建议（需要 OpenAI 兼容 API）
+# pip install openai>=1.0.0
 # openai>=1.0.0
 
 # LSP Server（IDE 集成）

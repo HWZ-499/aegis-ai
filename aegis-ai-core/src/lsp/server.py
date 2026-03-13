@@ -777,6 +777,11 @@ def create_server() -> LanguageServer:
                         if ai_cache is None:
                             server._ai_cache = {}
                             ai_cache = getattr(server, "_ai_cache", {})
+                        # Evict oldest entries when cache exceeds 256 items
+                        if ai_cache and len(ai_cache) > 256:
+                            keys_to_remove = list(ai_cache.keys())[:64]
+                            for k in keys_to_remove:
+                                ai_cache.pop(k, None)
                         result = ai_cache.get(cache_key) if ai_cache else None
                         if result is None:
                             doc_source: str | None = None
