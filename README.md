@@ -17,7 +17,7 @@
 - **Status Bar 状态显示**：`$(shield) 就绪` / `$(loading~spin) 扫描中` / `$(error) N 个问题` / `$(check) 安全`
 - **AI 精准修复**：Code Action 直接替换漏洞行（置信度 >= 0.75），生成复用原变量名和框架 API 的修复代码
 - **框架感知**：自动识别 mysql2、Sequelize、Mongoose、pymysql、SQLAlchemy 等框架，提供专用修复示例
-- **多语言支持**：JavaScript / TypeScript / Python（完整 AST + 污点分析）| PHP（行级污点分析）| Java / Go（基础污点追踪，实验性）
+- **多语言支持**：JavaScript / TypeScript / Python / Java / Go（完整 AST + 污点分析）| PHP（行级污点分析）
 - **多漏洞类型**：SQL 注入、NoSQL 注入、XSS、RCE、路径穿越、反序列化、硬编码凭证、SSRF（CWE-918）、开放重定向 — 共 9 类
 - **多层分析管道**：正则扫描 → AST 分析 → 污点追踪（Guard Clause + Dominator Tree）→ AI 增强
 - **CI/CD 集成**：GitHub Actions + GitLab CI，支持 SARIF 格式上报
@@ -260,10 +260,7 @@ aegis-ai/
 │   │   │   └── base/           # 规则基类 + Finding 模型
 │   │   ├── lsp/                # LSP Server（pygls）
 │   │   ├── scanner/            # 扫描器、AI 分析器、RAG 增强、基线管理
-│   │   ├── rag/                # RAG 系统（ChromaDB + 本地 Embedding）
-│   │   ├── crawler/            # CVE 知识库爬虫
-│   │   ├── core/               # 配置管理（pydantic-settings）
-│   │   └── server/             # FastAPI HTTP 服务（可选）
+│   │   └── core/               # 配置管理（pydantic-settings）
 │   ├── scripts/                # 基准测试、评估、调试脚本
 │   ├── tests/                  # 测试套件（pytest）
 │   ├── data/                   # CVE 知识库数据
@@ -286,10 +283,10 @@ aegis-ai/
 |------|------|
 | IDE 扩展 | TypeScript, VSCode API, vscode-languageclient |
 | LSP Server | Python, pygls, lsprotocol |
-| 静态分析 | Tree-sitter AST（JS/TS/Python 完整分析，PHP 行级，Java/Go 基础）|
+| 静态分析 | Tree-sitter AST（JS/TS/Python/Java/Go 完整分析，PHP 行级）|
 | 污点分析 | 自研 TaintGraph + Dominator Tree（单文件内）|
 | AI 修复 | DeepSeek API（兼容 OpenAI SDK）|
-| RAG 知识库 | ChromaDB + sentence-transformers（实验性，可选）|
+| RAG 知识库 | ChromaDB + sentence-transformers（实验性，可选，已从核心依赖移除）|
 | 配置管理 | pydantic-settings + .env |
 | CI/CD | GitHub Actions, GitLab CI, SARIF |
 | 代码质量 | ruff（lint + format）, mypy, pytest |
@@ -316,9 +313,7 @@ v1.2.0 进行了一轮全面的代码质量优化：
 
 | 问题 | 影响 | 状态 |
 |------|------|------|
-| Java/Go 规则无独立 AST 分析（`visit()` 为空操作） | 检测能力完全依赖 TaintGraph，无参数化查询识别等独立检测 | 计划提升 |
 | PHP 污点分析基于行扫描（非完整 AST 路径分析） | PHP 检出率低于 JS/Python | 规划中 |
-| 跨文件污点传播未贯通 | `CrossFileAnalyzer.find_cross_file_taint_paths()` 暂返空结果 | 规划中 |
 | NodeGoat Precision 44.4% | 误报率较高，需优化去重和白名单逻辑 | 高优先级 |
 | `tree-sitter==0.21.3` 启动时产生 `FutureWarning` | 无功能影响，LSP 入口已过滤 | 已缓解 |
 
@@ -351,7 +346,7 @@ v1.2.0 进行了一轮全面的代码质量优化：
 
 ### 已完成
 
-- 核心静态分析引擎（JS/TS/Python 完整 AST 分析，PHP 行级污点，Java/Go 基础污点追踪）
+- 核心静态分析引擎（JS/TS/Python/Java/Go 完整 AST 分析，PHP 行级污点）
 - 污点分析系统（TaintGraph + Guard Clause + Dominator Tree）
 - LSP Server（实时诊断 + Code Action + Status Bar）
 - AI 精准修复（框架感知 prompt + rich context 提取，置信度 >= 0.75 直接替换）
@@ -366,16 +361,11 @@ v1.2.0 进行了一轮全面的代码质量优化：
 
 ### 实验性功能
 
-- **Java / Go 检测**：基于 TaintGraph 路径查询，尚无独立 AST 节点级分析（计划提升至与 Python/JS 持平）
 - **DSL 规则引擎**：YAML 格式自定义规则（PoC 阶段，当前仅 4 条规则）
-- **RAG 知识库**：ChromaDB + sentence-transformers CVE 检索增强（演示阶段）
-- **跨文件污点传播**：CrossFileAnalyzer 框架已搭建，数据流贯通尚未完成
 
 ### 规划中
 
-- Java/Go 规则深度提升：增加独立 AST 节点分析（参数化查询检测、净化识别等）
 - PHP AST 分析升级：接入 Tree-sitter PHP 完整路径分析
-- 跨文件污点传播贯通：完成 tainted_params 传播链
 - VS Code Marketplace 上架
 - 精度优化：NodeGoat Precision 44% → 70%+
 
@@ -399,4 +389,4 @@ MIT License
 
 ---
 
-*最后更新: 2026-03-12 — v1.2.1 文档诚实化，明确标注各语言支持深度和实验性功能*
+*最后更新: 2026-03-13 — v1.2.1 Java/Go 升级为完整 AST 分析，清理死代码，精度改进*
