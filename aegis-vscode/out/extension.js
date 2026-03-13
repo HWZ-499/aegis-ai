@@ -172,16 +172,16 @@ function activate(context) {
     }), vscode_1.commands.registerCommand("aegisAI.showReport", () => {
         (0, reportWebview_1.showReport)();
     }));
-    context.subscriptions.push(vscode_1.commands.registerCommand("aegisAI.scanCurrentFile", () => {
-        const editor = vscode_1.window.activeTextEditor;
-        if (!editor)
+    context.subscriptions.push(vscode_1.commands.registerCommand("aegisAI.scanCurrentFile", (resourceUri) => {
+        // Support both editor context and explorer context menu
+        const uri = resourceUri?.toString() ?? vscode_1.window.activeTextEditor?.document.uri.toString();
+        if (!uri)
             return;
         if (!client) {
             outputChannel.appendLine("[Aegis] 未连接，无法扫描。请等待 LSP 连接后再试。");
             outputChannel.show();
             return;
         }
-        const uri = editor.document.uri.toString();
         client.sendNotification("aegis/requestScan", { uri });
         outputChannel.appendLine(`[Aegis] 手动触发扫描: ${uri}`);
     }), vscode_1.commands.registerCommand("aegisAI.scanWorkspace", () => {
@@ -193,7 +193,7 @@ function activate(context) {
         outputChannel.appendLine("[Aegis] 手动触发工作区扫描");
         vscode_1.window.withProgress({
             title: "Aegis: 扫描工作区",
-            location: 15, // Notification location
+            location: vscode_1.ProgressLocation.Notification,
             cancellable: false,
         }, (progress) => {
             workspaceProgressReporter = progress;
@@ -280,6 +280,8 @@ function activate(context) {
             { scheme: "file", language: "typescriptreact" },
             { scheme: "file", language: "python" },
             { scheme: "file", language: "php" },
+            { scheme: "file", language: "java" },
+            { scheme: "file", language: "go" },
         ],
         outputChannel: outputChannel,
         revealOutputChannelOn: node_1.RevealOutputChannelOn.Error,
@@ -293,7 +295,7 @@ function activate(context) {
             scan_on_change: config.get("scanOnChange", true),
         },
         synchronize: {
-            fileEvents: vscode_1.workspace.createFileSystemWatcher("**/*.{js,jsx,ts,tsx,py,php,phtml}"),
+            fileEvents: vscode_1.workspace.createFileSystemWatcher("**/*.{js,jsx,ts,tsx,py,php,phtml,java,go}"),
         },
     };
     // 创建 LanguageClient 并启动

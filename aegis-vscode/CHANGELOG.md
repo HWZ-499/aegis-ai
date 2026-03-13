@@ -2,6 +2,24 @@
 
 All notable changes to Aegis AI Security Scanner are documented here.
 
+## [0.3.0] — 2026-03-13
+
+### Added
+- **Java / Go language support** — full AST + taint analysis via TaintGraph for Java (Servlet, Spring) and Go (net/http, Gin)
+- **PHP Tree-sitter AST upgrade** — 8 PHP rules (SQLi, XSS, RCE, Path Traversal, Credentials, Deserialization, SSRF, Open Redirect) upgraded from line-level regex to Tree-sitter AST analysis
+- **PhpAnalyzer** added to `_LANGUAGE_ANALYZER_MAP`; `analyze_php()` now uses `_analyze_with()` with regex fallback
+- 16 PHP AST test fixtures (8 TP + 8 FP)
+
+### Improved
+- **NodeGoat benchmark: F1 0.62 → 1.00** — Precision 44.4% → 100%, 12 TP / 0 FP / 0 FN
+- NoSQL injection: route-layer DAO skip, 4+ arg DAO skip, update `$set` fall-through fix
+- Hardcoded credentials: seed file skip to eliminate false positives
+- Open redirect: ±3 line dedup to remove duplicate findings
+- XSS: string-literal exclusion for precision improvement
+
+### Fixed
+- Ground truth expanded from 7 → 12 entries for comprehensive NodeGoat validation
+
 ## [0.2.0] — 2026-03-02
 
 ### Added

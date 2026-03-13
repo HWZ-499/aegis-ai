@@ -2,7 +2,7 @@
   "name": "aegis-ai-security",
   "displayName": "Aegis AI Security Scanner",
   "description": "Real-time SAST security scanner — detects SQL injection, NoSQL injection, XSS, RCE, path traversal and more as you type. Powered by Tree-sitter AST analysis + DeepSeek AI auto-fix.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "aegis-ai",
   "license": "MIT",
   "preview": true,
@@ -143,7 +143,7 @@
         "aegisAI.serverCwd": {
           "type": "string",
           "default": "",
-          "description": "强制指定 LSP Server 工作目录（aegis-ai-core 的绝对路径）。留空则自动推断。若诊断不显示可尝试填写，如: C:\\Users\\xxx\\aegis-ai\\aegis-ai-core"
+          "description": "Force LSP Server working directory (absolute path to aegis-ai-core). Leave blank for auto-detect."
         },
         "aegisAI.severity.minimum": {
           "type": "string",

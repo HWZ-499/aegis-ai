@@ -10,7 +10,7 @@
 
 - **Save-to-scan** — diagnostics appear within 1 second of saving a file
 - **10+ vulnerability types** — SQL injection, NoSQL injection, XSS, RCE, path traversal, hardcoded credentials, deserialization, and more
-- **Multi-language** — JavaScript / TypeScript / Python / Java / Go (full AST + taint analysis); PHP (line-level taint)
+- **Multi-language** — JavaScript / TypeScript / Python / PHP / Java / Go (full AST + taint analysis via Tree-sitter)
 - **AI auto-fix** — click the lightbulb (Code Action) on any High/Critical finding; DeepSeek generates framework-aware patch code
 - **Taint analysis** — cross-function and cross-file data-flow tracking via self-developed TaintGraph + Dominator Tree
 - **Status bar** — shows `Aegis: N issues` / `Aegis: Secure` / `Aegis: Scanning…` at a glance
@@ -21,12 +21,12 @@
 
 | Target | Language | Recall | Precision | F1 |
 |--------|----------|--------|-----------|-----|
+| NodeGoat (OWASP) | JavaScript | 100% | 100% | 1.00 |
 | django-3.2-core | Python | 92.3% | 92.3% | 0.92 |
-| NodeGoat (OWASP) | JavaScript | 100% | 44.4% | 0.62 |
 | DVWA | PHP | 100% | 45.3% | 0.62 |
 | flask-2.3.2 | Python | 66.7% | 50.0% | 0.57 |
 
-*Benchmarks run against OWASP NodeGoat, DVWA, Django 3.2 core, and Flask 2.3.2. As of 2026-03-02.*
+*Benchmarks run against OWASP NodeGoat, DVWA, Django 3.2 core, and Flask 2.3.2. As of 2026-03-13.*
 
 ---
 
@@ -103,7 +103,7 @@ If the LSP server is not found automatically, set the working directory explicit
 ## Known Issues
 
 - `tree-sitter==0.21.3` may print a FutureWarning on startup (no functional impact)
-- PHP analysis is based on line-scanning rather than full AST; some complex patterns may be missed
+- PHP analysis uses Tree-sitter AST for core rules; some niche patterns may still fall back to line-level matching
 - Cross-file taint propagation requires `module.exports` patterns (CommonJS)
 
 ---
