@@ -11,9 +11,12 @@ from .java_ast_rule import JavaNoSQLInjectionAstRule
 from .javascript_ast_rule import JavaScriptNoSQLInjectionAstRule
 from .python_ast_rule import PythonNoSQLInjectionAstRule
 
+from .php_ast_rule import PhpNoSQLInjectionAstRule
+
 __all__ = [
     "JavaScriptNoSQLInjectionAstRule",
     "PythonNoSQLInjectionAstRule",
     "JavaNoSQLInjectionAstRule",
     "GoNoSQLInjectionAstRule",
+    "PhpNoSQLInjectionAstRule",
 ]

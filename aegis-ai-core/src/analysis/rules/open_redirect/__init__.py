@@ -13,9 +13,12 @@ from .java_ast_rule import JavaOpenRedirectAstRule
 from .javascript_ast_rule import JavaScriptOpenRedirectAstRule
 from .python_ast_rule import PythonOpenRedirectAstRule
 
+from .php_ast_rule import PhpOpenRedirectAstRule
+
 __all__ = [
     "PythonOpenRedirectAstRule",
     "JavaScriptOpenRedirectAstRule",
     "JavaOpenRedirectAstRule",
     "GoOpenRedirectAstRule",
+    "PhpOpenRedirectAstRule",
 ]

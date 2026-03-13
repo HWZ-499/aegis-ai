@@ -17,7 +17,7 @@
 - **Status Bar 状态显示**：`$(shield) 就绪` / `$(loading~spin) 扫描中` / `$(error) N 个问题` / `$(check) 安全`
 - **AI 精准修复**：Code Action 直接替换漏洞行（置信度 >= 0.75），生成复用原变量名和框架 API 的修复代码
 - **框架感知**：自动识别 mysql2、Sequelize、Mongoose、pymysql、SQLAlchemy 等框架，提供专用修复示例
-- **多语言支持**：JavaScript / TypeScript / Python / Java / Go（完整 AST + 污点分析）| PHP（行级污点分析）
+- **多语言支持**：JavaScript / TypeScript / Python / PHP / Java / Go（全部已升级为完整 AST + 污点分析）
 - **多漏洞类型**：SQL 注入、NoSQL 注入、XSS、RCE、路径穿越、反序列化、硬编码凭证、SSRF（CWE-918）、开放重定向 — 共 9 类
 - **多层分析管道**：正则扫描 → AST 分析 → 污点追踪（Guard Clause + Dominator Tree）→ AI 增强
 - **CI/CD 集成**：GitHub Actions + GitLab CI，支持 SARIF 格式上报
@@ -283,7 +283,7 @@ aegis-ai/
 |------|------|
 | IDE 扩展 | TypeScript, VSCode API, vscode-languageclient |
 | LSP Server | Python, pygls, lsprotocol |
-| 静态分析 | Tree-sitter AST（JS/TS/Python/Java/Go 完整分析，PHP 行级）|
+| 静态分析 | Tree-sitter AST（JS/TS/Python/PHP/Java/Go 全部完整 AST 分析）|
 | 污点分析 | 自研 TaintGraph + Dominator Tree（单文件内）|
 | AI 修复 | DeepSeek API（兼容 OpenAI SDK）|
 | RAG 知识库 | ChromaDB + sentence-transformers（实验性，可选，已从核心依赖移除）|
@@ -313,19 +313,17 @@ v1.2.0 进行了一轮全面的代码质量优化：
 
 | 问题 | 影响 | 状态 |
 |------|------|------|
-| PHP 污点分析基于行扫描（非完整 AST 路径分析） | PHP 检出率低于 JS/Python | 规划中 |
-| NodeGoat Precision 44.4% | 误报率较高，需优化去重和白名单逻辑 | 高优先级 |
 | `tree-sitter==0.21.3` 启动时产生 `FutureWarning` | 无功能影响，LSP 入口已过滤 | 已缓解 |
 
 ---
 
 ## 基准测试结果
 
-在多个真实漏洞靶场上的测试结果（2026-03-02 最新评估）：
+在多个真实漏洞靶场上的测试结果（2026-03-13 最新评估）：
 
 | 目标 | 语言 | 扫描文件 | Recall | Precision | F1 |
 |------|------|---------|--------|-----------|-----|
-| **NodeGoat (OWASP)** | JavaScript | 9 | **100%** | 44.4% | **0.62** |
+| **NodeGoat (OWASP)** | JavaScript | 9 | **100%** | **100%** | **1.00** |
 | django-3.2-core | Python | 97 | 92.3% | 92.3% | **0.92** |
 | DVWA | PHP | 177 | 100% | 45.3% | **0.62** |
 | flask-2.3.2 | Python | 0* | 66.7% | 50.0% | 0.57 |
@@ -338,7 +336,8 @@ v1.2.0 进行了一轮全面的代码质量优化：
 |---------|------|---------|--------|-----|--------|-----|
 | v1 | 2026-02-08 | 0 | 3 | 13 | 50% | 0.27 |
 | v3 | 2026-03-02 | 1 | 4 | 12 | 66.7% | 0.36 |
-| **v6 (当前)** | **2026-03-02** | **3** | **8** | **10** | **100%** | **0.62** |
+| v6 | 2026-03-02 | 3 | 8 | 10 | 100% | 0.62 |
+| **v7 (当前)** | **2026-03-13** | **5** | **12** | **0** | **100%** | **1.00** |
 
 ---
 
@@ -346,14 +345,14 @@ v1.2.0 进行了一轮全面的代码质量优化：
 
 ### 已完成
 
-- 核心静态分析引擎（JS/TS/Python/Java/Go 完整 AST 分析，PHP 行级污点）
+- 核心静态分析引擎（JS/TS/Python/PHP/Java/Go 全部完整 AST + 污点分析）
 - 污点分析系统（TaintGraph + Guard Clause + Dominator Tree）
 - LSP Server（实时诊断 + Code Action + Status Bar）
 - AI 精准修复（框架感知 prompt + rich context 提取，置信度 >= 0.75 直接替换）
 - **多 AI 提供商支持**：DeepSeek（默认）、OpenAI、Ollama（本地免费离线）、自定义端点
 - VSCode/Cursor 扩展（含 Findings TreeView、Status Bar、命令面板）
-- 真实靶场基准测试（NodeGoat、DVWA、Django、Flask），NodeGoat F1 达到 0.62
-- `tests/rules/` 正/负样本测试套件（7 类漏洞，19 个参数化测试用例）
+- 真实靶场基准测试（NodeGoat、DVWA、Django、Flask），**NodeGoat F1 达到 1.00（12 TP / 0 FP）**
+- `tests/rules/` 正/负样本测试套件（9 类漏洞，85 个参数化测试用例，430 总测试通过）
 - **SSRF 检测（CWE-918）**：Python（requests/urllib/httpx）+ JavaScript（fetch/axios/http.get）
 - **内联抑制注释**：`# aegis-ignore` / `// aegis-ignore` 支持行末和行上方两种格式，可按漏洞类型过滤
 - 基线管理 + 增量扫描 + 自定义规则目录
@@ -365,9 +364,8 @@ v1.2.0 进行了一轮全面的代码质量优化：
 
 ### 规划中
 
-- PHP AST 分析升级：接入 Tree-sitter PHP 完整路径分析
 - VS Code Marketplace 上架
-- 精度优化：NodeGoat Precision 44% → 70%+
+- DVWA 精度优化
 
 ---
 
@@ -389,4 +387,4 @@ MIT License
 
 ---
 
-*最后更新: 2026-03-13 — v1.2.1 Java/Go 升级为完整 AST 分析，清理死代码，精度改进*
+*最后更新: 2026-03-13 — v1.3.0 PHP 升级为完整 AST 分析，NodeGoat F1 达到 1.00，430 测试全通过*

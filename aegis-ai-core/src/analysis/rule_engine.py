@@ -7,10 +7,10 @@ rule_engine.py - 规则引擎统一入口
 - 暴露 analyze_python / analyze_javascript / analyze_php 便捷函数，
   供 ProjectScanner、LSP Server、FastAPI 服务层统一调用。
 
-已注册规则（共 18 条 + PHP TaintGraph 4 条）：
+已注册规则（共 18 条 AST + 8 条 PHP AST + Regex 补充）：
 - Python: RCE、SQL 注入、XSS、路径遍历、硬编码凭证、反序列化、SSRF（含通用正则）
 - JavaScript/TypeScript: RCE、SQL 注入、XSS、路径遍历、硬编码凭证、反序列化、NoSQL 注入、SSRF
-- PHP: SQL 注入、RCE、XSS、开放重定向（TaintGraph 精确层 + Regex 补充层）
+- PHP: SQL 注入、RCE、XSS、开放重定向、路径遍历、反序列化、NoSQL 注入、硬编码凭证（AST 精确层 + Regex 补充层）
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from typing import Any, cast
 from .analyzers.go_analyzer import GoAnalyzer
 from .analyzers.java_analyzer import JavaAnalyzer
 from .analyzers.javascript_analyzer import JavaScriptAnalyzer
+from .analyzers.php_analyzer import PhpAnalyzer
 from .analyzers.python_analyzer import PythonAnalyzer
 from .base import SecurityRule
 from .dsl import load_dsl_rules_for_language
@@ -52,15 +53,22 @@ from .rules import (
     JavaScriptXSSAstRule,
     JavaSQLInjectionAstRule,
     JavaXSSAstRule,
+    PhpDeserializationAstRule,
     PhpDeserializationRule,
+    PhpHardcodedCredentialsAstRule,
     PhpHardcodedCredentialsRule,
+    PhpNoSQLInjectionAstRule,
     PhpNoSQLInjectionRule,
+    PhpOpenRedirectAstRule,
     PhpOpenRedirectRule,
+    PhpPathTraversalAstRule,
     PhpPathTraversalRule,
-    PhpRCERule,
-    # PHP TaintGraph 规则（analyze_php 内部延迟导入，此处仅供类型提示）
-    PhpSQLInjectionRule,
-    PhpXSSRule,
+    PhpRCEAstRule,
+    PhpRCERule,  # deprecated: kept for backward compat
+    PhpSQLInjectionAstRule,
+    PhpSQLInjectionRule,  # deprecated: kept for backward compat
+    PhpXSSAstRule,
+    PhpXSSRule,  # deprecated: kept for backward compat
     PythonDeserializationAstRule,
     PythonHardcodedCredentialsAstRule,
     PythonNoSQLInjectionAstRule,
@@ -143,14 +151,14 @@ def get_default_rules_for_language(
 
     if language == "php":
         return [
-            PhpSQLInjectionRule(),
-            PhpRCERule(),
-            PhpXSSRule(),
-            PhpOpenRedirectRule(),
-            PhpPathTraversalRule(),
-            PhpDeserializationRule(),
-            PhpNoSQLInjectionRule(),
-            PhpHardcodedCredentialsRule(),
+            PhpSQLInjectionAstRule(),
+            PhpRCEAstRule(),
+            PhpXSSAstRule(),
+            PhpOpenRedirectAstRule(),
+            PhpPathTraversalAstRule(),
+            PhpDeserializationAstRule(),
+            PhpNoSQLInjectionAstRule(),
+            PhpHardcodedCredentialsAstRule(),
         ]
 
     if language == "java":
@@ -195,6 +203,7 @@ _LANGUAGE_ANALYZER_MAP: dict[str, type[Any]] = {
     "typescript": JavaScriptAnalyzer,
     "java": JavaAnalyzer,
     "go": GoAnalyzer,
+    "php": PhpAnalyzer,
 }
 
 
@@ -309,13 +318,12 @@ def analyze_php(code: str, file_path: Path | str) -> list[dict]:
     分析单个 PHP 文件。
 
     双引擎策略：
-    1. **TaintGraph 精确层**（PhpSQLInjectionRule / PhpRCERule / PhpXSSRule /
-       PhpOpenRedirectRule）：基于行级赋值链追踪，产出带 taint_source_line /
-       related_locations 的高置信度 finding。
-    2. **Regex 补充层**（scan_code_locally）：宽泛正则，兜底覆盖 TaintGraph
+    1. **AST 精确层**（PhpSQLInjectionAstRule 等 8 条 Tree-sitter AST 规则）：
+       通过 PhpAnalyzer 驱动 visit() 生命周期，产出高置信度 finding。
+    2. **Regex 补充层**（scan_code_locally）：宽泛正则，兜底覆盖 AST
        尚未追踪到的场景。
 
-    去重规则：若 TaintGraph 在某行已报某类型，则丢弃 Regex 在同行同类型的报告，
+    去重规则：若 AST 层在某行已报某类型，则丢弃 Regex 在同行同类型的报告，
     避免重复诊断展示给用户。
 
     返回格式与 analyze_python / analyze_javascript 统一。
@@ -323,31 +331,12 @@ def analyze_php(code: str, file_path: Path | str) -> list[dict]:
     from .security_rules import scan_code_locally
 
     path = Path(file_path)
-    results: list[dict] = []
 
-    # ── 1. TaintGraph 精确层 ──
-    taint_rules = [
-        PhpSQLInjectionRule(),
-        PhpRCERule(),
-        PhpXSSRule(),
-        PhpOpenRedirectRule(),
-        PhpPathTraversalRule(),
-        PhpDeserializationRule(),
-        PhpNoSQLInjectionRule(),
-        PhpHardcodedCredentialsRule(),
-    ]
-    taint_covered: set[tuple[int, str]] = set()  # (line, vuln_type)
-
-    for rule in taint_rules:
-        try:
-            analyze_fn = getattr(rule, "analyze", None)
-            if not callable(analyze_fn):
-                continue
-            for f in analyze_fn(code, path):
-                results.append(f)
-                taint_covered.add((f["line"], f["type"]))
-        except (RuntimeError, ValueError):
-            logger.exception("PHP TaintGraph rule %s failed for %s", type(rule).__name__, path)
+    # ── 1. AST 精确层 ──
+    results = _analyze_with("php", code, path)
+    ast_covered: set[tuple[int, str]] = set()
+    for f in results:
+        ast_covered.add((f["line"], f["type"]))
 
     # ── 2. Regex 补充层 ──
     try:
@@ -360,7 +349,7 @@ def analyze_php(code: str, file_path: Path | str) -> list[dict]:
     for f in raw_findings:
         line = f.get("line", 1)
         vuln_type = f.get("type", "UNKNOWN")
-        if (line, vuln_type) in taint_covered:
+        if (line, vuln_type) in ast_covered:
             continue
         # 正则层：unserialize(..., allowed_classes) 视为安全，不补充报告
         if vuln_type == "DESERIALIZATION" and 1 <= line <= len(lines_of_code):
@@ -401,6 +390,7 @@ __all__ = [
     "analyze_java",
     "analyze_go",
     "analyze_php",
+    # Deprecated: old PHP line-level rules, kept for backward compat
     "PhpSQLInjectionRule",
     "PhpRCERule",
     "PhpXSSRule",

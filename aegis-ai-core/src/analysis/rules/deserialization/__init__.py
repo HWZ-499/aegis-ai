@@ -15,9 +15,12 @@ from .go_ast_rule import GoDeserializationAstRule
 from .java_ast_rule import JavaDeserializationAstRule
 from .javascript_ast_rule import JavaScriptDeserializationAstRule
 
+from .php_ast_rule import PhpDeserializationAstRule
+
 __all__ = [
     "PythonDeserializationAstRule",
     "JavaScriptDeserializationAstRule",
     "JavaDeserializationAstRule",
     "GoDeserializationAstRule",
+    "PhpDeserializationAstRule",
 ]

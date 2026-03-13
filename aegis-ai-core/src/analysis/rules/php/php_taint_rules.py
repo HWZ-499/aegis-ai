@@ -1,7 +1,12 @@
 """
-php_taint_rules.py - 基于 PhpTaintGraph 的 PHP 安全规则集（主引擎对齐版）
+php_taint_rules.py - 基于 PhpTaintGraph 的 PHP 安全规则集（已废弃）
 
-设计目标：
+.. deprecated::
+    本模块中的行级 TaintGraph 规则已被 ``rules/{vuln_type}/php_ast_rule.py``
+    中的 Tree-sitter AST 规则替代。rule_engine.analyze_php() 不再调用这些类。
+    仅保留导出以维持向后兼容，将在后续版本中移除。
+
+原设计目标：
 - 每条规则都产出带完整污点链信息的 finding；
 - finding 携带 taint_source_line / taint_var / related_locations，
   LSP 层可直接将 Source 位置映射为 relatedInformation；

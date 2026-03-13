@@ -11,30 +11,35 @@ from .deserialization import (
     GoDeserializationAstRule,
     JavaDeserializationAstRule,
     JavaScriptDeserializationAstRule,
+    PhpDeserializationAstRule,
     PythonDeserializationAstRule,
 )
 from .hardcoded_credentials import (
     GoHardcodedCredentialsAstRule,
     JavaHardcodedCredentialsAstRule,
     JavaScriptHardcodedCredentialsAstRule,
+    PhpHardcodedCredentialsAstRule,
     PythonHardcodedCredentialsAstRule,
 )
 from .nosql_injection import (
     GoNoSQLInjectionAstRule,
     JavaNoSQLInjectionAstRule,
     JavaScriptNoSQLInjectionAstRule,
+    PhpNoSQLInjectionAstRule,
     PythonNoSQLInjectionAstRule,
 )
 from .open_redirect import (
     GoOpenRedirectAstRule,
     JavaOpenRedirectAstRule,
     JavaScriptOpenRedirectAstRule,
+    PhpOpenRedirectAstRule,
     PythonOpenRedirectAstRule,
 )
 from .path_traversal import (
     GoPathTraversalAstRule,
     JavaPathTraversalAstRule,
     JavaScriptPathTraversalAstRule,
+    PhpPathTraversalAstRule,
     PythonPathTraversalAstRule,
 )
 from .php import (
@@ -47,16 +52,17 @@ from .php import (
     PhpSQLInjectionRule,
     PhpXSSRule,
 )
-from .rce import GoRCEAstRule, JavaRCEAstRule, JavaScriptRCEAstRule, PythonRCEAstRule
+from .rce import GoRCEAstRule, JavaRCEAstRule, JavaScriptRCEAstRule, PhpRCEAstRule, PythonRCEAstRule
 from .sql_injection import (
     GoSQLInjectionAstRule,
     JavaScriptSQLInjectionAstRule,
     JavaSQLInjectionAstRule,
+    PhpSQLInjectionAstRule,
     PythonSQLInjectionAstRule,
     SQLInjectionRegexRule,
 )
 from .ssrf import JavaScriptSSRFAstRule, PythonSSRFAstRule
-from .xss import GoXSSAstRule, JavaScriptXSSAstRule, JavaXSSAstRule, PythonXSSAstRule
+from .xss import GoXSSAstRule, JavaScriptXSSAstRule, JavaXSSAstRule, PhpXSSAstRule, PythonXSSAstRule
 
 __all__ = [
     "SQLInjectionRegexRule",
@@ -94,7 +100,7 @@ __all__ = [
     "GoOpenRedirectAstRule",
     "PythonSSRFAstRule",
     "JavaScriptSSRFAstRule",
-    # PHP TaintGraph 规则
+    # PHP TaintGraph 规则（旧，保留兼容）
     "PhpSQLInjectionRule",
     "PhpRCERule",
     "PhpXSSRule",
@@ -103,4 +109,13 @@ __all__ = [
     "PhpDeserializationRule",
     "PhpNoSQLInjectionRule",
     "PhpHardcodedCredentialsRule",
+    # PHP AST 规则（新）
+    "PhpSQLInjectionAstRule",
+    "PhpRCEAstRule",
+    "PhpXSSAstRule",
+    "PhpOpenRedirectAstRule",
+    "PhpPathTraversalAstRule",
+    "PhpDeserializationAstRule",
+    "PhpNoSQLInjectionAstRule",
+    "PhpHardcodedCredentialsAstRule",
 ]

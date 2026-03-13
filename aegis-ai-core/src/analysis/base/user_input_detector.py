@@ -110,6 +110,13 @@ _GO_USER_INPUT_ROOTS: list[tuple[tuple[str, ...], str]] = [
     (("ctx",), "PostForm"),
 ]
 
+# PHP 超全局变量名（$_GET, $_POST 等）
+# PHP 用户输入不走 member_expression 路径，而是 subscript_expression 路径
+# 在 is_user_input_node() 中单独处理
+_PHP_SUPERGLOBALS: frozenset[str] = frozenset({
+    "_GET", "_POST", "_REQUEST", "_COOKIE", "_SERVER", "_FILES",
+})
+
 
 def _get_node_text(node: Any) -> str:
     """
@@ -207,6 +214,8 @@ def is_user_input_node(
         roots = _JAVA_USER_INPUT_ROOTS
     elif language == "go":
         roots = _GO_USER_INPUT_ROOTS
+    elif language == "php":
+        return _is_php_user_input_node(node, context)
     else:
         roots = _JS_USER_INPUT_ROOTS + _PY_USER_INPUT_ROOTS
 
@@ -234,6 +243,70 @@ def is_user_input_node(
 
     # ── Case 3: 其他节点类型 ──
     # 对于 string / template_string / call_expression 等，不做猜测
+    return False
+
+
+def _is_php_user_input_node(node: Any, context: Any | None = None) -> bool:
+    """
+    PHP 专用用户输入检测。
+
+    PHP 超全局变量 AST 结构（与其他语言的 member_expression 不同）：
+    - ``$_GET['id']`` → ``subscript_expression`` → ``variable_name`` (``$_GET``)
+    - ``$_POST['name']`` → ``subscript_expression`` → ``variable_name`` (``$_POST``)
+
+    也检测变量是否通过 DataFlowTracker 被标记为 tainted。
+    """
+    if node is None:
+        return False
+
+    # Case 1: subscript_expression（如 $_GET['id']）
+    if node.type == "subscript_expression":
+        for child in node.children:
+            if child.type == "variable_name":
+                var_text = _get_node_text(child).lstrip("$")
+                if var_text in _PHP_SUPERGLOBALS:
+                    return True
+        return False
+
+    # Case 2: variable_name（如 $_GET 本身、或被污染的变量 $id）
+    if node.type == "variable_name":
+        var_text = _get_node_text(node).lstrip("$")
+        if var_text in _PHP_SUPERGLOBALS:
+            return True
+        if context is not None and hasattr(context, "is_var_tainted"):
+            if context.is_var_tainted(var_text) or context.is_var_tainted("$" + var_text):
+                return True
+        return False
+
+    # Case 3: 检查子节点中是否包含超全局变量（处理拼接/嵌套场景）
+    # 不在此处递归——由规则层在需要时调用 _subtree_contains_php_user_input
+    return False
+
+
+def _subtree_contains_php_user_input(node: Any, context: Any | None = None) -> bool:
+    """递归检查子树中是否包含 PHP 超全局变量（subscript_expression 或 tainted variable_name）。"""
+    if node is None:
+        return False
+    # 直接命中：subscript_expression 包含超全局变量
+    if node.type == "subscript_expression":
+        for child in node.children:
+            if child.type == "variable_name":
+                var_text = _get_node_text(child).lstrip("$")
+                if var_text in _PHP_SUPERGLOBALS:
+                    return True
+    # 直接命中：variable_name 本身是超全局变量
+    if node.type == "variable_name":
+        var_text = _get_node_text(node).lstrip("$")
+        if var_text in _PHP_SUPERGLOBALS:
+            return True
+        if context is not None and hasattr(context, "is_var_tainted"):
+            if context.is_var_tainted(var_text) or context.is_var_tainted("$" + var_text):
+                return True
+    # 递归子节点
+    if hasattr(node, "children"):
+        for child in node.children:
+            if _subtree_contains_php_user_input(child, context):
+                return True
     return False
 
 
@@ -265,6 +338,12 @@ def is_user_input_expr(
         roots = _JAVA_USER_INPUT_ROOTS
     elif language == "go":
         roots = _GO_USER_INPUT_ROOTS
+    elif language == "php":
+        # PHP: 检查 $_GET / $_POST 等超全局变量前缀
+        for sg in _PHP_SUPERGLOBALS:
+            if expr_text == f"${sg}" or expr_text.startswith(f"${sg}["):
+                return True
+        return False
     else:
         roots = _JS_USER_INPUT_ROOTS + _PY_USER_INPUT_ROOTS
 
@@ -280,4 +359,7 @@ def is_user_input_expr(
 __all__ = [
     "is_user_input_node",
     "is_user_input_expr",
+    "_is_php_user_input_node",
+    "_subtree_contains_php_user_input",
+    "_PHP_SUPERGLOBALS",
 ]

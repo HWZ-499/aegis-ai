@@ -15,10 +15,13 @@ from .java_ast_rule import JavaSQLInjectionAstRule
 from .javascript_ast_rule import JavaScriptSQLInjectionAstRule
 from .regex_rule import SQLInjectionRegexRule
 
+from .php_ast_rule import PhpSQLInjectionAstRule
+
 __all__ = [
     "SQLInjectionRegexRule",
     "PythonSQLInjectionAstRule",
     "JavaScriptSQLInjectionAstRule",
     "JavaSQLInjectionAstRule",
     "GoSQLInjectionAstRule",
+    "PhpSQLInjectionAstRule",
 ]
