@@ -94,6 +94,7 @@ def _is_parameterized(call_node: ast.Call) -> bool:
     - ``execute("SELECT...?", (uid,))``   # sqlite3 / PyMySQL
     - ``execute("SELECT...%s", [uid])``   # psycopg2
     - ``execute("SELECT...%(name)s", d)`` # psycopg2 named
+    - ``execute(sql, (uid,))``            # 变量引用 + 参数元组
     - 第一个参数是纯字符串字面量（不含拼接/插值）
     """
     args = call_node.args
@@ -110,6 +111,10 @@ def _is_parameterized(call_node: ast.Call) -> bool:
 
     # 第一个参数就是纯字面量（无用户数据）
     if first_val is not None and len(args) == 1:
+        return True
+
+    # 变量/属性引用 + 第二个参数 → cursor.execute(sql, params) 模式，标准参数化查询
+    if isinstance(first, (ast.Name, ast.Attribute)) and len(args) >= 2:
         return True
 
     return False
@@ -333,6 +338,19 @@ class PythonSQLInjectionAstRule(SecurityRule):
                     arg,
                     context,
                     "检测到 execute() 参数中使用 f-string 包含变量插值，存在 SQL 注入风险，建议使用参数化查询。",
+                )
+
+        # Name：变量引用（query = "SELECT..." % var; cursor.execute(query)）
+        elif isinstance(arg, ast.Name):
+            var_name = arg.id
+            if context is not None and context.is_var_tainted(var_name):
+                if context.is_var_sanitized(var_name):
+                    return
+                self._report(
+                    arg,
+                    context,
+                    f"检测到 execute() 参数变量 '{var_name}' 已被污点追踪标记为受污染，"
+                    "存在 SQL 注入风险，建议使用参数化查询。",
                 )
 
     def _check_raw_concat(self, node: ast.AST, context: AnalysisContext) -> None:

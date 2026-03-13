@@ -10,6 +10,7 @@ Java 硬编码凭证 AST 规则。
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
@@ -84,10 +85,11 @@ class JavaHardcodedCredentialsAstRule(SecurityRule):
             value_str = self._get_node_text(value_node)
             if value_str and not self._is_placeholder(value_str):
                 line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+                severity = self._effective_severity(context)
                 finding: dict[str, Any] = {
                     "type": "HARDCODED_CREDENTIALS",
                     "rule_id": self.rule_id,
-                    "severity": self.severity,
+                    "severity": severity,
                     "line": line_no,
                     "details": f"发现疑似硬编码凭证变量 '{var_name}'，建议使用环境变量或安全配置管理。",
                 }
@@ -129,10 +131,11 @@ class JavaHardcodedCredentialsAstRule(SecurityRule):
         value_str = self._get_node_text(right_node)
         if value_str and not self._is_placeholder(value_str):
             line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+            severity = self._effective_severity(context)
             finding: dict[str, Any] = {
                 "type": "HARDCODED_CREDENTIALS",
                 "rule_id": self.rule_id,
-                "severity": self.severity,
+                "severity": severity,
                 "line": line_no,
                 "details": f"发现疑似硬编码凭证变量 '{var_name}'，建议使用环境变量或安全配置管理。",
             }
@@ -141,6 +144,22 @@ class JavaHardcodedCredentialsAstRule(SecurityRule):
     # ------------------------------------------------------------------
     # 辅助方法
     # ------------------------------------------------------------------
+
+    _TEST_FILE_RE = re.compile(
+        r"[\\/](tests?|test_\w+|conftest|__tests__)[\\/]|[\\/]test_[^/\\]+\.\w+$|Test\.java$",
+        re.IGNORECASE,
+    )
+
+    def _effective_severity(self, context: AnalysisContext) -> str:
+        """配置类文件降级为 Medium，测试文件降级为 Low。"""
+        fp = getattr(context, "file_path", None) or ""
+        path_lower = str(fp).lower().replace("\\", "/")
+        if self._TEST_FILE_RE.search(path_lower):
+            return "Low"
+        if "config" in path_lower:
+            return "Medium"
+        return self.severity
+
     @staticmethod
     def _get_node_text(node: Node) -> str | None:
         if hasattr(node, "text"):
@@ -162,6 +181,31 @@ class JavaHardcodedCredentialsAstRule(SecurityRule):
             "keypress",
             "keybinding",
             "keystroke",
+            # 非凭证的 password/token/secret/key 衍生词
+            "passwordhash",
+            "passwordsalt",
+            "passwordlength",
+            "passwordpolicy",
+            "passwordregex",
+            "passwordvalidator",
+            "passwordfield",
+            "passwordinput",
+            "passwordlabel",
+            "passwordplaceholder",
+            "tokentype",
+            "tokenizer",
+            "tokenlength",
+            "tokenexpiry",
+            "tokenrefreshinterval",
+            "secretname",
+            "secretref",
+            "secretpath",
+            "keylength",
+            "keysize",
+            "keyalgorithm",
+            "keystore",
+            "keypath",
+            "keyname",
         }
     )
 
@@ -262,8 +306,6 @@ class JavaHardcodedCredentialsAstRule(SecurityRule):
             return True
 
         # 全大写下划线格式（如 YOUR_SECRET_KEY、MY_API_KEY_HERE）
-        import re
-
         if re.fullmatch(r"[A-Z0-9_]+", stripped or ""):
             return True
 

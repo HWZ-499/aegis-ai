@@ -14,6 +14,7 @@ JavaScript/TypeScript 硬编码凭证 AST 规则。
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
@@ -172,12 +173,19 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
     # ------------------------------------------------------------------
 
     def _effective_severity(self, context: AnalysisContext) -> str:
-        """配置类文件中降级为 Medium，减少 config/ 下默认值误报。"""
+        """配置类文件降级为 Medium，测试文件降级为 Low。"""
         fp = getattr(context, "file_path", None) or ""
         path_lower = str(fp).lower().replace("\\", "/")
+        if self._TEST_FILE_RE.search(path_lower):
+            return "Low"
         if "config" in path_lower:
             return "Medium"
         return self.severity
+
+    _TEST_FILE_RE = re.compile(
+        r"[\\/](tests?|test_\w+|conftest|__tests__)[\\/]|[\\/]test_[^/\\]+\.\w+$|\.test\.[jt]sx?$|\.spec\.[jt]sx?$",
+        re.IGNORECASE,
+    )
 
     # 已知误报：变量名含 key/Keyboard 等但非凭证（降低误报）
     CREDENTIAL_FALSE_POSITIVES = frozenset(
@@ -193,6 +201,31 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
             "keypress",
             "keybinding",
             "keystroke",
+            # 非凭证的 password/token/secret/key 衍生词
+            "passwordhash",
+            "passwordsalt",
+            "passwordlength",
+            "passwordpolicy",
+            "passwordregex",
+            "passwordvalidator",
+            "passwordfield",
+            "passwordinput",
+            "passwordlabel",
+            "passwordplaceholder",
+            "tokentype",
+            "tokenizer",
+            "tokenlength",
+            "tokenexpiry",
+            "tokenrefreshinterval",
+            "secretname",
+            "secretref",
+            "secretpath",
+            "keylength",
+            "keysize",
+            "keyalgorithm",
+            "keystore",
+            "keypath",
+            "keyname",
         }
     )
 
@@ -299,8 +332,6 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
             return True
 
         # 全大写下划线格式（如 YOUR_SECRET_KEY、MY_API_KEY_HERE）
-        import re
-
         if re.match(r"^[A-Z][A-Z0-9_]*$", stripped) and len(stripped) >= 6:
             return True
 

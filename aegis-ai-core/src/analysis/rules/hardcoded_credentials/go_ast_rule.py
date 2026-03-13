@@ -47,6 +47,31 @@ _FALSE_POSITIVES = frozenset(
         "keypress",
         "keybinding",
         "keystroke",
+        # 非凭证的 password/token/secret/key 衍生词
+        "passwordhash",
+        "passwordsalt",
+        "passwordlength",
+        "passwordpolicy",
+        "passwordregex",
+        "passwordvalidator",
+        "passwordfield",
+        "passwordinput",
+        "passwordlabel",
+        "passwordplaceholder",
+        "tokentype",
+        "tokenizer",
+        "tokenlength",
+        "tokenexpiry",
+        "tokenrefreshinterval",
+        "secretname",
+        "secretref",
+        "secretpath",
+        "keylength",
+        "keysize",
+        "keyalgorithm",
+        "keystore",
+        "keypath",
+        "keyname",
     }
 )
 
@@ -357,15 +382,31 @@ class GoHardcodedCredentialsAstRule(SecurityRule):
 
         return False
 
+    _TEST_FILE_RE = re.compile(
+        r"[\\/](tests?|test_\w+|conftest|__tests__)[\\/]|[\\/]test_[^/\\]+\.\w+$|_test\.go$",
+        re.IGNORECASE,
+    )
+
+    def _effective_severity(self, context: AnalysisContext) -> str:
+        """配置类文件降级为 Medium，测试文件降级为 Low。"""
+        fp = getattr(context, "file_path", None) or ""
+        path_lower = str(fp).lower().replace("\\", "/")
+        if self._TEST_FILE_RE.search(path_lower):
+            return "Low"
+        if "config" in path_lower:
+            return "Medium"
+        return self.severity
+
     def _report(self, node: Any, context: AnalysisContext, var_name: str) -> None:
         line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
         if line in self._reported_lines:
             return
         self._reported_lines.add(line)
+        severity = self._effective_severity(context)
         finding: dict[str, Any] = {
             "type": "HARDCODED_CREDENTIALS",
             "rule_id": self.rule_id,
-            "severity": self.severity,
+            "severity": severity,
             "line": line,
             "details": (f"发现 Go 代码中疑似硬编码凭证变量 '{var_name}'，建议改为从环境变量或安全配置加载。"),
         }
@@ -375,10 +416,11 @@ class GoHardcodedCredentialsAstRule(SecurityRule):
         if line in self._reported_lines:
             return
         self._reported_lines.add(line)
+        severity = self._effective_severity(context)
         finding: dict[str, Any] = {
             "type": "HARDCODED_CREDENTIALS",
             "rule_id": self.rule_id,
-            "severity": self.severity,
+            "severity": severity,
             "line": line,
             "details": (f"发现 Go 代码中疑似硬编码凭证变量 '{var_name}'，建议改为从环境变量或安全配置加载。"),
         }

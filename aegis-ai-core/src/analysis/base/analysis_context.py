@@ -104,6 +104,9 @@ class AnalysisContext:
     # 当前文件中已发现的问题列表（内部存储 Finding 模型）
     _findings: list[Any] = field(default_factory=list, repr=False)
 
+    # 去重键集合：防止同一 (rule_id, line, type) 重复报告
+    _seen_keys: set[tuple[str, int, str]] = field(default_factory=set, repr=False)
+
     # 其他可扩展的上下文信息
     extras: dict[str, Any] = field(default_factory=dict)
 
@@ -144,16 +147,37 @@ class AnalysisContext:
         向上下文中追加一条扫描结果。
 
         接受 dict 或 Finding 模型，内部统一存储为 Finding。
+        自动去重：同一 (rule_id, line, type) 不会重复报告。
         """
         from src.core.models import Finding
 
         if isinstance(finding, dict):
+            # 去重检查
+            dedup_key = (
+                finding.get("rule_id", ""),
+                finding.get("line", 0),
+                finding.get("type", ""),
+            )
+            if dedup_key[0] and dedup_key in self._seen_keys:
+                return
+            if dedup_key[0]:
+                self._seen_keys.add(dedup_key)
+
             finding = finding.copy()
             finding.setdefault("file", str(self.file_path))
             finding.setdefault("file_path", str(self.file_path))
             finding.setdefault("language", self.language)
             self._findings.append(Finding.from_legacy_dict(finding))
         elif hasattr(finding, "model_dump"):
+            # Finding 模型去重
+            rule_id = getattr(finding, "rule_id", "") or ""
+            line = getattr(finding, "line", 0) or 0
+            vuln_type = getattr(finding, "type", "") or ""
+            dedup_key = (rule_id, line, vuln_type)
+            if rule_id and dedup_key in self._seen_keys:
+                return
+            if rule_id:
+                self._seen_keys.add(dedup_key)
             self._findings.append(finding)
         else:
             raise TypeError("finding 必须是 dict 或 Finding 模型")
