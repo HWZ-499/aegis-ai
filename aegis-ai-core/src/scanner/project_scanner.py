@@ -619,20 +619,16 @@ class ProjectScanner:
 
     def _run_cross_file_analysis(self, verbose: bool = False) -> list[dict]:
         """
-        运行跨文件污点传播分析。
+        运行跨文件依赖图分析。
 
-        在单文件扫描完成后执行，利用 CrossFileAnalyzer 构建模块依赖图，
-        识别跨文件的 Source → Sink 污点路径。
-
-        当前覆盖范围：
-        - JavaScript/TypeScript：require() / ES6 import / module.exports
-        - Python：import / from...import
+        构建模块导入/导出依赖图，用于理解项目结构。
+        当前不产出 findings（跨文件污点追踪尚未实现）。
 
         Args:
             verbose: 是否打印详细日志
 
         Returns:
-            跨文件污点 finding 列表（格式与单文件 findings 一致）
+            空列表（保留接口供未来跨文件污点分析使用）
         """
         try:
             from src.analysis.taint import CrossFileAnalyzer
@@ -642,7 +638,7 @@ class ProjectScanner:
 
         try:
             if verbose:
-                logger.info("开始跨文件污点传播分析...")
+                logger.info("开始跨文件依赖图分析...")
 
             cross_analyzer = CrossFileAnalyzer(self.project_path)
             cross_analyzer.scan_project()
@@ -656,49 +652,10 @@ class ProjectScanner:
                 stats.get("dependency_edges", 0),
             )
 
-            cross_paths = cross_analyzer.find_cross_file_taint_paths()
-            findings: list[dict] = []
-
-            for path in cross_paths:
-                # 将 CrossFileTaintPath 转换为统一 finding 格式
-                sink_rel = self._to_relative(path.sink_file)
-                finding: dict = {
-                    "type": path.vuln_type.upper() if path.vuln_type else "CROSS_FILE_TAINT",
-                    "severity": path.severity,
-                    "line": path.sink_line,
-                    "start_line": path.sink_line,
-                    "end_line": path.sink_line,
-                    "start_character": 0,
-                    "end_character": 999,
-                    "details": path.description
-                    or (
-                        f"[CrossFile] 污点数据从 {self._to_relative(path.source_file)}:"
-                        f"{path.source_line} ({path.source_expr}) "
-                        f"传播至 {sink_rel}:{path.sink_line} ({path.sink_expr})"
-                    ),
-                    "file": sink_rel,
-                    "file_path": path.sink_file,
-                    "language": "javascript",
-                    "source": "CrossFileAnalyzer",
-                    "confidence": "medium",
-                    # 关联位置：标记 Source 文件和行
-                    "related_locations": [
-                        {
-                            "file_path": path.source_file,
-                            "start_line": path.source_line,
-                            "end_line": path.source_line,
-                            "start_character": 0,
-                            "end_character": 999,
-                            "message": f"SOURCE: {path.source_expr}",
-                        }
-                    ],
-                }
-                findings.append(finding)
-
-            return findings
+            return []
 
         except (OSError, UnicodeDecodeError, RuntimeError) as e:
-            logger.warning("跨文件污点分析失败: %s", e)
+            logger.warning("跨文件依赖图分析失败: %s", e)
             return []
 
     def _to_relative(self, file_path: str) -> str:

@@ -19,7 +19,6 @@ taint - 完整污点分析模块
 
 from .cross_file_analyzer import (
     CrossFileAnalyzer,
-    CrossFileTaintPath,
     ExportType,
     FunctionCall,
     ModuleExport,
@@ -63,6 +62,5 @@ __all__ = [
     "ModuleExport",
     "ModuleImport",
     "FunctionCall",
-    "CrossFileTaintPath",
     "ExportType",
 ]

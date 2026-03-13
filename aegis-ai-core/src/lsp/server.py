@@ -164,43 +164,15 @@ class WorkspaceContext:
 
     def get_cross_file_findings(self, file_path: str) -> list[dict]:
         """
-        获取与 ``file_path`` 相关的跨文件污点发现。
+        获取与 ``file_path`` 相关的跨文件发现。
+
+        当前跨文件污点追踪尚未实现，始终返回空列表。
+        保留接口供未来扩展。
 
         Returns:
-            finding dict 列表，可直接合并到单文件扫描结果。
+            finding dict 列表，当前为空。
         """
-        with self._lock:
-            analyzer = self._analyzer
-        if analyzer is None:
-            return []
-        try:
-            paths = analyzer.find_cross_file_taint_paths()
-            results: list[dict] = []
-            for p in paths:
-                d = p.to_dict()
-                if d["sink"]["file"] == file_path or d["source"]["file"] == file_path:
-                    results.append(
-                        {
-                            "type": d.get("vuln_type", "CROSS_FILE_TAINT"),
-                            "severity": d.get("severity", "High"),
-                            "line": d["sink"]["line"],
-                            "details": d.get("description", "Cross-file taint path detected"),
-                            "file_path": d["sink"]["file"],
-                            "source": "CrossFileAnalyzer",
-                            "related_locations": [
-                                {
-                                    "file_path": step["file"],
-                                    "start_line": step["line"],
-                                    "message": step.get("expr", ""),
-                                }
-                                for step in d.get("path", [])
-                            ],
-                        }
-                    )
-            return results
-        except (RuntimeError, AttributeError, KeyError):
-            logger.debug("Cross-file findings retrieval failed", exc_info=True)
-            return []
+        return []
 
     def invalidate(self) -> None:
         """文件变更后标记图需要重建。"""

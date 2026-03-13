@@ -249,38 +249,6 @@ def main():
 
                 cross_stats = cross_analyzer.get_stats()
 
-                # P2：将跨文件污点路径转为 findings 并合并到 results
-                cross_paths = cross_analyzer.find_cross_file_taint_paths()
-                cross_findings_count = 0
-                for path in cross_paths:
-                    try:
-                        rel_sink = Path(path.sink_file).relative_to(project_path)
-                    except ValueError:
-                        rel_sink = Path(path.sink_file).name
-                    rel_sink_str = str(rel_sink).replace("\\", "/")
-                    finding = {
-                        "type": path.vuln_type or "CROSS_FILE_TAINT",
-                        "severity": path.severity or "High",
-                        "line": path.sink_line,
-                        "start_line": path.sink_line,
-                        "end_line": path.sink_line,
-                        "file": rel_sink_str,
-                        "file_path": path.sink_file,
-                        "details": path.description or f"跨文件污点: {path.source_file} → {path.sink_file}",
-                        "related_locations": [
-                            {
-                                "file_path": path.source_file,
-                                "start_line": path.source_line,
-                                "end_line": path.source_line,
-                                "message": f"SOURCE: {path.source_expr}",
-                            }
-                        ],
-                    }
-                    results.setdefault(rel_sink_str, []).append(finding)
-                    cross_findings_count += 1
-                if cross_findings_count and args.verbose:
-                    print(f"   跨文件污点路径: {cross_findings_count} 条已并入报告")
-
                 if args.verbose:
                     print("✅ 跨文件分析完成:")
                     print(f"   分析文件数: {cross_stats['files_analyzed']}")
@@ -291,7 +259,6 @@ def main():
                 # 获取依赖图用于报告
                 stats["cross_file_analysis"] = {
                     "enabled": True,
-                    "cross_file_findings": cross_findings_count,
                     **cross_stats,
                 }
 

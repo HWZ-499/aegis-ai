@@ -1,10 +1,9 @@
 """
-cross_file_analyzer.py - 跨文件数据流分析器
+cross_file_analyzer.py - 跨文件依赖图分析器
 
-实现跨文件的污点传播分析：
+实现跨文件的模块依赖关系解析：
 1. 解析模块导入/导出关系
-2. 构建项目级调用图
-3. 在跨文件调用时传播污点
+2. 构建项目级依赖图
 
 支持：
 - JavaScript/TypeScript: require(), import/export
@@ -13,7 +12,7 @@ cross_file_analyzer.py - 跨文件数据流分析器
 使用示例：
     analyzer = CrossFileAnalyzer(project_path)
     analyzer.build_dependency_graph()
-    findings = analyzer.analyze_cross_file_taint()
+    stats = analyzer.get_stats()
 """
 
 from __future__ import annotations
@@ -93,54 +92,16 @@ class FunctionCall:
     tainted_args: set[int] = field(default_factory=set)  # 被污染的参数索引
 
 
-@dataclass
-class CrossFileTaintPath:
-    """跨文件污点路径"""
-
-    source_file: str  # 源文件
-    source_line: int  # 源行号
-    source_expr: str  # 源表达式
-
-    sink_file: str  # 汇点文件
-    sink_line: int  # 汇点行号
-    sink_expr: str  # 汇点表达式
-
-    path: list[tuple[str, int, str]] = field(default_factory=list)  # (file, line, expr)
-
-    vuln_type: str = ""  # 漏洞类型
-    severity: str = "High"  # 严重级别
-    description: str = ""  # 描述
-
-    def to_dict(self) -> dict[str, Any]:
-        """转换为字典"""
-        return {
-            "source": {
-                "file": self.source_file,
-                "line": self.source_line,
-                "expr": self.source_expr,
-            },
-            "sink": {
-                "file": self.sink_file,
-                "line": self.sink_line,
-                "expr": self.sink_expr,
-            },
-            "path": [{"file": f, "line": l, "expr": e} for f, l, e in self.path],
-            "vuln_type": self.vuln_type,
-            "severity": self.severity,
-            "description": self.description,
-        }
-
-
 class CrossFileAnalyzer:
     """
-    跨文件数据流分析器。
+    跨文件依赖图分析器。
 
-    分析项目中跨文件的数据流传播，识别跨文件的污点路径。
+    分析项目中跨文件的模块导入/导出关系，构建依赖图。
 
     使用示例：
         analyzer = CrossFileAnalyzer(Path("./my-project"))
         analyzer.scan_project()
-        findings = analyzer.find_cross_file_taint_paths()
+        stats = analyzer.get_stats()
     """
 
     def __init__(self, project_path: Path):
@@ -591,43 +552,6 @@ class CrossFileAnalyzer:
                         self._dependents[imp.resolved_path] = set()
                     self._dependents[imp.resolved_path].add(file_path)
 
-    def find_cross_file_taint_paths(self) -> list[CrossFileTaintPath]:
-        """
-        查找跨文件的污点路径。
-
-        Returns:
-            跨文件污点路径列表
-        """
-        paths = []
-
-        # 遍历所有导入关系
-        for file_path, imports in self._imports.items():
-            for imp in imports:
-                if not imp.resolved_path:
-                    continue
-
-                # 检查导入的模块是否有危险的导出
-                source_exports = self._exports.get(imp.resolved_path, [])
-
-                for export in source_exports:
-                    # 如果导出的函数接收用户输入作为参数
-                    if export.tainted_params:
-                        paths.append(
-                            CrossFileTaintPath(
-                                source_file=file_path,
-                                source_line=imp.line,
-                                source_expr=f"import {imp.local_name}",
-                                sink_file=imp.resolved_path,
-                                sink_line=export.line,
-                                sink_expr=export.name,
-                                path=[(file_path, imp.line, f"import {imp.local_name}")],
-                                vuln_type="cross_file_taint",
-                                description=f"污点数据从 {file_path} 传播到 {imp.resolved_path}",
-                            )
-                        )
-
-        return paths
-
     def get_dependency_graph(self) -> dict[str, set[str]]:
         """获取依赖图"""
         return self._dependencies
@@ -693,6 +617,5 @@ __all__ = [
     "ModuleExport",
     "ModuleImport",
     "FunctionCall",
-    "CrossFileTaintPath",
     "ExportType",
 ]
