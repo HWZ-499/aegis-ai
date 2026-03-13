@@ -340,9 +340,11 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
 
         # 如果调用者不像数据库，且函数名太普通（如 'find'），则跳过
         # 防止把 array.find() 当成漏洞
+        # 但是：如果参数明确包含 req.body/req.query，即使调用者未知也要报
         if method_name == "find":
             if not caller_name or (not self._is_db_related(caller_name, likely_db_objects) and not is_dao_pattern):
-                return
+                if not self._args_contain_obvious_user_input(node, context):
+                    return
 
         # 如果调用者存在但不像是数据库对象，跳过
         if caller_name:
@@ -350,11 +352,12 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
             # 排除明显不是数据库的对象
             if caller_lower in ("array", "string", "number", "object", "math", "date"):
                 return
-            # 如果调用者不像数据库对象，跳过（除非方法名很明确是数据库操作，或者是 DAO 模式）
+            # 如果调用者不像数据库对象，跳过（除非方法名很明确是数据库操作，或者是 DAO 模式，或者参数包含明确用户输入）
             if (
                 method_name not in ("findOne", "updateOne", "deleteOne", "remove", "update")
                 and not self._is_db_related(caller_name, likely_db_objects)
                 and not is_dao_pattern
+                and not self._args_contain_obvious_user_input(node, context)
             ):
                 return
 
@@ -415,7 +418,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                         finding.update(tree_sitter_node_to_range(node))
                         context.add_finding(finding)
                         return
-                    elif self._contains_identifier_in_object(first_arg, context):
+                    elif self._contains_identifier_in_object(first_arg, context, caller_is_db=self._is_db_related(caller_name, likely_db_objects) if caller_name else False):
                         # 对象中包含污染标识符（污点感知）
                         finding: dict[str, Any] = {
                             "type": "NOSQL_INJECTION",
@@ -530,6 +533,27 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
             return False
         caller_lower = caller_name.lower()
         return any(s in caller_lower for s in self.CRYPTO_LIKE_UPDATE_SUBSTRINGS)
+
+    def _args_contain_obvious_user_input(self, call_node: Node, context: AnalysisContext) -> bool:
+        """
+        Quick scan of call arguments for obvious user input (req.body.*/req.query.*).
+
+        Used to override caller whitelist: if the argument clearly contains user
+        input, the call is suspicious regardless of the caller name.
+        """
+        for child in call_node.children:
+            if child.type != "arguments":
+                continue
+            for arg in child.children:
+                if arg.type in (",", "(", ")"):
+                    continue
+                if self._looks_like_user_input(arg, context):
+                    return True
+                # Check inside object literals: { email: req.query.email }
+                if arg.type == "object":
+                    if self._has_dangerous_key_or_value(arg, context):
+                        return True
+        return False
 
     def _is_db_related(self, caller_name: str, likely_db_objects: list) -> bool:
         """
@@ -699,7 +723,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
 
         return False
 
-    def _contains_identifier_in_object(self, node: Node, context: AnalysisContext | None = None) -> bool:
+    def _contains_identifier_in_object(self, node: Node, context: AnalysisContext | None = None, *, caller_is_db: bool = False) -> bool:
         """
         检查对象字面量中是否包含**来自外部/污染的**标识符。
 
@@ -764,6 +788,9 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                         or "repository" in fp_lower
                     )
                     if is_dao_file:
+                        return True
+                    # 调用者已确认是 DB 对象（如 usersCol）→ 未追踪变量视为可疑外部输入
+                    if caller_is_db:
                         return True
                     # 未追踪且名称无特征 → 不报（宁漏勿误）
                     continue
