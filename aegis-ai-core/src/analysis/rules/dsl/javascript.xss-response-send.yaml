@@ -5,4 +5,10 @@ message: "检测到将用户输入直接传给 res.send/res.write，存在 XSS �
 vuln_type: XSS_RISK
 patterns:
   - pattern: res.send($EXPR)
+    metavariables:
+      EXPR:
+        not_regex: "^[\"']"
   - pattern: res.write($EXPR)
+    metavariables:
+      EXPR:
+        not_regex: "^[\"']"

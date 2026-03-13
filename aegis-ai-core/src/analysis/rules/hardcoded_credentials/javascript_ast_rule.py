@@ -18,6 +18,7 @@ import re
 from typing import Any
 
 from ...base import AnalysisContext, SecurityRule
+from ...base.file_context import is_likely_seed_or_migration
 
 # Tree-sitter Node 类型
 try:
@@ -49,6 +50,10 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
             return
 
         if not isinstance(node, Node):
+            return
+
+        # 种子/初始化脚本（如 artifacts/db-reset.js）中的硬编码凭证是预期行为，跳过
+        if is_likely_seed_or_migration(context.file_path):
             return
 
         # 检测变量声明（const/let/var）

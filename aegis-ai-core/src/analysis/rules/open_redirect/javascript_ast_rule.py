@@ -37,6 +37,7 @@ class JavaScriptOpenRedirectAstRule(SecurityRule):
             return
 
         reported_sinks: set[str] = set()
+        reported_lines: set[int] = set()
 
         paths = safe_find_paths(graph, self.rule_id)
 
@@ -60,6 +61,10 @@ class JavaScriptOpenRedirectAstRule(SecurityRule):
             reported_sinks.add(sink_id)
 
             line_no = getattr(sink, "line", 0) or 0
+            # 邻近行去重：同一 open_redirect sink 若已有相邻行（±3）被报告，跳过
+            if any(abs(line_no - r) <= 3 for r in reported_lines):
+                continue
+            reported_lines.add(line_no)
             src_expr = getattr(source, "name", "") or getattr(source, "code_snippet", "")
             sink_expr = getattr(sink, "name", "") or getattr(sink, "code_snippet", "")
 

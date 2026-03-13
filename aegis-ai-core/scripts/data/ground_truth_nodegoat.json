@@ -7,6 +7,20 @@
     "comment": "A1 NoSQL: validateLogin 中 app/data/user-dao.js L91 findOne({ userName: userName })，userName 来自外部参数，可注入 $gt/$ne 绕过认证。注意：L98 是安全的 parseInt(userId) 查询，原 GT 行号有误。"
   },
   {
+    "file": "user-dao.js",
+    "line": 45,
+    "type": "NOSQL_INJECTION",
+    "is_true_positive": true,
+    "comment": "A1 NoSQL: addUser 中 app/data/user-dao.js L45 usersCol.insert(user)，user 对象字段（userName, password 等）直接来自外部参数，未净化的字段可被 NoSQL 操作符注入。"
+  },
+  {
+    "file": "user-dao.js",
+    "line": 104,
+    "type": "NOSQL_INJECTION",
+    "is_true_positive": true,
+    "comment": "A1 NoSQL: getUserByUserName 中 app/data/user-dao.js L104 usersCol.findOne({ userName: userName })，userName 来自外部参数，与 L91 同样的 NoSQL 注入风险。"
+  },
+  {
     "file": "contributions.js",
     "line": 32,
     "type": "RCE_COMMAND_EXEC",
@@ -54,5 +68,19 @@
     "type": "HARDCODED_CREDENTIALS",
     "is_true_positive": true,
     "comment": "A6 Sensitive Data: config/env/test.js L6 zapApiKey 硬编码（同 development.js），测试环境同样不应硬编码凭证。"
+  },
+  {
+    "file": "index.js",
+    "line": 70,
+    "type": "OPEN_REDIRECT",
+    "is_true_positive": true,
+    "comment": "A10 Unvalidated Redirects: app/routes/index.js L70-72 res.redirect(req.query.url)，用户可控 URL 直接重定向，NodeGoat 故意设计的漏洞。"
+  },
+  {
+    "file": "research.js",
+    "line": 25,
+    "type": "XSS_RISK",
+    "is_true_positive": true,
+    "comment": "A3 XSS: app/routes/research.js L25 res.write(body)，body 来自外部 HTTP 请求 needle.get()，直接写入响应未转义，存在反射型 XSS。"
   }
 ]

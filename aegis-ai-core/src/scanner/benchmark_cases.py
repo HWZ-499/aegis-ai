@@ -69,7 +69,7 @@ BENCH_CASES_TP: list[BenchCase] = [
         "NOSQL_INJECTION",
         "dao_pattern",
         "DAO 模式更新",
-        "allocationsDAO.update(userId, stocks, funds, bonds);",
+        "allocationsDAO.update({_id: userId}, {$set: {stocks: req.body.stocks}});",
         True,
     ),
     # SQL Injection

@@ -144,8 +144,8 @@ def test_dao_pattern():
         return
 
     code = """
-    allocationsDAO.update(userId, stocks, funds, bonds);
-    contributionsDAO.update(userId, preTax, afterTax, roth);
+    allocationsDAO.update({_id: userId}, {$set: {stocks: req.body.stocks}});
+    contributionsDAO.update({_id: odId}, {$set: {preTax: req.body.preTax}});
     """
 
     findings = analyze_code(code, parser)

@@ -338,6 +338,33 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
         if caller_name and caller_name.lower().endswith("dao"):
             is_dao_pattern = True
 
+        # 【降低误报】DAO 对象调用（如 contributionsDAO.update()、memosDAO.insert()）
+        # 带有 4+ 个参数时，说明这是应用层自定义方法（如 update(userId, a, b, c, callback)）
+        # 而非 MongoDB 原生操作（通常 2-3 参数：query, update, options）。直接跳过。
+        if is_dao_pattern:
+            arg_count = 0
+            for child in node.children:
+                if child.type == "arguments":
+                    arg_count = sum(1 for a in child.children if a.type not in (",", "(", ")"))
+                    break
+            if arg_count >= 4:
+                return
+
+            # 【降低误报】路由层调用 DAO 封装方法（如 memosDAO.insert(req.body.memo, cb)）
+            # 不是直接的 MongoDB 操作 —— 真正的 collection.insert() 在 DAO 文件内部，
+            # 会被该文件自己的扫描检测到。仅当当前文件不是 DAO 文件时跳过。
+            # 但注意：仅对 insert/insertOne/insertMany 跳过（其他如 findOne/update 可能仍需报）
+            fp_lower_route = str(context.file_path).lower().replace("\\", "/")
+            current_is_dao_file = (
+                "-dao" in fp_lower_route
+                or "dao.js" in fp_lower_route
+                or "dao.ts" in fp_lower_route
+                or "_dao" in fp_lower_route
+                or "repository" in fp_lower_route
+            )
+            if not current_is_dao_file and method_name in ("insert", "insertOne", "insertMany"):
+                return
+
         # 如果调用者不像数据库，且函数名太普通（如 'find'），则跳过
         # 防止把 array.find() 当成漏洞
         # 但是：如果参数明确包含 req.body/req.query，即使调用者未知也要报
@@ -404,10 +431,14 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
 
                 # 情况 B: 参数是对象字面量 {user: ...} (High)
                 elif first_arg.type == "object":
-                    # 【降低误报】简单 _id/id 查询（如 findOne({ _id: id })）常见于合法 ById 查找，跳过
+                    # 【降低误报】简单 _id/id 查询（如 findOne({ _id: id })）常见于合法 ById 查找
+                    # 对于 update 类方法，跳过情况 B 但继续检查情况 D（第二个参数可能有风险）
+                    _UPDATE_METHODS = ("update", "updateOne", "updateMany", "findOneAndUpdate")
                     if self._is_simple_id_query(first_arg):
-                        return
-                    if self._has_dangerous_key_or_value(first_arg, context):
+                        if method_name not in _UPDATE_METHODS:
+                            return
+                        # update 类方法：跳过情况 B，直接到情况 D 检查第二个参数
+                    elif self._has_dangerous_key_or_value(first_arg, context):
                         finding: dict[str, Any] = {
                             "type": "NOSQL_INJECTION",
                             "rule_id": self.rule_id,
