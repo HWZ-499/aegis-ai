@@ -13,7 +13,6 @@ from .ast_rule import PythonHardcodedCredentialsAstRule
 from .go_ast_rule import GoHardcodedCredentialsAstRule
 from .java_ast_rule import JavaHardcodedCredentialsAstRule
 from .javascript_ast_rule import JavaScriptHardcodedCredentialsAstRule
-
 from .php_ast_rule import PhpHardcodedCredentialsAstRule
 
 __all__ = [

@@ -13,9 +13,8 @@ from .ast_rule import PythonSQLInjectionAstRule
 from .go_ast_rule import GoSQLInjectionAstRule
 from .java_ast_rule import JavaSQLInjectionAstRule
 from .javascript_ast_rule import JavaScriptSQLInjectionAstRule
-from .regex_rule import SQLInjectionRegexRule
-
 from .php_ast_rule import PhpSQLInjectionAstRule
+from .regex_rule import SQLInjectionRegexRule
 
 __all__ = [
     "SQLInjectionRegexRule",

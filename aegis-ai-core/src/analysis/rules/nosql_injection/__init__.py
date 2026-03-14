@@ -9,9 +9,8 @@ nosql_injection 规则子包。
 from .go_ast_rule import GoNoSQLInjectionAstRule
 from .java_ast_rule import JavaNoSQLInjectionAstRule
 from .javascript_ast_rule import JavaScriptNoSQLInjectionAstRule
-from .python_ast_rule import PythonNoSQLInjectionAstRule
-
 from .php_ast_rule import PhpNoSQLInjectionAstRule
+from .python_ast_rule import PythonNoSQLInjectionAstRule
 
 __all__ = [
     "JavaScriptNoSQLInjectionAstRule",

@@ -11,9 +11,8 @@ open_redirect 规则子包。
 from .go_ast_rule import GoOpenRedirectAstRule
 from .java_ast_rule import JavaOpenRedirectAstRule
 from .javascript_ast_rule import JavaScriptOpenRedirectAstRule
-from .python_ast_rule import PythonOpenRedirectAstRule
-
 from .php_ast_rule import PhpOpenRedirectAstRule
+from .python_ast_rule import PythonOpenRedirectAstRule
 
 __all__ = [
     "PythonOpenRedirectAstRule",
