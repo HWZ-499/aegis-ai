@@ -19,13 +19,26 @@ except ImportError:
 class PhpNoSQLInjectionAstRule(SecurityRule):
     """Detect NoSQL injection in PHP MongoDB calls."""
 
-    MONGO_METHODS = frozenset({
-        "find", "findOne", "findOneAndUpdate", "findOneAndDelete",
-        "update", "updateOne", "updateMany",
-        "insert", "insertOne", "insertMany",
-        "delete", "deleteOne", "deleteMany",
-        "remove", "count", "aggregate",
-    })
+    MONGO_METHODS = frozenset(
+        {
+            "find",
+            "findOne",
+            "findOneAndUpdate",
+            "findOneAndDelete",
+            "update",
+            "updateOne",
+            "updateMany",
+            "insert",
+            "insertOne",
+            "insertMany",
+            "delete",
+            "deleteOne",
+            "deleteMany",
+            "remove",
+            "count",
+            "aggregate",
+        }
+    )
 
     def __init__(self) -> None:
         super().__init__(rule_id="NOSQL_INJECTION_PHP_AST", severity="High", languages=["php"])

@@ -113,9 +113,16 @@ _GO_USER_INPUT_ROOTS: list[tuple[tuple[str, ...], str]] = [
 # PHP 超全局变量名（$_GET, $_POST 等）
 # PHP 用户输入不走 member_expression 路径，而是 subscript_expression 路径
 # 在 is_user_input_node() 中单独处理
-_PHP_SUPERGLOBALS: frozenset[str] = frozenset({
-    "_GET", "_POST", "_REQUEST", "_COOKIE", "_SERVER", "_FILES",
-})
+_PHP_SUPERGLOBALS: frozenset[str] = frozenset(
+    {
+        "_GET",
+        "_POST",
+        "_REQUEST",
+        "_COOKIE",
+        "_SERVER",
+        "_FILES",
+    }
+)
 
 
 def _get_node_text(node: Any) -> str:

@@ -19,10 +19,20 @@ except ImportError:
 class PhpPathTraversalAstRule(SecurityRule):
     """Detect path traversal via file operations with user input."""
 
-    FILE_FUNCS = frozenset({
-        "file_get_contents", "file_put_contents", "readfile", "fopen",
-        "file", "unlink", "copy", "rename", "mkdir", "rmdir",
-    })
+    FILE_FUNCS = frozenset(
+        {
+            "file_get_contents",
+            "file_put_contents",
+            "readfile",
+            "fopen",
+            "file",
+            "unlink",
+            "copy",
+            "rename",
+            "mkdir",
+            "rmdir",
+        }
+    )
 
     def __init__(self) -> None:
         super().__init__(rule_id="PATH_TRAVERSAL_PHP_AST", severity="High", languages=["php"])

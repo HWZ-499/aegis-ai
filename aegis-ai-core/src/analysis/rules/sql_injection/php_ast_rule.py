@@ -19,14 +19,26 @@ except ImportError:
 class PhpSQLInjectionAstRule(SecurityRule):
     """Detect SQL injection in PHP via Tree-sitter AST."""
 
-    QUERY_METHODS = frozenset({
-        "query", "exec", "execute", "multi_query",
-        "pg_query", "pg_query_params",
-        "sqlite_query", "querySingle",
-    })
-    QUERY_FUNCTIONS = frozenset({
-        "mysql_query", "mysqli_query", "pg_query", "sqlite_query",
-    })
+    QUERY_METHODS = frozenset(
+        {
+            "query",
+            "exec",
+            "execute",
+            "multi_query",
+            "pg_query",
+            "pg_query_params",
+            "sqlite_query",
+            "querySingle",
+        }
+    )
+    QUERY_FUNCTIONS = frozenset(
+        {
+            "mysql_query",
+            "mysqli_query",
+            "pg_query",
+            "sqlite_query",
+        }
+    )
 
     def __init__(self) -> None:
         super().__init__(rule_id="SQL_INJECTION_PHP_AST", severity="High", languages=["php"])

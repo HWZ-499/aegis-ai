@@ -19,10 +19,20 @@ except ImportError:
 class PhpRCEAstRule(SecurityRule):
     """Detect command execution with user input in PHP."""
 
-    DANGEROUS_FUNCS = frozenset({
-        "system", "exec", "passthru", "shell_exec", "popen", "proc_open",
-        "pcntl_exec", "eval", "assert", "preg_replace",
-    })
+    DANGEROUS_FUNCS = frozenset(
+        {
+            "system",
+            "exec",
+            "passthru",
+            "shell_exec",
+            "popen",
+            "proc_open",
+            "pcntl_exec",
+            "eval",
+            "assert",
+            "preg_replace",
+        }
+    )
 
     def __init__(self) -> None:
         super().__init__(rule_id="RCE_PHP_AST", severity="Critical", languages=["php"])

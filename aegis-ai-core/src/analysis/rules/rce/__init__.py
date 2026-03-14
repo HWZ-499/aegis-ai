@@ -14,5 +14,10 @@ from .java_ast_rule import JavaRCEAstRule
 from .javascript_ast_rule import JavaScriptRCEAstRule
 from .php_ast_rule import PhpRCEAstRule
 
-__all__ = ["PythonRCEAstRule", "JavaScriptRCEAstRule", "JavaRCEAstRule", "GoRCEAstRule", "PhpRCEAstRule",
+__all__ = [
+    "PythonRCEAstRule",
+    "JavaScriptRCEAstRule",
+    "JavaRCEAstRule",
+    "GoRCEAstRule",
+    "PhpRCEAstRule",
 ]

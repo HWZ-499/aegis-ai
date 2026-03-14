@@ -17,5 +17,10 @@ from .java_ast_rule import JavaXSSAstRule
 from .javascript_ast_rule import JavaScriptXSSAstRule
 from .php_ast_rule import PhpXSSAstRule
 
-__all__ = ["PythonXSSAstRule", "JavaScriptXSSAstRule", "JavaXSSAstRule", "GoXSSAstRule", "PhpXSSAstRule",
+__all__ = [
+    "PythonXSSAstRule",
+    "JavaScriptXSSAstRule",
+    "JavaXSSAstRule",
+    "GoXSSAstRule",
+    "PhpXSSAstRule",
 ]

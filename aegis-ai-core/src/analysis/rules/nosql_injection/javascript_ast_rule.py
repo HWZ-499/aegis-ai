@@ -449,7 +449,11 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                         finding.update(tree_sitter_node_to_range(node))
                         context.add_finding(finding)
                         return
-                    elif self._contains_identifier_in_object(first_arg, context, caller_is_db=self._is_db_related(caller_name, likely_db_objects) if caller_name else False):
+                    elif self._contains_identifier_in_object(
+                        first_arg,
+                        context,
+                        caller_is_db=self._is_db_related(caller_name, likely_db_objects) if caller_name else False,
+                    ):
                         # 对象中包含污染标识符（污点感知）
                         finding: dict[str, Any] = {
                             "type": "NOSQL_INJECTION",
@@ -754,7 +758,9 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
 
         return False
 
-    def _contains_identifier_in_object(self, node: Node, context: AnalysisContext | None = None, *, caller_is_db: bool = False) -> bool:
+    def _contains_identifier_in_object(
+        self, node: Node, context: AnalysisContext | None = None, *, caller_is_db: bool = False
+    ) -> bool:
         """
         检查对象字面量中是否包含**来自外部/污染的**标识符。
 
