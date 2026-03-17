@@ -2,6 +2,11 @@
 
 All notable changes to Aegis AI Security Scanner are documented here.
 
+## [0.3.1] — 2026-03-17
+
+### Fixed
+- **LSP server crash fix** — `send_notification` → `protocol.notify` for pygls 2.0 compatibility; resolves `AttributeError` that prevented scanning from working
+
 ## [0.3.0] — 2026-03-13
 
 ### Added

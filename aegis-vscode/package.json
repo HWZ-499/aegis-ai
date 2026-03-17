@@ -2,7 +2,7 @@
   "name": "aegis-ai-security",
   "displayName": "Aegis AI Security Scanner",
   "description": "Real-time SAST scanner with AI auto-fix — SQL/NoSQL injection, XSS, RCE, path traversal across JS/TS/Python/PHP/Java/Go. Tree-sitter AST + taint analysis.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "wen-zai",
   "license": "MIT",
   "preview": true,

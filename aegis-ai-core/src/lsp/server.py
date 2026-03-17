@@ -646,13 +646,13 @@ def create_server() -> LanguageServer:
             items = list(docs.items())
             total = len(items)
             if total == 0:
-                server.send_notification(
+                server.protocol.notify(
                     "aegis/scanProgress",
                     {"current": 0, "total": 0, "uri": ""},
                 )
             for idx, (uri, doc) in enumerate(items):
                 try:
-                    server.send_notification(
+                    server.protocol.notify(
                         "aegis/scanProgress",
                         {"current": idx + 1, "total": total, "uri": uri},
                     )
@@ -942,7 +942,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
 
     # ── 通知前端：扫描开始 ───────────────────────────────────────────────────
     try:
-        server.send_notification("aegis/scanStart", {"uri": uri})
+        server.protocol.notify("aegis/scanStart", {"uri": uri})
     except RuntimeError as e:
         logger.debug("Failed to send scanStart notification: %s", e)
 
@@ -999,7 +999,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
     except ScanError as e:
         logger.warning("Scan error for %s: %s", file_path, e)
         try:
-            server.send_notification(
+            server.protocol.notify(
                 NOTIFICATION_SCAN_ERROR,
                 {"uri": uri, "message": str(e)},
             )
@@ -1041,7 +1041,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
             )
             server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
             try:
-                server.send_notification("aegis/scanEnd", {"uri": uri, "issueCount": 0})
+                server.protocol.notify("aegis/scanEnd", {"uri": uri, "issueCount": 0})
             except RuntimeError as e:
                 logger.debug("Failed to send scanEnd notification: %s", e)
             return
@@ -1060,7 +1060,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
 
     # ── 通知前端：扫描结束（含问题数量，驱动 Status Bar 更新）─────────────
     try:
-        server.send_notification("aegis/scanEnd", {"uri": uri, "issueCount": issue_count})
+        server.protocol.notify("aegis/scanEnd", {"uri": uri, "issueCount": issue_count})
     except RuntimeError as e:
         logger.debug("Failed to send scanEnd notification: %s", e)
 

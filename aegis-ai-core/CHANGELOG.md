@@ -5,6 +5,12 @@ All notable changes to the aegis-ai-core package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-03-17
+
+### Fixed
+
+- **LSP crash**: `AttributeError: 'LanguageServer' object has no attribute 'send_notification'` — migrated 6 calls from deprecated `server.send_notification()` to `server.protocol.notify()` for pygls 2.0 compatibility
+
 ## [1.2.0] - 2026-03
 
 ### Added

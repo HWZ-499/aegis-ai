@@ -65,3 +65,6 @@ aegis-ai-core/real_world_targets/
 
 # VSCode 扩展旧版本（只保留最新）
 aegis-vscode/aegis-ai-security-0.1.0.vsix
+
+# VSCode 测试下载的 VS Code 实例
+.vscode-test/
