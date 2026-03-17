@@ -1,8 +1,8 @@
 "use strict";
 /**
- * @fileoverview Webview 面板：在 IDE 内展示 Aegis 扫描 HTML 报告
+ * @fileoverview Webview panel: display Aegis scan HTML report within the IDE
  *
- * 支持：查找工作区内最新 scan-report.html，或由用户选择 HTML 文件。
+ * Supports: finding the latest scan-report.html in workspace, or user file selection.
  */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -42,11 +42,11 @@ exports.showReport = showReport;
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const vscode_1 = require("vscode");
-/** 当前已打开的 Webview 面板（单例复用） */
+/** Currently open Webview panel (singleton reuse) */
 let reportPanel;
 /**
- * 在工作区内查找 scan-report.html，返回按 mtime 最新的一个路径。
- * @returns 最新报告文件的绝对路径，未找到则 undefined
+ * Find the latest scan-report.html in workspace folders.
+ * @returns Absolute path to newest report file, or undefined if not found
  */
 function findLatestScanReport() {
     const folders = vscode_1.workspace.workspaceFolders;
@@ -64,9 +64,9 @@ function findLatestScanReport() {
             }
         }
         catch {
-            // 文件不存在或不可读，忽略
+            // File not found or unreadable, skip
         }
-        // 也检查 aegis-ai-core 子目录
+        // Also check aegis-ai-core subdirectory
         const coreReportPath = path.join(folder.uri.fsPath, "aegis-ai-core", "scan-report.html");
         try {
             const stat = fs.statSync(coreReportPath);
@@ -82,15 +82,15 @@ function findLatestScanReport() {
     return latestPath;
 }
 /**
- * 将本地 HTML 文件内容转换为可在 Webview 中安全加载的形式。
- * 替换 src/href 为 webview 可访问的 URI。
+ * Convert local HTML file content for safe display in Webview.
+ * Injects Content Security Policy.
  */
 function getHtmlForWebview(panel, filePath) {
     const dir = path.dirname(filePath);
     let html = fs.readFileSync(filePath, "utf-8");
-    // 注入 Content Security Policy，防止 XSS
+    // Inject Content Security Policy to prevent XSS
     const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src ${panel.webview.cspSource} data: https:; font-src ${panel.webview.cspSource}; script-src 'none';">`;
-    // 插入 CSP 到 <head> 中（若存在），否则前置到 HTML 开头
+    // Inject CSP into <head> if it exists, otherwise prepend to HTML
     if (html.includes("<head>")) {
         html = html.replace("<head>", `<head>\n${csp}`);
     }
@@ -103,8 +103,8 @@ function getHtmlForWebview(panel, filePath) {
     return html;
 }
 /**
- * 打开或聚焦报告 Webview；若已有面板则复用并刷新内容。
- * @param htmlFilePath - 要展示的 HTML 文件绝对路径
+ * Open or focus the report Webview panel; reuses existing panel and refreshes content.
+ * @param htmlFilePath - Absolute path to the HTML file to display
  */
 function showReportInPanel(htmlFilePath) {
     if (reportPanel) {
@@ -112,7 +112,7 @@ function showReportInPanel(htmlFilePath) {
         reportPanel.webview.html = getHtmlForWebview(reportPanel, htmlFilePath);
         return;
     }
-    reportPanel = vscode_1.window.createWebviewPanel("aegisReport", "Aegis 扫描报告", vscode_1.ViewColumn.One, {
+    reportPanel = vscode_1.window.createWebviewPanel("aegisReport", "Aegis Scan Report", vscode_1.ViewColumn.One, {
         enableScripts: false,
         localResourceRoots: [vscode_1.Uri.file(path.dirname(htmlFilePath))],
     });
@@ -122,8 +122,8 @@ function showReportInPanel(htmlFilePath) {
     });
 }
 /**
- * 执行「显示报告」流程：先查找最新 scan-report.html，若无则弹出文件选择。
- * @returns 若用户取消或未选文件则无操作
+ * Show report flow: find latest scan-report.html, or open file picker.
+ * @returns No-op if user cancels or no file selected
  */
 async function showReport() {
     const latest = findLatestScanReport();
@@ -132,15 +132,15 @@ async function showReport() {
         return;
     }
     const picked = await vscode_1.window.showOpenDialog({
-        title: "选择 Aegis 扫描报告 (HTML)",
-        filters: { "HTML 文件": ["html"] },
+        title: "Select Aegis Scan Report (HTML)",
+        filters: { "HTML Files": ["html"] },
         canSelectMany: false,
     });
     if (picked && picked.length > 0) {
         showReportInPanel(picked[0].fsPath);
     }
     else {
-        vscode_1.window.showInformationMessage("未找到 scan-report.html。请先运行 aegis-scan --format html --output scan-report.html 生成报告。");
+        vscode_1.window.showInformationMessage("No scan-report.html found. Run 'aegis-scan --format html --output scan-report.html' to generate a report, or use Aegis: Scan Workspace.");
     }
 }
 //# sourceMappingURL=reportWebview.js.map

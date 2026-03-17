@@ -1,15 +1,16 @@
 /**
- * @fileoverview Aegis AI Security Scanner — VSCode/Cursor Extension 入口
+ * @fileoverview Aegis AI Security Scanner — VSCode/Cursor Extension entry point
  *
- * 职责：
- * - 启动 Python LSP Server 进程（通过 stdio 通信）
- * - 创建 LanguageClient 连接 LSP Server
- * - Status Bar 实时显示扫描状态（就绪 / 扫描中 / N 个问题 / 安全）
- * - 在 deactivate 时优雅关闭
+ * Responsibilities:
+ * - Launch Python LSP Server process (stdio communication)
+ * - Create LanguageClient to connect to LSP Server
+ * - Status Bar real-time scan status (Ready / Scanning / N issues / Safe)
+ * - Graceful shutdown on deactivate
  */
 
 import * as path from "path";
 import * as fs from "fs";
+import { execFileSync } from "child_process";
 import {
   workspace,
   ExtensionContext,
@@ -32,77 +33,77 @@ import {
   RevealOutputChannelOn,
 } from "vscode-languageclient/node";
 
-// ─── 自定义 LSP 通知类型（Python 服务端需对应发送） ─────────────────────────
+// ─── Custom LSP notification types ─────────────────────────────────────────
 
-/** Python 端发送 `aegis/scanStart` 通知，表示开始扫描当前文件 */
+/** Python server sends `aegis/scanStart` when a file scan begins */
 const NOTIFICATION_SCAN_START = "aegis/scanStart";
-/** Python 端发送 `aegis/scanEnd` 通知，表示扫描完成（含结果摘要） */
+/** Python server sends `aegis/scanEnd` when scan completes (with result summary) */
 const NOTIFICATION_SCAN_END = "aegis/scanEnd";
-/** Python 端发送 `aegis/scanError` 通知，表示扫描出错 */
+/** Python server sends `aegis/scanError` on scan failure */
 const NOTIFICATION_SCAN_ERROR = "aegis/scanError";
-/** P5-4：工作区扫描进度 */
+/** Workspace scan progress notification */
 const NOTIFICATION_SCAN_PROGRESS = "aegis/scanProgress";
 
-// ─── 全局状态 ────────────────────────────────────────────────────────────────
+// ─── Global state ────────────────────────────────────────────────────────────
 
-/** @type {LanguageClient | undefined} 全局 LSP 客户端实例 */
+/** @type {LanguageClient | undefined} Global LSP client instance */
 let client: LanguageClient | undefined;
 
-/** @type {StatusBarItem | undefined} Status Bar 图标实例 */
+/** @type {StatusBarItem | undefined} Status Bar item instance */
 let statusBar: StatusBarItem | undefined;
 
-/** @type {Disposable | undefined} 诊断变化监听器 */
+/** @type {Disposable | undefined} Diagnostics change listener */
 let diagnosticsListener: Disposable | undefined;
 
-/** P5-4：工作区扫描进度条与结束回调 */
+/** Workspace scan progress reporter and completion callback */
 let workspaceProgressReporter: { report: (p: { message?: string; increment?: number }) => void } | null = null;
 let workspaceScanResolve: (() => void) | null = null;
 
-// ─── Status Bar 状态枚举 ────────────────────────────────────────────────────
+// ─── Status Bar state enum ─────────────────────────────────────────────────
 
-/** Status Bar 展示的状态 */
+/** Status Bar display states */
 type AegisStatus = "ready" | "scanning" | "issues" | "safe" | "disconnected" | "error";
 
 /**
- * 更新 Status Bar 显示内容。
+ * Update Status Bar display.
  *
- * @param {AegisStatus} status - 当前状态
- * @param {number} [issueCount] - 问题数量（仅 `issues` 状态下使用）
+ * @param {AegisStatus} status - Current status
+ * @param {number} [issueCount] - Issue count (only used for `issues` status)
  */
 function updateStatusBar(status: AegisStatus, issueCount?: number): void {
   if (!statusBar) return;
 
   switch (status) {
     case "ready":
-      statusBar.text = "$(shield) Aegis: 就绪";
-      statusBar.tooltip = "Aegis AI 安全扫描就绪，保存文件时自动扫描";
+      statusBar.text = "$(shield) Aegis: Ready";
+      statusBar.tooltip = "Aegis AI security scanner ready — auto-scans on save";
       statusBar.backgroundColor = undefined;
       break;
     case "scanning":
-      statusBar.text = "$(loading~spin) Aegis: 扫描中";
-      statusBar.tooltip = "Aegis AI 正在分析当前文件…";
+      statusBar.text = "$(loading~spin) Aegis: Scanning";
+      statusBar.tooltip = "Aegis AI is analyzing the current file…";
       statusBar.backgroundColor = undefined;
       break;
     case "issues":
-      statusBar.text = `$(error) Aegis: ${issueCount ?? 0} 个问题`;
-      statusBar.tooltip = `Aegis AI 发现 ${issueCount ?? 0} 个安全问题，点击查看诊断面板`;
+      statusBar.text = `$(warning) Aegis: ${issueCount ?? 0} issue${(issueCount ?? 0) === 1 ? "" : "s"}`;
+      statusBar.tooltip = `Aegis AI found ${issueCount ?? 0} security issue${(issueCount ?? 0) === 1 ? "" : "s"} — click to view`;
       statusBar.command = "workbench.action.problems.focus";
       statusBar.backgroundColor = undefined;
       break;
     case "safe":
-      statusBar.text = "$(check) Aegis: 安全";
-      statusBar.tooltip = "Aegis AI 未在当前文件中发现安全问题";
+      statusBar.text = "$(check) Aegis: Safe";
+      statusBar.tooltip = "Aegis AI found no security issues in this file";
       statusBar.backgroundColor = undefined;
       break;
     case "disconnected":
-      statusBar.text = "$(warning) Aegis: 未连接";
-      statusBar.tooltip = "Aegis AI LSP Server 未连接，请检查配置";
+      statusBar.text = "$(plug) Aegis: Disconnected";
+      statusBar.tooltip = "Aegis AI LSP Server not connected — click to configure";
       statusBar.command = "workbench.action.openSettings";
       statusBar.backgroundColor = undefined;
       break;
     case "error":
-      statusBar.text = "$(error) Aegis: 扫描错误";
-      statusBar.tooltip = "Aegis AI 扫描出错，点击查看日志";
+      statusBar.text = "$(error) Aegis: Error";
+      statusBar.tooltip = "Aegis AI scan error — click to view logs";
       statusBar.command = "aegisAI.showOutput";
       statusBar.backgroundColor = undefined;
       break;
@@ -110,8 +111,8 @@ function updateStatusBar(status: AegisStatus, issueCount?: number): void {
 }
 
 /**
- * 根据当前活跃文件的 Aegis 诊断数量更新 Status Bar。
- * 无活跃文件或诊断为 0 时显示「安全」，否则显示「N 个问题」。
+ * Refresh Status Bar based on Aegis diagnostics for the active file.
+ * Shows "Safe" when 0 diagnostics, otherwise "N issues".
  */
 function refreshStatusBarFromDiagnostics(): void {
   const activeEditor = window.activeTextEditor;
@@ -122,7 +123,7 @@ function refreshStatusBarFromDiagnostics(): void {
 
   const uri: Uri = activeEditor.document.uri;
   const allDiags = languages.getDiagnostics(uri);
-  // 只统计 Aegis AI 来源的诊断（source 字段匹配）
+  // Only count diagnostics from Aegis AI source
   const aegisDiags = allDiags.filter(
     (d) =>
       d.source === "Aegis AI" &&
@@ -138,14 +139,14 @@ function refreshStatusBarFromDiagnostics(): void {
 }
 
 /**
- * 扩展激活时调用。
+ * Called when the extension is activated.
  *
- * @param {ExtensionContext} context - VSCode 扩展上下文
+ * @param {ExtensionContext} context - VS Code extension context
  */
 export function activate(context: ExtensionContext): void {
   const config = workspace.getConfiguration("aegisAI");
 
-  // 检查是否启用
+  // Check if extension is enabled
   if (!config.get<boolean>("enabled", true)) {
     return;
   }
@@ -155,16 +156,16 @@ export function activate(context: ExtensionContext): void {
   const explicitCwd = config.get<string>("serverCwd", "").trim();
 
   const outputChannel = window.createOutputChannel("Aegis AI Security Scanner");
-  outputChannel.appendLine("[Aegis] 扩展已激活，正在启动 LSP Server…");
+  outputChannel.appendLine("[Aegis] Extension activated, starting LSP Server…");
 
-  // ── Status Bar 初始化（最高优先级，始终可见）────────────────────────────
+  // ── Status Bar initialization ──────────────────────────────────────────
   statusBar = window.createStatusBarItem(StatusBarAlignment.Left, 100);
-  statusBar.text = "$(sync~spin) Aegis: 连接中…";
-  statusBar.tooltip = "Aegis AI 正在连接 LSP Server";
+  statusBar.text = "$(sync~spin) Aegis: Connecting…";
+  statusBar.tooltip = "Aegis AI is connecting to LSP Server";
   statusBar.show();
   context.subscriptions.push(statusBar);
 
-  // Aegis Findings TreeView（侧边栏「Aegis Security」面板）
+  // Aegis Findings TreeView (sidebar panel)
   const findingsProvider = new FindingsTreeProvider();
   const treeView = window.createTreeView("aegisFindings", {
     treeDataProvider: findingsProvider,
@@ -172,7 +173,7 @@ export function activate(context: ExtensionContext): void {
   });
   context.subscriptions.push(treeView);
 
-  // P1-2：注册命令（showOutput 不依赖 client；扫描命令在 client 就绪后可用）
+  // Register commands (showOutput is always available; scan commands need client)
   context.subscriptions.push(
     commands.registerCommand("aegisAI.showOutput", () => {
       outputChannel.show();
@@ -187,23 +188,23 @@ export function activate(context: ExtensionContext): void {
       const uri = resourceUri?.toString() ?? window.activeTextEditor?.document.uri.toString();
       if (!uri) return;
       if (!client) {
-        outputChannel.appendLine("[Aegis] 未连接，无法扫描。请等待 LSP 连接后再试。");
+        outputChannel.appendLine("[Aegis] Not connected. Please wait for LSP to connect.");
         outputChannel.show();
         return;
       }
       client.sendNotification("aegis/requestScan", { uri });
-      outputChannel.appendLine(`[Aegis] 手动触发扫描: ${uri}`);
+      outputChannel.appendLine(`[Aegis] Manual scan triggered: ${uri}`);
     }),
     commands.registerCommand("aegisAI.scanWorkspace", () => {
       if (!client) {
-        outputChannel.appendLine("[Aegis] 未连接，无法扫描。请等待 LSP 连接后再试。");
+        outputChannel.appendLine("[Aegis] Not connected. Please wait for LSP to connect.");
         outputChannel.show();
         return;
       }
-      outputChannel.appendLine("[Aegis] 手动触发工作区扫描");
+      outputChannel.appendLine("[Aegis] Manual workspace scan triggered");
       window.withProgress(
         {
-          title: "Aegis: 扫描工作区",
+          title: "Aegis: Scanning Workspace",
           location: ProgressLocation.Notification,
           cancellable: false,
         },
@@ -221,7 +222,39 @@ export function activate(context: ExtensionContext): void {
     })
   );
 
-  // aegis-ai-core 目录：LSP Server 需在 aegis-ai-core 下执行 python -m src.lsp
+  // ── Validate Python interpreter ────────────────────────────────────────
+  try {
+    const pyVersion = execFileSync(pythonPath, ["--version"], {
+      encoding: "utf-8",
+      timeout: 5000,
+    }).trim();
+    outputChannel.appendLine(`[Aegis] ${pyVersion} found`);
+  } catch {
+    updateStatusBar("disconnected");
+    outputChannel.appendLine(
+      `[Aegis] Python not found at "${pythonPath}". Please install Python 3.9+ and set aegisAI.pythonPath in settings.`
+    );
+    outputChannel.show();
+    window
+      .showErrorMessage(
+        `Aegis AI: Python not found at "${pythonPath}". Install Python 3.9+ or configure the path.`,
+        "Configure Python Path",
+        "View Logs"
+      )
+      .then((action) => {
+        if (action === "Configure Python Path") {
+          commands.executeCommand(
+            "workbench.action.openSettings",
+            "aegisAI.pythonPath"
+          );
+        } else if (action === "View Logs") {
+          outputChannel.show();
+        }
+      });
+    return;
+  }
+
+  // aegis-ai-core directory: LSP Server needs to run in aegis-ai-core
   let cwd: string | undefined;
   if (explicitCwd) {
     cwd = path.isAbsolute(explicitCwd)
@@ -232,11 +265,11 @@ export function activate(context: ExtensionContext): void {
         );
     if (!fs.existsSync(cwd)) {
       outputChannel.appendLine(
-        `[Aegis] serverCwd 不存在，将回退自动推断: ${cwd}`
+        `[Aegis] serverCwd does not exist, falling back to auto-detect: ${cwd}`
       );
       cwd = undefined;
     } else {
-      outputChannel.appendLine(`[Aegis] 使用配置的 serverCwd: ${cwd}`);
+      outputChannel.appendLine(`[Aegis] Using configured serverCwd: ${cwd}`);
     }
   }
   if (
@@ -253,31 +286,31 @@ export function activate(context: ExtensionContext): void {
     }
     if (!fs.existsSync(cwd)) {
       outputChannel.appendLine(
-        `[Aegis] 自动推断的目录不存在，LSP 可能无法启动: ${cwd}`
+        `[Aegis] Auto-detected directory does not exist, LSP may not start: ${cwd}`
       );
     } else {
-      outputChannel.appendLine(`[Aegis] 使用工作目录: ${cwd}`);
+      outputChannel.appendLine(`[Aegis] Using working directory: ${cwd}`);
     }
   }
-  // 无工作区或目录无效时：尝试扩展所在目录的兄弟 aegis-ai-core（开发/单文件场景）
+  // Fallback: try sibling aegis-ai-core of the extension directory
   if (cwd === undefined || !fs.existsSync(cwd)) {
     const extDir = context.extensionPath;
     const siblingCwd = path.join(path.dirname(extDir), "aegis-ai-core");
     if (fs.existsSync(siblingCwd)) {
       cwd = siblingCwd;
-      outputChannel.appendLine(`[Aegis] 使用扩展同级目录: ${cwd}`);
+      outputChannel.appendLine(`[Aegis] Using sibling directory: ${cwd}`);
     } else if (cwd === undefined) {
       outputChannel.appendLine(
-        "[Aegis] 未打开工作区且未找到 aegis-ai-core，请打开包含 aegis-ai-core 的文件夹。"
+        "[Aegis] No workspace open and aegis-ai-core not found. Please open a folder containing aegis-ai-core."
       );
     }
   }
 
-  outputChannel.appendLine(`[Aegis] Python: ${pythonPath}, 模块: ${serverModule}`);
+  outputChannel.appendLine(`[Aegis] Python: ${pythonPath}, Module: ${serverModule}`);
 
   if (!cwd || !fs.existsSync(cwd)) {
     outputChannel.appendLine(
-      "[Aegis] 无法启动：未找到有效的 aegis-ai-core 目录。请用「文件 → 打开文件夹」打开 aegis-ai 或 aegis-ai-core，或在设置中填写 aegisAI.serverCwd。"
+      "[Aegis] Cannot start: aegis-ai-core directory not found. Please open aegis-ai or aegis-ai-core folder (File → Open Folder), or set aegisAI.serverCwd in settings."
     );
     outputChannel.show();
     updateStatusBar("disconnected");
@@ -285,8 +318,8 @@ export function activate(context: ExtensionContext): void {
   }
 
   /**
-   * Server 启动配置：通过 stdio 启动 Python 进程。
-   * 命令: python -m src.lsp
+   * Server startup config: launch Python process via stdio.
+   * Command: python -m src.lsp
    */
   const serverOptions: ServerOptions = {
     command: pythonPath,
@@ -297,8 +330,8 @@ export function activate(context: ExtensionContext): void {
   };
 
   /**
-   * 客户端配置：指定监听的文档类型，并将 LSP 日志输出到我们的通道。
-   * 通过 initializationOptions 将用户配置传递给 LSP Server。
+   * Client config: document selectors and initialization options.
+   * Passes user settings to LSP Server via initializationOptions.
    */
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
@@ -329,7 +362,7 @@ export function activate(context: ExtensionContext): void {
     },
   };
 
-  // 创建 LanguageClient 并启动
+  // Create LanguageClient and start
   client = new LanguageClient(
     "aegisAI",
     "Aegis AI Security Scanner",
@@ -339,17 +372,17 @@ export function activate(context: ExtensionContext): void {
 
   client.start().then(
     () => {
-      outputChannel.appendLine("[Aegis] LSP Server 已连接。");
+      outputChannel.appendLine("[Aegis] LSP Server connected.");
       updateStatusBar("ready");
 
       window.showInformationMessage("Aegis AI Security Scanner is now active.");
 
-      // ── 监听 LSP 自定义通知：扫描开始 ─────────────────────────────────
+      // ── Listen for custom LSP notification: scan start ───────────────────────────────
       client!.onNotification(NOTIFICATION_SCAN_START, () => {
         updateStatusBar("scanning");
       });
 
-      // ── 监听 LSP 自定义通知：扫描结束 ─────────────────────────────────
+      // ── Listen for custom LSP notification: scan end ─────────────────────────────────
       client!.onNotification(
         NOTIFICATION_SCAN_END,
         (params: { issueCount?: number }) => {
@@ -360,24 +393,24 @@ export function activate(context: ExtensionContext): void {
               updateStatusBar("safe");
             }
           } else {
-            // 无通知参数时从诊断集合推断
+            // Fallback: infer from diagnostics if no notification params
             refreshStatusBarFromDiagnostics();
           }
         }
       );
 
-      // ── 监听 LSP 自定义通知：扫描错误（P1-1）────────────────────────────
+      // ── Listen for custom LSP notification: scan error ───────────────────────────
       client!.onNotification(
         NOTIFICATION_SCAN_ERROR,
         (params: { uri?: string; message?: string }) => {
           updateStatusBar("error");
           outputChannel.appendLine(
-            `[Aegis] 扫描错误: ${params?.message ?? "unknown"} (${params?.uri ?? ""})`
+            `[Aegis] Scan error: ${params?.message ?? "unknown"} (${params?.uri ?? ""})`
           );
         }
       );
 
-      // ── 监听 LSP 自定义通知：工作区扫描进度（P5-4）──────────────────────
+      // ── Listen for custom LSP notification: workspace scan progress ──────────────
       client!.onNotification(
         NOTIFICATION_SCAN_PROGRESS,
         (params: { current?: number; total?: number; uri?: string }) => {
@@ -385,7 +418,7 @@ export function activate(context: ExtensionContext): void {
           const tot = params?.total ?? 0;
           if (workspaceProgressReporter && tot > 0) {
             workspaceProgressReporter.report({
-              message: `正在扫描 ${cur}/${tot}`,
+              message: `Scanning ${cur}/${tot}`,
               increment: tot > 0 ? (100 / tot) : 0,
             });
           }
@@ -395,15 +428,15 @@ export function activate(context: ExtensionContext): void {
         }
       );
 
-      // ── 监听活跃编辑器切换：切换文件时刷新状态栏 ──────────────────────
+      // ── Refresh status bar when active editor changes ──────────────────────
       context.subscriptions.push(
         window.onDidChangeActiveTextEditor(() => {
           refreshStatusBarFromDiagnostics();
         })
       );
 
-      // ── 监听诊断变化：LSP 发布新诊断后刷新状态栏 ──────────────────────
-      // （兜底：即使服务端未发送自定义通知也能正确更新）
+      // ── Update status bar when diagnostics change ──────────────────────
+      // (fallback: ensures correct state even if server doesn't send custom notifications)
       diagnosticsListener = languages.onDidChangeDiagnostics(
         (e: { uris: readonly Uri[] }) => {
           const activeUri = window.activeTextEditor?.document.uri;
@@ -411,7 +444,7 @@ export function activate(context: ExtensionContext): void {
             activeUri &&
             e.uris.some((u) => u.toString() === activeUri.toString())
           ) {
-            // 扫描完成后延迟 200ms 读取最新诊断（避免读到旧快照）
+            // Delay 200ms to read latest diagnostics (avoid stale snapshot)
             setTimeout(refreshStatusBarFromDiagnostics, 200);
           }
         }
@@ -421,22 +454,22 @@ export function activate(context: ExtensionContext): void {
     (error: unknown) => {
       const msg = error instanceof Error ? error.message : String(error);
       updateStatusBar("disconnected");
-      outputChannel.appendLine(`[Aegis] LSP Server 启动失败: ${msg}`);
+      outputChannel.appendLine(`[Aegis] LSP Server failed to start: ${msg}`);
 
-      // 提供操作按钮引导用户解决配置问题
+      // Provide actionable buttons to help user resolve the issue
       window
         .showErrorMessage(
-          `Aegis AI LSP 启动失败: ${msg}`,
-          "配置 Python 路径",
-          "查看日志"
+          `Aegis AI: LSP Server failed to start. ${msg}`,
+          "Configure Python Path",
+          "View Logs"
         )
         .then((action) => {
-          if (action === "配置 Python 路径") {
+          if (action === "Configure Python Path") {
             commands.executeCommand(
               "workbench.action.openSettings",
               "aegisAI.pythonPath"
             );
-          } else if (action === "查看日志") {
+          } else if (action === "View Logs") {
             outputChannel.show();
           }
         });
@@ -453,9 +486,9 @@ export function activate(context: ExtensionContext): void {
 }
 
 /**
- * 扩展停用时调用。
+ * Called when the extension is deactivated.
  *
- * @returns {Thenable<void> | undefined} 停止 LSP 客户端的 Promise
+ * @returns {Thenable<void> | undefined} Promise to stop the LSP client
  */
 export function deactivate(): Thenable<void> | undefined {
   if (!client) {

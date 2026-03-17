@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.2] - 2026-03-18
+
+### Fixed
+- **All UI text translated to English** — status bar, tooltips, error dialogs, progress messages, output logs (was Chinese)
+- **Status bar icon confusion** — "issues found" now uses `$(warning)`, "disconnected" uses `$(plug)`, "error" keeps `$(error)`
+- **Proper plural handling** — "1 issue" vs "3 issues" in status bar
+- **Error dialog buttons in English** — "Configure Python Path" / "View Logs" (was Chinese)
+
+### Added
+- **Python validation on startup** — checks Python interpreter exists before LSP start, shows actionable error with "Configure Python Path" button
+- **TreeView welcome/empty state** — shows "No security issues found" with scan action buttons when panel is empty
+- **Keyboard shortcut for workspace scan** — `Ctrl+Alt+Shift+S` (`Cmd+Alt+Shift+S` on Mac)
+- **Improved pythonPath setting description** — includes example values for different platforms
+
+### Improved
+- Error messages now provide actionable guidance instead of generic failures
+- All code comments translated to English for international contributors
+
 All notable changes to Aegis AI Security Scanner are documented here.
 
 ## [0.3.1] — 2026-03-17

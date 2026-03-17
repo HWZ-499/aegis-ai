@@ -38,7 +38,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const assert = __importStar(require("assert"));
 const vscode = __importStar(require("vscode"));
-const EXT_ID = "aegis-ai.aegis-ai-security";
+const EXT_ID = "wen-zai.aegis-ai-security";
 suite("Extension Test Suite", () => {
     test("Extension should be present in the extension host", () => {
         const ext = vscode.extensions.getExtension(EXT_ID);
