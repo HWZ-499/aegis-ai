@@ -5,7 +5,7 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
 
-const EXT_ID = "aegis-ai.aegis-ai-security";
+const EXT_ID = "wen-zai.aegis-ai-security";
 
 suite("Extension Test Suite", () => {
   test("Extension should be present in the extension host", () => {
