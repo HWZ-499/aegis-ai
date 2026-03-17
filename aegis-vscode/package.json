@@ -3,17 +3,17 @@
   "displayName": "Aegis AI Security Scanner",
   "description": "Real-time SAST scanner with AI auto-fix — SQL/NoSQL injection, XSS, RCE, path traversal across JS/TS/Python/PHP/Java/Go. Tree-sitter AST + taint analysis.",
   "version": "0.3.0",
-  "publisher": "aegis-ai",
+  "publisher": "wen-zai",
   "license": "MIT",
   "preview": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/aegis-ai/aegis-ai.git"
+    "url": "https://github.com/HWZ-499/aegis-ai.git"
   },
   "bugs": {
-    "url": "https://github.com/aegis-ai/aegis-ai/issues"
+    "url": "https://github.com/HWZ-499/aegis-ai/issues"
   },
-  "homepage": "https://github.com/aegis-ai/aegis-ai#readme",
+  "homepage": "https://github.com/HWZ-499/aegis-ai#readme",
   "icon": "images/icon.png",
   "galleryBanner": {
     "color": "#1e1e2e",

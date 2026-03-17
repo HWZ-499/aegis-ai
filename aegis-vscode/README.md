@@ -51,7 +51,7 @@ Supports **JavaScript / TypeScript / Python / PHP / Java / Go** with 10+ vulnera
 
 ```bash
 # Clone the full repository
-git clone https://github.com/aegis-ai/aegis-ai.git
+git clone https://github.com/HWZ-499/aegis-ai.git
 
 # Install Python dependencies
 cd aegis-ai/aegis-ai-core
@@ -65,7 +65,7 @@ echo DEEPSEEK_API_KEY=your_key > .env
 
 ## Quick Start
 
-1. Install the extension from VS Code Marketplace (`aegis-ai.aegis-ai-security`)
+1. Install the extension from VS Code Marketplace (`wen-zai.aegis-ai-security`)
 2. Open the `aegis-ai-core` directory so the extension can locate the LSP server
 3. Open any `.js`, `.ts`, `.py`, `.php`, `.java`, or `.go` file — diagnostics appear on save
 4. Click the **lightbulb** on any finding → **Apply AI Fix** to auto-patch
