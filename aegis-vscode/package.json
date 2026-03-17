@@ -1,7 +1,7 @@
 {
   "name": "aegis-ai-security",
   "displayName": "Aegis AI Security Scanner",
-  "description": "Real-time SAST security scanner — detects SQL injection, NoSQL injection, XSS, RCE, path traversal and more as you type. Powered by Tree-sitter AST analysis + DeepSeek AI auto-fix.",
+  "description": "Real-time SAST scanner with AI auto-fix — SQL/NoSQL injection, XSS, RCE, path traversal across JS/TS/Python/PHP/Java/Go. Tree-sitter AST + taint analysis.",
   "version": "0.3.0",
   "publisher": "aegis-ai",
   "license": "MIT",
