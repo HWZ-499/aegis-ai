@@ -1,86 +1,51 @@
 # Aegis AI Security Scanner
 
-**Find and fix security vulnerabilities as you code** — real-time SAST scanning for VS Code / Cursor, powered by Tree-sitter AST analysis, cross-file taint tracking, and AI-driven auto-fix.
+**Find and fix SQL injection, XSS, RCE, and 7+ more vulnerability types as you code.**
 
-Supports **JavaScript / TypeScript / Python / PHP / Java / Go** with 10+ vulnerability categories including SQL injection, NoSQL injection, XSS, RCE, path traversal, hardcoded credentials, SSRF, and more.
+Real-time SAST scanning for VS Code / Cursor using Tree-sitter AST + taint analysis + AI-driven patches. No CI pipeline. No regex guessing. Framework-aware code generation.
 
-> **Preview Release** — Active development. See [changelog](CHANGELOG.md) for latest updates.
+Supports: **JavaScript / TypeScript / Python / PHP / Java / Go**
 
----
-
-## Why Aegis AI?
-
-- **Fast feedback loop** — diagnostics appear within 1 second of saving, no CI pipeline needed
-- **Low false-positive rate** — Tree-sitter AST parsing + TaintGraph data-flow analysis, not regex guessing
-- **One-click AI fix** — click the lightbulb on any finding; DeepSeek/OpenAI generates a framework-aware patch
-- **6 languages, one tool** — JS/TS, Python, PHP, Java, Go all analyzed with the same depth
-- **Real-world validated** — 100% F1 score on OWASP NodeGoat, 92% on Django 3.2 core
+> **v0.3.2** — Now with full English UI, Python validation, and TreeView empty state. [See what changed →](CHANGELOG.md)
 
 ---
 
-## Features
+## Installation
 
-- **Save-to-scan** — diagnostics appear as VS Code squiggly lines within 1 second
-- **10+ vulnerability types** — SQL injection, NoSQL injection, XSS, RCE, path traversal, hardcoded credentials, deserialization, SSRF, open redirect
-- **AI auto-fix** — click the lightbulb (Code Action) on any High/Critical finding to generate framework-aware patch code
-- **Taint analysis** — cross-function and cross-file data-flow tracking via TaintGraph + Dominator Tree
-- **Status bar** — shows `Aegis: N issues` / `Aegis: Secure` / `Aegis: Scanning…` at a glance
+### Step 1: Install Extension
+VS Code Marketplace: search **"Aegis AI Security Scanner"** or ID `wen-zai.aegis-ai-security`
 
----
-
-## Detection Performance (Real-World Benchmarks)
-
-| Target | Language | Recall | Precision | F1 |
-|--------|----------|--------|-----------|-----|
-| NodeGoat (OWASP) | JavaScript | 100% | 100% | 1.00 |
-| django-3.2-core | Python | 92.3% | 92.3% | 0.92 |
-| DVWA | PHP | 100% | 45.3% | 0.62 |
-| flask-2.3.2 | Python | 66.7% | 50.0% | 0.57 |
-
-*Benchmarks run against OWASP NodeGoat, DVWA, Django 3.2 core, and Flask 2.3.2. As of 2026-03-13.*
-
----
-
-## Requirements
-
-| Component | Requirement |
-|-----------|-------------|
-| VS Code | ≥ 1.75 |
-| Python | ≥ 3.9 |
-| aegis-ai-core | Cloned alongside this extension |
+### Step 2: Clone Python Engine
+The extension needs the Python core to run:
 
 ```bash
-# Clone the full repository
 git clone https://github.com/HWZ-499/aegis-ai.git
-
-# Install Python dependencies
 cd aegis-ai/aegis-ai-core
 pip install -r requirements.txt
-
-# (Optional) Set up DeepSeek API key for AI auto-fix
-echo DEEPSEEK_API_KEY=your_key > .env
 ```
+
+**Done.** Extension auto-detects the Python engine. If not, set path in VS Code settings:
+```json
+{ "aegisAI.serverCwd": "/path/to/aegis-ai-core" }
+```
+
+### Step 3: Enable AI Fixes (Optional)
+For one-click auto-fix, set an API key:
+- **DeepSeek** (cheap): `export DEEPSEEK_API_KEY=your_key`
+- **OpenAI**: `export OPENAI_API_KEY=your_key`
+- **Ollama** (free, local): `export AI_PROVIDER=ollama` (after `ollama pull llama3`)
+
+**That's it.** Open any `.js`, `.ts`, `.py`, `.php`, `.java`, or `.go` file → save → diagnostics appear.
 
 ---
 
-## Quick Start
+## Key Features
 
-1. Install the extension from VS Code Marketplace (`wen-zai.aegis-ai-security`)
-2. Open the `aegis-ai-core` directory so the extension can locate the LSP server
-3. Open any `.js`, `.ts`, `.py`, `.php`, `.java`, or `.go` file — diagnostics appear on save
-4. Click the **lightbulb** on any finding → **Apply AI Fix** to auto-patch
-
-### Manual Configuration
-
-If the LSP server is not found automatically, set the working directory explicitly:
-
-```json
-// .vscode/settings.json
-{
-  "aegisAI.serverCwd": "C:/path/to/aegis-ai/aegis-ai-core",
-  "aegisAI.pythonPath": "python"
-}
-```
+- **1-second feedback** — diagnostics appear on save, no CI pipeline
+- **Real data-flow analysis** — Tree-sitter AST + TaintGraph, not regex  
+- **One-click AI fix** — click lightbulb → framework-aware patch auto-generated
+- **10+ vulnerability types** — SQL/NoSQL injection, XSS, RCE, path traversal, deserialization, SSRF, hardcoded credentials, open redirect
+- **Real-world validated** — 100% F1 on OWASP NodeGoat, 92% F1 on Django 3.2 core
 
 ---
 
