@@ -2,7 +2,7 @@
   "name": "aegis-ai-security",
   "displayName": "Aegis AI Security Scanner",
   "description": "Find and fix SQL injection, XSS, RCE, and 7+ vulnerability types in real-time. One-click AI patches. 100% F1 on OWASP NodeGoat. JS/TS/Python/PHP/Java/Go.",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "publisher": "wen-zai",
   "license": "MIT",
   "preview": true,
@@ -224,9 +224,11 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run bundle",
+    "bundle": "node esbuild.js --production",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "watch:esbuild": "node esbuild.js --watch",
     "test": "npm run compile && node ./out/test/runTest.js",
     "package": "vsce package",
     "publish:patch": "vsce publish patch",
@@ -241,6 +243,7 @@
     "@types/vscode": "^1.75.0",
     "@vscode/test-electron": "^2.4.0",
     "@vscode/vsce": "^3.2.1",
+    "esbuild": "^0.20.0",
     "mocha": "^10.2.0",
     "typescript": "^5.3.0"
   }
