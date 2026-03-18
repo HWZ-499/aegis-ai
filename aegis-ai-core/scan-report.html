@@ -1,0 +1,3903 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>安全扫描报告 - aegis-ai-core</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #555;
+            margin-top: 30px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .critical { color: #d32f2f; font-weight: bold; }
+        .high { color: #f57c00; font-weight: bold; }
+        .medium { color: #fbc02d; }
+        .low { color: #1976d2; }
+        .file-section {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+        }
+        .finding {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #fff;
+            border-left: 3px solid #ccc;
+        }
+        .finding.critical { border-left-color: #d32f2f; }
+        .finding.high { border-left-color: #f57c00; }
+        .finding.medium { border-left-color: #fbc02d; }
+        .finding.low { border-left-color: #1976d2; }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        pre {
+            background-color: #f4f4f4;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔒 安全扫描报告 - aegis-ai-core</h1>
+        <p><strong>扫描时间</strong>: 2026-03-07T14:39:22.190051</p>
+        
+        <h2>📊 扫描摘要</h2>
+        <table>
+            <tr>
+                <th>指标</th>
+                <th>数量</th>
+            </tr>
+            <tr>
+                <td>总文件数</td>
+                <td>1024</td>
+            </tr>
+            <tr>
+                <td>扫描文件数</td>
+                <td>1024</td>
+            </tr>
+            <tr>
+                <td>有问题文件数</td>
+                <td>141</td>
+            </tr>
+            <tr>
+                <td>总问题数</td>
+                <td>399</td>
+            </tr>
+            <tr>
+                <td>扫描耗时</td>
+                <td>383.95 秒</td>
+            </tr>
+        </table>
+
+        <h2>🎯 严重程度统计</h2>
+        <table>
+            <tr>
+                <th>严重程度</th>
+                <th>数量</th>
+            </tr>
+
+            <tr>
+                <td>🔴 Critical</td>
+                <td>227</td>
+            </tr>
+
+            <tr>
+                <td>🟠 High</td>
+                <td>143</td>
+            </tr>
+
+            <tr>
+                <td>🟡 Medium</td>
+                <td>27</td>
+            </tr>
+
+            <tr>
+                <td>🟢 Low</td>
+                <td>2</td>
+            </tr>
+
+        </table>
+
+        <h2>📂 扫描范围</h2>
+        <p>以下为本次扫描发现的代码文件与未纳入扫描的文件及原因，便于核对「为何只扫到少量文件」。</p>
+        <table>
+            <tr>
+                <th>类型</th>
+                <th>说明</th>
+            </tr>
+            <tr>
+                <td><strong>已纳入扫描</strong></td>
+                <td>扩展名为 .js / .jsx / .mjs / .ts / .tsx / .py 等（见扫描器支持列表）</td>
+            </tr>
+            <tr>
+                <td><strong>未纳入扫描</strong></td>
+                <td>扩展名不支持或命中忽略规则（如 .html、.sql、.json、测试目录等）</td>
+            </tr>
+        </table>
+
+        <p><strong>已扫描的代码文件（共 1024 个）</strong></p>
+        <ul>
+
+            <li><code>run_server.py</code></li>
+
+            <li><code>real_world_targets\body-parser-1.20.0\index.js</code></li>
+
+            <li><code>real_world_targets\django-3.2\setup.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\shortcuts.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\__main__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\apps\config.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\apps\registry.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\apps\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\bin\django-admin.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\global_settings.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\ar\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\ar\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\ar_DZ\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\ar_DZ\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\az\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\az\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\bg\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\bg\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\bn\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\bn\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\bs\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\bs\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\ca\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\ca\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\cs\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\cs\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\cy\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\cy\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\da\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\da\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\de\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\de\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\de_CH\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\de_CH\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\el\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\el\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\en\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\en\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\en_AU\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\en_AU\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\en_GB\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\en_GB\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\eo\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\eo\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\es\formats.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\es\__init__.py</code></li>
+
+            <li><code>real_world_targets\django-3.2\django\conf\locale\es_AR\formats.py</code></li>
+
+            <li>… 及其他 974 个</li>
+
+        </ul>
+
+        <p><strong>未纳入扫描的文件（共 2690 个，仅列前 30 个）</strong></p>
+        <ul>
+
+            <li><code>.env</code> — 扩展名  不在支持列表（完整支持: .cjs, .go, .java, .js, .jsx, .mjs, .php, .py, .pyw, .ts, .tsx；基础支持: .c, .cc, .cpp, .cxx, .h, .hpp）</li>
+
+            <li><code>.env.example</code> — 扩展名 .example 不在支持列表（完整支持: .cjs, .go, .java, .js, .jsx, .mjs, .php, .py, .pyw, .ts, .tsx；基础支持: .c, .cc, .cpp, .cxx, .h, .hpp）</li>
+
+            <li><code>cve_crawler.log</code> — 被忽略规则排除</li>
+
+            <li><code>debug-02e970.log</code> — 被忽略规则排除</li>
+
+            <li><code>pyproject.toml</code> — 扩展名 .toml 不在支持列表（完整支持: .cjs, .go, .java, .js, .jsx, .mjs, .php, .py, .pyw, .ts, .tsx；基础支持: .c, .cc, .cpp, .cxx, .h, .hpp）</li>
+
+            <li><code>requirements.txt</code> — 被忽略规则排除</li>
+
+            <li><code>aegis_db\chroma.sqlite3</code> — 扩展名 .sqlite3 不在支持列表（完整支持: .cjs, .go, .java, .js, .jsx, .mjs, .php, .py, .pyw, .ts, .tsx；基础支持: .c, .cc, .cpp, .cxx, .h, .hpp）</li>
+
+            <li><code>data\aegis_db\chroma.sqlite3</code> — 扩展名 .sqlite3 不在支持列表（完整支持: .cjs, .go, .java, .js, .jsx, .mjs, .php, .py, .pyw, .ts, .tsx；基础支持: .c, .cc, .cpp, .cxx, .h, .hpp）</li>
+
+            <li><code>data\aegis_db\b1dfe850-764c-425e-b340-5b0b41c68fd2\data_level0.bin</code> — 扩展名 .bin 不在支持列表（完整支持: .cjs, .go, .java, .js, .jsx, .mjs, .php, .py, .pyw, .ts, .tsx；基础支持: .c, .cc, .cpp, .cxx, .h, .hpp）</li>
+
+            <li><code>data\aegis_db\b1dfe850-764c-425e-b340-5b0b41c68fd2\header.bin</code> — 扩展名 .bin 不在支持列表（完整支持: .cjs, .go, .java, .js, .jsx, .mjs, .php, .py, .pyw, .ts, .tsx；基础支持: .c, .cc, .cpp, .cxx, .h, .hpp）</li>
+
+            <li><code>data\aegis_db\b1dfe850-764c-425e-b340-5b0b41c68fd2\index_metadata.pickle</code> — 扩展名 .pickle 不在支持列表（完整支持: .cjs, .go, .java, .js, .jsx, .mjs, .php, .py, .pyw, .ts, .tsx；基础支持: .c, .cc, .cpp, .cxx, .h, .hpp）</li>
+
+            <li><code>data\aegis_db\b1dfe850-764c-425e-b340-5b0b41c68fd2\length.bin</code> — 扩展名 .bin 不在支持列表（完整支持: .cjs, .go, .java, .js, .jsx, .mjs, .php, .py, .pyw, .ts, .tsx；基础支持: .c, .cc, .cpp, .cxx, .h, .hpp）</li>
+
+            <li><code>data\aegis_db\b1dfe850-764c-425e-b340-5b0b41c68fd2\link_lists.bin</code> — 扩展名 .bin 不在支持列表（完整支持: .cjs, .go, .java, .js, .jsx, .mjs, .php, .py, .pyw, .ts, .tsx；基础支持: .c, .cc, .cpp, .cxx, .h, .hpp）</li>
+
+            <li><code>data\cache\last_update.txt</code> — 被忽略规则排除</li>
+
+            <li><code>data\logs\cve_crawler.log</code> — 被忽略规则排除</li>
+
+            <li><code>real_world_targets\body-parser-1.20.0\.eslintignore</code> — 被忽略规则排除</li>
+
+            <li><code>real_world_targets\body-parser-1.20.0\.eslintrc.yml</code> — 被忽略规则排除</li>
+
+            <li><code>real_world_targets\body-parser-1.20.0\.gitignore</code> — 扩展名  不在支持列表（完整支持: .cjs, .go, .java, .js, .jsx, .mjs, .php, .py, .pyw, .ts, .tsx；基础支持: .c, .cc, .cpp, .cxx, .h, .hpp）</li>
+
+            <li><code>real_world_targets\body-parser-1.20.0\HISTORY.md</code> — 被忽略规则排除</li>
+
+            <li><code>real_world_targets\body-parser-1.20.0\LICENSE</code> — 扩展名  不在支持列表（完整支持: .cjs, .go, .java, .js, .jsx, .mjs, .php, .py, .pyw, .ts, .tsx；基础支持: .c, .cc, .cpp, .cxx, .h, .hpp）</li>
+
+            <li><code>real_world_targets\body-parser-1.20.0\package.json</code> — 扩展名 .json 不在支持列表（完整支持: .cjs, .go, .java, .js, .jsx, .mjs, .php, .py, .pyw, .ts, .tsx；基础支持: .c, .cc, .cpp, .cxx, .h, .hpp）</li>
+
+            <li><code>real_world_targets\body-parser-1.20.0\README.md</code> — 被忽略规则排除</li>
+
+            <li><code>real_world_targets\body-parser-1.20.0\SECURITY.md</code> — 被忽略规则排除</li>
+
+            <li><code>real_world_targets\django-3.2\.editorconfig</code> — 被忽略规则排除</li>
+
+            <li><code>real_world_targets\django-3.2\.eslintignore</code> — 被忽略规则排除</li>
+
+            <li><code>real_world_targets\django-3.2\.eslintrc</code> — 被忽略规则排除</li>
+
+            <li><code>real_world_targets\django-3.2\.gitattributes</code> — 被忽略规则排除</li>
+
+            <li><code>real_world_targets\django-3.2\.gitignore</code> — 扩展名  不在支持列表（完整支持: .cjs, .go, .java, .js, .jsx, .mjs, .php, .py, .pyw, .ts, .tsx；基础支持: .c, .cc, .cpp, .cxx, .h, .hpp）</li>
+
+            <li><code>real_world_targets\django-3.2\.pre-commit-config.yaml</code> — 被忽略规则排除</li>
+
+            <li><code>real_world_targets\django-3.2\AUTHORS</code> — 扩展名  不在支持列表（完整支持: .cjs, .go, .java, .js, .jsx, .mjs, .php, .py, .pyw, .ts, .tsx；基础支持: .c, .cc, .cpp, .cxx, .h, .hpp）</li>
+
+            <li>… 及其他 2660 个</li>
+
+        </ul>
+
+        <h2>🔍 详细发现</h2>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\conf\global_settings.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 210 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: email_ssl_keyfile，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 519 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: password_reset_timeout_days，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\conf\__init__.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 24 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: password_reset_timeout_days_deprecated_msg，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\admin\models.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 103 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>change_message = json.loads(self.change_message)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\admin\options.py</h3>
+            <p><strong>问题数量</strong>: 4</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 1662 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>pk_pattern = re.compile(</p>
+
+            </div>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 1203 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>value = obj.serializable_value(attr)</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 1261 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>new_value = obj.serializable_value(attr)</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 1877 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>obj_id = obj.serializable_value(attr)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\admin\sites.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 67 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: password_change_template，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 68 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: password_change_done_template，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\admin\templatetags\admin_list.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 243 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>value = result.serializable_value(attr)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\auth\admin.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 43 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: change_user_password_template，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\auth\base_user.py</h3>
+            <p><strong>问题数量</strong>: 3</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 58 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: _password，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 126 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: key_salt，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 133 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: key_salt，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\auth\hashers.py</h3>
+            <p><strong>问题数量</strong>: 6</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 19 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: unusable_password_prefix，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 20 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: unusable_password_suffix_length，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <h4 class="medium">Medium 级别</h4>
+
+            <div class="finding medium">
+                <p><strong>第 524 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 sha1，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+            <div class="finding medium">
+                <p><strong>第 566 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 md5，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+            <div class="finding medium">
+                <p><strong>第 615 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 sha1，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+            <div class="finding medium">
+                <p><strong>第 659 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 md5，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\auth\tokens.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 13 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: key_salt，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 15 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: secret，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\auth\views.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 239 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: internal_reset_session_token，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 251 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: reset_url_token，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\auth\__init__.py</h3>
+            <p><strong>问题数量</strong>: 4</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 49 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>SENSITIVE_CREDENTIALS = re.compile(&#x27;api|token|key|secret|password|signature&#x27;, re.I)</p>
+
+            </div>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 14 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: session_key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 15 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: backend_session_key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 16 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: hash_session_key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\auth\management\commands\changepassword.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 52 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: password_validated，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 67 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: password_validated，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\auth\management\commands\createsuperuser.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 21 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: password_field，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\gis\db\backends\oracle\operations.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 43 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>mask_regex = re.compile(r&#x27;^(%s)(\+(%s))*$&#x27; % (masks, masks), re.I)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\gis\db\backends\postgis\operations.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 340 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>proj_regex = re.compile(r&#x27;(\d+)\.(\d+)\.(\d+)&#x27;)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\gis\db\models\lookups.py</h3>
+            <p><strong>问题数量</strong>: 3</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 11 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>return compiler.compile(self.lhs)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 295 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>compiler.compile(dist_param.resolve_expression(compiler.query))</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 330 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = compiler.compile(distance_expr.resolve_expression(compiler.query))</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\gis\gdal\libgdal.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 119 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>set_error_handler = function(&#x27;CPLSetErrorHandler&#x27;, [CPLErrorHandler], CPLErrorHandler)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\gis\gdal\raster\source.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 72 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>反序列化用户输入，存在代码执行风险，建议使用安全的序列化格式或验证输入。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\gis\geos\geometry.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 722 行</strong> - <code>PATH_TRAVERSAL</code></p>
+                <p>文件操作使用用户输入，可能存在路径遍历风险，建议进行路径验证。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\gis\serializers\geojson.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 53 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现高危函数调用: eval()，可能导致代码注入。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\messages\storage\cookie.py</h3>
+            <p><strong>问题数量</strong>: 4</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 15 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: message_key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 59 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>return json.loads(data.decode(&#x27;latin-1&#x27;), cls=MessageDecoder)</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 72 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: key_salt，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 151 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: key_salt，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\messages\storage\session.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 13 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: session_key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\postgres\constraints.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 75 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = compiler.compile(expression)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\postgres\search.py</h3>
+            <p><strong>问题数量</strong>: 3</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 59 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = compiler.compile(self.config)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 109 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>config_sql, config_params = compiler.compile(clone.config)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 119 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>weight_sql, extra_params = compiler.compile(clone.weight)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\postgres\aggregates\mixins.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 27 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>expr_sql, expr_params = compiler.compile(expr)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\postgres\fields\array.py</h3>
+            <p><strong>问题数量</strong>: 4</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 249 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>lhs, params = compiler.compile(self.lhs)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 282 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>lhs, params = compiler.compile(self.lhs)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 308 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>lhs, params = compiler.compile(self.lhs)</p>
+
+            </div>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 114 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>vals = json.loads(value)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\postgres\fields\hstore.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 87 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>lhs, params = compiler.compile(self.lhs)</p>
+
+            </div>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 42 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>value = json.loads(value)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\postgres\fields\ranges.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 80 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>vals = json.loads(value)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\postgres\forms\hstore.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 30 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>value = json.loads(value)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\sessions\serializers.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 17 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>return pickle.loads(data)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\sessions\backends\cache.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 7 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: key_prefix，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\sessions\backends\cached_db.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 9 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: key_prefix，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\sessions\backends\file.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 55 行</strong> - <code>PATH_TRAVERSAL</code></p>
+                <p>return os.path.join(self.storage_path, self.file_prefix + session_key)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\contrib\staticfiles\storage.py</h3>
+            <p><strong>问题数量</strong>: 3</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 65 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>compiled = re.compile(pattern, re.IGNORECASE)</p>
+
+            </div>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 387 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>stored = json.loads(content)</p>
+
+            </div>
+
+            <h4 class="medium">Medium 级别</h4>
+
+            <div class="finding medium">
+                <p><strong>第 74 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 md5，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\core\signing.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 90 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>return json.loads(data.decode(&#x27;latin-1&#x27;))</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\core\cache\utils.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 3 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: template_fragment_key_template，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <h4 class="medium">Medium 级别</h4>
+
+            <div class="finding medium">
+                <p><strong>第 7 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 md5，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\core\cache\backends\base.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 26 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: memcache_max_key_length，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\core\cache\backends\db.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 92 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>value = pickle.loads(base64.b64decode(value.encode()))</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\core\cache\backends\filebased.py</h3>
+            <p><strong>问题数量</strong>: 4</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 36 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>return pickle.loads(zlib.decompress(f.read()))</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 69 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>previous_value = pickle.loads(zlib.decompress(f.read()))</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 147 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>exp = pickle.load(f)</p>
+
+            </div>
+
+            <h4 class="medium">Medium 级别</h4>
+
+            <div class="finding medium">
+                <p><strong>第 133 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 md5，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\core\cache\backends\locmem.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 44 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>return pickle.loads(pickled)</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 77 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>value = pickle.loads(pickled)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\core\cache\backends\memcached.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 171 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: _missing_key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\core\checks\security\base.py</h3>
+            <p><strong>问题数量</strong>: 3</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 12 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: secret_key_insecure_prefix，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 13 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: secret_key_min_length，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 14 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: secret_key_min_unique_characters，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\core\handlers\base.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="low">Low 级别</h4>
+
+            <div class="finding low">
+                <p><strong>第 117 行</strong> - <code>Debug Code</code></p>
+                <p>发现调试代码，生产环境建议移除。</p>
+
+            </div>
+
+            <div class="finding low">
+                <p><strong>第 121 行</strong> - <code>Debug Code</code></p>
+                <p>发现调试代码，生产环境建议移除。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\core\management\commands\makemessages.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 362 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>looks_like_locale = re.compile(r&#x27;[a-z]{2}&#x27;)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\core\management\commands\shell.py</h3>
+            <p><strong>问题数量</strong>: 3</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 78 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现高危函数调用: compile()，可能导致代码注入。</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 87 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现高危函数调用: exec()，可能导致代码注入。</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 93 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现高危函数调用: exec()，可能导致代码注入。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\core\serializers\json.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 69 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>objects = json.loads(stream_or_string)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\core\serializers\jsonl.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 53 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>yield from PythonDeserializer([json.loads(line)], **options)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\core\serializers\pyyaml.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 76 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>yield from PythonDeserializer(yaml.load(stream, Loader=SafeLoader), **options)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\core\serializers\xml_serializer.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 15 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>SimplerXMLGenerator, UnserializableContentError,</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 85 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>except UnserializableContentError:</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\utils.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 13 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: django_version_pickle_key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\backends\ddl_references.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 234 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = self.compiler.compile(self.expressions)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\backends\utils.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="medium">Medium 级别</h4>
+
+            <div class="finding medium">
+                <p><strong>第 218 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 md5，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\backends\base\client.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 26 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现 subprocess.run 调用，建议检查参数是否可控。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\backends\base\features.py</h3>
+            <p><strong>问题数量</strong>: 5</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 43 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: has_select_for_no_key_update，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 128 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: can_introspect_foreign_keys，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 172 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: supports_foreign_keys，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 178 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: indexes_foreign_keys，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 312 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: json_key_contains_list_matching_requires_list，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\backends\mysql\compiler.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 35 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>where_sql, where_params = self.compile(where)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\backends\mysql\creation.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 65 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现 subprocess.Popen 调用，建议检查参数是否可控。</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 66 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现 subprocess.Popen 调用，建议检查参数是否可控。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\backends\oracle\base.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 24 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>if platform.system().upper().startswith(&#x27;CYGWIN&#x27;):</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\backends\oracle\creation.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 242 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: set_password，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\backends\postgresql\features.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 21 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: has_select_for_no_key_update，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 60 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: json_key_contains_list_matching_requires_list，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\backends\sqlite3\base.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="medium">Medium 级别</h4>
+
+            <div class="finding medium">
+                <p><strong>第 243 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 md5，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+            <div class="finding medium">
+                <p><strong>第 251 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 sha1，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\backends\sqlite3\introspection.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 242 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: token，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\migrations\autodetector.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 531 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: primary_key_rel，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\migrations\questioner.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 139 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现高危函数调用: eval()，可能导致代码注入。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\migrations\serializer.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 240 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>flags = self.value.flags ^ re.compile(&#x27;&#x27;).flags</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\migrations\utils.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 4 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>COMPILED_REGEX_TYPE = type(re.compile(&#x27;&#x27;))</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\models\base.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 655 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>def serializable_value(self, field_name):</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\models\expressions.py</h3>
+            <p><strong>问题数量</strong>: 20</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 481 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = compiler.compile(self.lhs)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 484 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = compiler.compile(self.rhs)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 521 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>def compile(self, side, compiler, connection):</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 528 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = compiler.compile(side)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 530 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>return compiler.compile(side)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 538 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = self.compile(self.lhs, compiler, connection)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 541 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = self.compile(self.rhs, compiler, connection)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 558 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>lhs = compiler.compile(self.lhs)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 559 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>rhs = compiler.compile(self.rhs)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 687 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>arg_sql, arg_params = compiler.compile(arg)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 934 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>return compiler.compile(self.expression)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 990 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>condition_sql, condition_params = compiler.compile(self.condition)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 993 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>result_sql, result_params = compiler.compile(self.result)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1058 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>return compiler.compile(self.default)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1064 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>case_sql, case_params = compiler.compile(case)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1069 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>default_sql, default_params = compiler.compile(self.default)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1229 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>expression_sql, params = compiler.compile(self.expression)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1320 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>expr_sql, params = compiler.compile(self.source_expression)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1333 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>order_sql, order_params = compiler.compile(self.order_by)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1338 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>frame_sql, frame_params = compiler.compile(self.frame)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\models\lookups.py</h3>
+            <p><strong>问题数量</strong>: 5</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 54 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, sql_params = compiler.compile(value)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 87 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>return compiler.compile(lhs)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 99 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>return compiler.compile(value)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 257 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = compiler.compile(param)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 521 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = compiler.compile(self.lhs)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\models\query_utils.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 352 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>return compiler.compile(where)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\models\fields\json.py</h3>
+            <p><strong>问题数量</strong>: 4</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 285 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>lhs, params = compiler.compile(previous)</p>
+
+            </div>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 400 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>反序列化用户输入，存在代码执行风险，建议使用安全的序列化格式或验证输入。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 431 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>value = json.loads(value)</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 493 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>rhs_params = [json.loads(value) for value in rhs_params]</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\models\functions\datetime.py</h3>
+            <p><strong>问题数量</strong>: 4</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 44 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = compiler.compile(self.lhs)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 195 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>inner_sql, inner_params = compiler.compile(self.lhs)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 300 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>lhs, lhs_params = compiler.compile(self.lhs)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 313 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>lhs, lhs_params = compiler.compile(self.lhs)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\models\functions\mixins.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 38 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>return compiler.compile(</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\models\sql\compiler.py</h3>
+            <p><strong>问题数量</strong>: 15</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 141 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = self.compile(expr)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 262 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = self.compile(col)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 394 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = self.compile(resolved)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 434 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>def compile(self, node):</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 522 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>where, w_params = self.compile(self.where) if self.where is not None else (&quot;&quot;, [])</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 523 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>having, h_params = self.compile(self.having) if self.having is not None else (&quot;&quot;, [])</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 719 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>r, p = self.compile(transform_function(target, alias))</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 800 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>clause_sql, clause_params = self.compile(from_clause)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1075 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>result.append(self.compile(col)[0])</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1213 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>lhs_sql, lhs_params = self.compile(select_col)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1250 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = self.compile(val)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1434 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>where, params = self.compile(query.where)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1510 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = self.compile(val)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1523 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>where, params = self.compile(self.query.where)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1600 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>ann_sql, ann_params = self.compile(annotation)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\models\sql\datastructures.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 84 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>extra_sql, extra_params = compiler.compile(extra_cond)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 88 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>extra_sql, extra_params = compiler.compile(self.filtered_relation)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\db\models\sql\where.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 81 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>sql, params = compiler.compile(child)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\forms\fields.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 517 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>regex = re.compile(regex)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1097 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>self.match_re = re.compile(self.match)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\forms\models.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 1275 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>return value.serializable_value(self.to_field_name)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\forms\widgets.py</h3>
+            <p><strong>问题数量</strong>: 3</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 493 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: format_key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 498 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: format_key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 503 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: format_key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\http\multipartparser.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 150 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: num_post_keys，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\middleware\csrf.py</h3>
+            <p><strong>问题数量</strong>: 3</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 26 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: reason_bad_token，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 30 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: csrf_secret_length，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 33 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: csrf_session_key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\middleware\security.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 20 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>self.redirect_exempt = [re.compile(r) for r in settings.SECURE_REDIRECT_EXEMPT]</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\template\base.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 889 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: token，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\template\defaulttags.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 305 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>match = condition.eval(context)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 888 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>def eval(self, context):</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\template\loader_tags.py</h3>
+            <p><strong>问题数量</strong>: 3</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 13 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: block_context_key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 82 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: context_key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 154 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: context_key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\template\smartif.py</h3>
+            <p><strong>问题数量</strong>: 18</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 56 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>def eval(self, context):</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 81 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>def eval(self, context):</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 94 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>&#x27;or&#x27;: infix(6, lambda context, x, y: x.eval(context) or y.eval(context)),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 95 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>&#x27;and&#x27;: infix(7, lambda context, x, y: x.eval(context) and y.eval(context)),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 96 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>&#x27;not&#x27;: prefix(8, lambda context, x: not x.eval(context)),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 97 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>&#x27;in&#x27;: infix(9, lambda context, x, y: x.eval(context) in y.eval(context)),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 98 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>&#x27;not in&#x27;: infix(9, lambda context, x, y: x.eval(context) not in y.eval(context)),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 99 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>&#x27;is&#x27;: infix(10, lambda context, x, y: x.eval(context) is y.eval(context)),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 100 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>&#x27;is not&#x27;: infix(10, lambda context, x, y: x.eval(context) is not y.eval(context)),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 101 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>&#x27;==&#x27;: infix(10, lambda context, x, y: x.eval(context) == y.eval(context)),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 102 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>&#x27;!=&#x27;: infix(10, lambda context, x, y: x.eval(context) != y.eval(context)),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 103 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>&#x27;&gt;&#x27;: infix(10, lambda context, x, y: x.eval(context) &gt; y.eval(context)),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 104 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>&#x27;&gt;=&#x27;: infix(10, lambda context, x, y: x.eval(context) &gt;= y.eval(context)),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 105 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>&#x27;&lt;&#x27;: infix(10, lambda context, x, y: x.eval(context) &lt; y.eval(context)),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 106 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>&#x27;&lt;=&#x27;: infix(10, lambda context, x, y: x.eval(context) &lt;= y.eval(context)),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 133 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>def eval(self, context):</p>
+
+            </div>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 161 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: token，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 164 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: token，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\template\loaders\cached.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="medium">Medium 级别</h4>
+
+            <div class="finding medium">
+                <p><strong>第 93 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 sha1，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\urls\resolvers.py</h3>
+            <p><strong>问题数量</strong>: 3</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 190 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>return re.compile(regex)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 288 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>return re.compile(_route_to_regex(route, self._is_endpoint)[0])</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 302 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>return re.compile(self.language_prefix)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\utils\autoreload.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 258 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现 subprocess.run 调用，建议检查参数是否可控。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\utils\cache.py</h3>
+            <p><strong>问题数量</strong>: 4</p>
+
+            <h4 class="medium">Medium 级别</h4>
+
+            <div class="finding medium">
+                <p><strong>第 121 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 md5，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+            <div class="finding medium">
+                <p><strong>第 328 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 md5，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+            <div class="finding medium">
+                <p><strong>第 333 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 md5，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+            <div class="finding medium">
+                <p><strong>第 341 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 md5，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\utils\jslex.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 45 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>self.regexes[state] = re.compile(&quot;|&quot;.join(parts), re.MULTILINE | re.VERBOSE)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\utils\regex_helper.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 345 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>return re.compile(regex, flags)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\utils\version.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 80 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现 subprocess.run 调用，建议检查参数是否可控。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\utils\xmlutils.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 9 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>class UnserializableContentError(ValueError):</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 27 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>raise UnserializableContentError(&quot;Control characters are not supported in XML 1.0&quot;)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\django\utils\translation\__init__.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 27 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: language_session_key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\django-3.2\scripts\manage_translations.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 185 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现高危函数调用: eval()，可能导致代码注入。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\flask-2.3.2\src\flask\cli.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 963 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现高危函数调用: compile()，可能导致代码注入。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\flask-2.3.2\src\flask\config.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 187 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现高危函数调用: compile()，可能导致代码注入。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\flask-2.3.2\src\flask\scaffold.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 891 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>system (:attr:`sys.prefix`) or a virtualenv (``site-packages``),</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\flask-2.3.2\src\flask\sessions.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 288 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: key_derivation，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\flask-2.3.2\src\flask\testing.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 219 行</strong> - <code>PATH_TRAVERSAL</code></p>
+                <p>文件操作使用用户输入，可能存在路径遍历风险，建议进行路径验证。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\flask-2.3.2\src\flask\json\provider.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 151 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: sort_keys，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 real_world_targets\flask-2.3.2\src\flask\json\tag.py</h3>
+            <p><strong>问题数量</strong>: 6</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 100 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 134 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 160 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 178 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 192 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 206 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: key，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 scripts\benchmark\compare_ast_vs_dsl.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 172 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现 subprocess.run 调用，建议检查参数是否可控。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 scripts\data\test_cases\js_express.js</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 22 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>JavaScript AST: 发现危险的 eval() 调用</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 75 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>require(&#x27;child_process&#x27;).exec(cmd);</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 scripts\data\test_cases\php_rce.php</h3>
+            <p><strong>问题数量</strong>: 8</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 10 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>$output = shell_exec(&quot;ping -c 1 &quot; . $host);</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 16 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>exec($cmd);</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 22 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>system(&quot;traceroute &quot; . $target);</p>
+
+            </div>
+
+            <h4 class="medium">Medium 级别</h4>
+
+            <div class="finding medium">
+                <p><strong>第 28 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>shell_exec(&quot;nc localhost &quot; . $port); （检测到输入校验，建议人工确认）</p>
+
+            </div>
+
+            <div class="finding medium">
+                <p><strong>第 36 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>shell_exec(&quot;process_id &quot; . $safe); （检测到输入校验，建议人工确认）</p>
+
+            </div>
+
+            <div class="finding medium">
+                <p><strong>第 47 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>$cmd = shell_exec(&quot;ping &quot; . $target); （检测到输入校验，建议人工确认）</p>
+
+            </div>
+
+            <div class="finding medium">
+                <p><strong>第 56 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>$output = shell_exec($cmd); （检测到输入校验，建议人工确认）</p>
+
+            </div>
+
+            <div class="finding medium">
+                <p><strong>第 62 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>passthru(&quot;/bin/bash &quot; . $script); （检测到输入校验，建议人工确认）</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 scripts\data\test_cases\php_sqli.php</h3>
+            <p><strong>问题数量</strong>: 3</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 16 行</strong> - <code>SQL_INJECTION</code></p>
+                <p>$pdo-&gt;query(&quot;SELECT * FROM users WHERE name = &#x27;&quot; . $name . &quot;&#x27;&quot;);</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 42 行</strong> - <code>SQL_INJECTION</code></p>
+                <p>$pdo-&gt;query(&quot;SELECT * FROM users WHERE name = &#x27;&quot; . $name . &quot;&#x27;&quot;);</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 50 行</strong> - <code>SQL_INJECTION</code></p>
+                <p>mysql_query(&quot;SELECT * FROM items WHERE name LIKE &#x27;%&quot; . $search . &quot;%&#x27;&quot;);</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 scripts\data\test_cases\php_xss.php</h3>
+            <p><strong>问题数量</strong>: 3</p>
+
+            <h4 class="medium">Medium 级别</h4>
+
+            <div class="finding medium">
+                <p><strong>第 10 行</strong> - <code>XSS_RISK</code></p>
+                <p>echo $name;</p>
+
+            </div>
+
+            <div class="finding medium">
+                <p><strong>第 21 行</strong> - <code>XSS_RISK</code></p>
+                <p>echo $_REQUEST[&#x27;comment&#x27;];</p>
+
+            </div>
+
+            <div class="finding medium">
+                <p><strong>第 56 行</strong> - <code>XSS_RISK</code></p>
+                <p>echo $greeting;</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 scripts\data\test_cases\python_rce.py</h3>
+            <p><strong>问题数量</strong>: 9</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 14 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现 os.system() 调用，存在命令注入风险。</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 21 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现 subprocess.call 调用，建议检查参数是否可控。</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 28 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现高危函数调用: eval()，可能导致代码注入。</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 36 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现 os.system() 调用，存在命令注入风险。</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 43 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现 subprocess.run 调用，建议检查参数是否可控。</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 54 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现 subprocess.run 调用，建议检查参数是否可控。</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 63 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现 os.system() 调用，存在命令注入风险。</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 71 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现高危函数调用: exec()，可能导致代码注入。</p>
+
+            </div>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 70 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现高危函数调用: compile()，可能导致代码注入。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 scripts\debug\debug_runner.py</h3>
+            <p><strong>问题数量</strong>: 3</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 136 行</strong> - <code>PATH_TRAVERSAL</code></p>
+                <p>with open(&quot;debug-02e970.log&quot;,&quot;a&quot;,encoding=&quot;utf-8&quot;) as _f: _f.write(_j.dumps(_hf)+&quot;\n&quot;)</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 155 行</strong> - <code>PATH_TRAVERSAL</code></p>
+                <p>with open(&quot;debug-02e970.log&quot;,&quot;a&quot;,encoding=&quot;utf-8&quot;) as _f: _f.write(_j.dumps(_hg)+&quot;\n&quot;)</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 161 行</strong> - <code>PATH_TRAVERSAL</code></p>
+                <p>with open(&quot;debug-02e970.log&quot;,&quot;a&quot;,encoding=&quot;utf-8&quot;) as _f: _f.write(_j.dumps(_hg_err)+&quot;\n&quot;)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 scripts\debug\poc1_inline_coordinate_hell.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 23 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>result = eval(user_data)  # Sink 在“定义处”的第 52 行</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\worker_daemon.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 110 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>req = json.loads(raw.split(&quot;\n&quot;)[0])</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\multi_language_ast.py</h3>
+            <p><strong>问题数量</strong>: 3</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 344 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>- 识别 RegExp.exec() vs child_process.exec()</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 853 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>eval(user_input)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 862 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>eval(userInput);</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\rule_based_audit.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 196 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>- 避免使用 `eval()`, `exec()`, `os.system()` 等危险函数</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\security_rules.py</h3>
+            <p><strong>问题数量</strong>: 27</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 278 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>VULN_SIGNATURES_COMPILED = {k: [re.compile(r, re.IGNORECASE) for r in v] for k, v in VULN_SIGNATURES.items()}</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 281 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_RE_PHP_USER_INPUT = re.compile(r&quot;\$_(GET|POST|REQUEST|COOKIE|FILES|SERVER)\s*\[&quot;, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 282 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_RE_PHP_JSON_ENCODE = re.compile(r&quot;json_encode\s*\(&quot;, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 283 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_RE_PHP_HTMLSPECIAL = re.compile(r&quot;htmlspecialchars\s*\(|htmlentities\s*\(&quot;, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 284 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_RE_PHP_FILTER_SANIT = re.compile(r&quot;filter_var\s*\(.*FILTER_SANITIZE&quot;, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 285 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_RE_PHP_CONTENT_JSON = re.compile(r&#x27;header\s*\(\s*[&quot;\&#x27;]Content-Type:\s*application/json&#x27;, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 286 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_RE_PHP_RESP_JSONENC = re.compile(r&quot;\$response\s*\[.*\]\s*=\s*json_encode\s*\(&quot;, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 287 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_RE_PHP_RESP_METHOD = re.compile(r&quot;\$response\s*=\s*\$this\s*-&gt;\s*\w+\s*\(&quot;, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 288 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_RE_PHP_DB_QUERY = re.compile(r&quot;(SELECT|mysqli_query|mysql_query|-&gt;query)\s*\(&quot;, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 289 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_RE_PHP_FPASSTHRU = re.compile(r&quot;\bfpassthru\s*\(&quot;, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 290 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_RE_PHP_SHELL_EXEC = re.compile(r&quot;\b(shell_exec|exec|system|passthru|popen)\s*\(&quot;, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 291 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_RE_OPEN_REDIRECT_HDR = re.compile(r&#x27;header\s*\(\s*[&quot;\&#x27;]location\s*:&#x27;, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 292 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_RE_JS_REGEX_EXEC = re.compile(r&quot;/.*/\.exec\s*\(&quot;, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 293 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_RE_ARRAY_DEF = re.compile(r&quot;var\s+\w+\s*=\s*\[&quot;, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 295 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_RE_ECHO_PRINT_RCE = re.compile(r&#x27;(echo|print)\s*[&quot;\&#x27;].*(shutdown|system|exec|shell_exec)&#x27;, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 297 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_RE_PHP_VALIDATION = re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 453 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_PHP_SOURCE_RE = re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 461 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_PHP_SANITIZE_RE = re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 472 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_PHP_ASSIGN_RE = re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 481 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 492 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 501 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 510 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 519 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 528 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 604 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_GUARD_CONDITION_RE = re.compile(</p>
+
+            </div>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 190 行</strong> - <code>XSS_RISK</code></p>
+                <p>r&quot;header\s*\(\s*[&#x27;\&quot;]location\s*:.*\$_(GET|POST|REQUEST|COOKIE)\s*\[&quot;,  # header(&quot;location:...$_GET[...]&quot;)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\base\dataflow_tracker.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 8 行</strong> - <code>SQL_INJECTION</code></p>
+                <p>- 模板字符串：```` `SELECT ${tainted}` ````</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\dsl\dsl_engine.py</h3>
+            <p><strong>问题数量</strong>: 3</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 65 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>token_re = re.compile(r&quot;\$(\w+)&quot;)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 98 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>compiled = re.compile(full)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 100 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>compiled = re.compile(r&quot;(?!x)x&quot;)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\rules\deserialization\ast_rule.py</h3>
+            <p><strong>问题数量</strong>: 5</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 16 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>- 直接 ``eval(user_input)`` / ``exec(user_input)`` → Critical（反序列化场景常见）</p>
+
+            </div>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 7 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>- ``pickle.loads(user_input)``                    → Critical</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 8 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>- ``pickle.load(f)`` 当 f 来自用户控制路径         → Critical</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 11 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>- ``yaml.load(user_input)``                       → High（unsafe Loader）</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 13 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>- ``json.loads(user_input)``                      → Low（JSON 本身安全，但保留低优先级提示）</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\rules\deserialization\javascript_ast_rule.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 7 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>- JSON.parse()、node-serialize.unserialize()、js-yaml.load() 对不可信数据执行反序列化。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\rules\hardcoded_credentials\ast_rule.py</h3>
+            <p><strong>问题数量</strong>: 4</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 65 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_PLACEHOLDER_RE = re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 99 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_HIGH_ENTROPY_RE = re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 121 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_TEST_FILE_RE = re.compile(r&quot;[\\/](tests?|test_\w+|conftest)[\\/]|[\\/]test_[^/\\]+\.py$&quot;, re.IGNORECASE)</p>
+
+            </div>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 96 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: _min_real_secret_len，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\rules\hardcoded_credentials\javascript_ast_rule.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 70 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: key_name，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\rules\nosql_injection\go_ast_rule.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 26 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_GO_NOSQL_RE = re.compile(</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\rules\nosql_injection\javascript_ast_rule.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 700 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_CONST_RE = re.compile(r&quot;^[A-Z][A-Z0-9_]*$&quot;)</p>
+
+            </div>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 757 行</strong> - <code>HARDCODED_CREDENTIALS</code></p>
+                <p>发现硬编码凭证: key_node，建议使用环境变量或密钥管理服务。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\rules\nosql_injection\java_ast_rule.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 25 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_JAVA_NOSQL_RE = re.compile(</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\rules\php\php_taint_rules.py</h3>
+            <p><strong>问题数量</strong>: 12</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 51 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_PARAM_PLACEHOLDER_RE = re.compile(r&quot;&quot;&quot;[&#x27;&quot;][^&#x27;&quot;]*(?:\?|%s|%\([\w]+\)s|:\w+)[^&#x27;&quot;]*[&#x27;&quot;]&quot;&quot;&quot;, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 52 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_PARAM_BIND_RE = re.compile(r&quot;&quot;&quot;(execute|query)\s*\([^,]+,[^)]+\)&quot;&quot;&quot;, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 55 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_HTML_ESCAPE_RE = re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 139 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>- $db-&gt;query($sql) / shell_exec($cmd)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 407 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_SQLI_INT_SANITIZERS = re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 474 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_RCE_SAFE_SANITIZERS = re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 562 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_PATH_SANITIZER_RE = re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 567 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_DESERIALIZE_SAFE_RE = re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 630 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_PHP_NOSQL_SINK_RE = re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 701 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_CREDENTIAL_ASSIGN_RE = re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 708 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_CREDENTIAL_EXCLUDE_RE = re.compile(</p>
+
+            </div>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 604 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>Sink  ：unserialize() / json_decode()（后接危险操作时）</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\rules\rce\ast_rule.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 7 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>- eval() / exec() / compile()</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 8 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>- os.system() / os.popen()</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\rules\rce\javascript_ast_rule.py</h3>
+            <p><strong>问题数量</strong>: 5</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 7 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>- eval() / Function()</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 159 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>污点感知版 eval()/Function() 检测。</p>
+
+            </div>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 131 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>if self._looks_like_user_input_for_unserialize(arg):</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 178 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>if self._looks_like_user_input_for_unserialize(first_arg):</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 315 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>def _looks_like_user_input_for_unserialize(node: Node) -&gt; bool:</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\rules\sql_injection\javascript_ast_rule.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 8 行</strong> - <code>SQL_INJECTION</code></p>
+                <p>- 模板字符串 SQL（`SELECT ... ${var}`）</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\rules\sql_injection\java_ast_rule.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 101 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>pattern = re.compile(</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\rules\sql_injection\regex_rule.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 43 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>self._compiled = [re.compile(p, re.IGNORECASE) for p in self._PATTERNS]</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 57 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_SAFE_INTERPOLATION = re.compile(</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\rules\xss\javascript_ast_rule.py</h3>
+            <p><strong>问题数量</strong>: 6</p>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 187 行</strong> - <code>XSS_RISK</code></p>
+                <p>- sanitizer.bypassSecurityTrustHtml()</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 188 行</strong> - <code>XSS_RISK</code></p>
+                <p>- sanitizer.bypassSecurityTrustScript()</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 189 行</strong> - <code>XSS_RISK</code></p>
+                <p>- sanitizer.bypassSecurityTrustStyle()</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 190 行</strong> - <code>XSS_RISK</code></p>
+                <p>- sanitizer.bypassSecurityTrustUrl()</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 191 行</strong> - <code>XSS_RISK</code></p>
+                <p>- sanitizer.bypassSecurityTrustResourceUrl()</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 192 行</strong> - <code>XSS_RISK</code></p>
+                <p>- DomSanitizer.bypassSecurityTrustHtml()</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\taint\source_sink_registry.py</h3>
+            <p><strong>问题数量</strong>: 5</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 78 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>self._compiled = re.compile(self.pattern, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 84 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>self._compiled = re.compile(self.pattern, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 121 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>self._compiled = re.compile(self.pattern, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 127 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>self._compiled = re.compile(self.pattern, re.IGNORECASE)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 160 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>self._compiled = re.compile(self.pattern, re.IGNORECASE)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\taint\taint_analyzer.py</h3>
+            <p><strong>问题数量</strong>: 4</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 600 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_ROUTER_CREATION_RE = re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1166 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_PY_SOURCE_STRIP_RE = re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1302 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_FUNC_CALL_RE = re.compile(r&quot;^([\w$]+)\s*\(&quot;)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 1516 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_PARAM_PLACEHOLDER_RE = re.compile(r&quot;\?|%s|%\([\w]+\)s|:\w+&quot;, re.IGNORECASE)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\taint\taint_graph.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="medium">Medium 级别</h4>
+
+            <div class="finding medium">
+                <p><strong>第 82 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 md5，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+            <div class="finding medium">
+                <p><strong>第 134 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 md5，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\analysis\taint\__init__.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 8 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>- Sink（汇点）：敏感操作点，如 eval(), exec(), db.find()</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\crawler\add_more_knowledge.py</h3>
+            <p><strong>问题数量</strong>: 13</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 126 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>&quot;document&quot;: &quot;&quot;&quot;【JavaScript eval() 代码执行风险】</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 130 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>- eval(code) - 直接执行字符串为代码</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 139 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>eval(userInput);  // 执行恶意代码</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 146 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>1. 永远不要 eval() 用户输入</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 147 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>2. 使用 JSON.parse() 替代 eval() 解析 JSON</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 244 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>subprocess.call(f&#x27;cat {filename}&#x27;, shell=True)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 253 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>subprocess.call([&#x27;cat&#x27;, filename])</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 256 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>subprocess.call(f&#x27;cat {shlex.quote(filename)}&#x27;, shell=True)</p>
+
+            </div>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 143 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>JSON.parse(data);  // 原型污染</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 204 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>obj = pickle.loads(user_data)</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 217 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>1. 永远不要 pickle.loads() 不可信数据</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 225 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>data = json.loads(user_data)</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 230 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>data = pickle.loads(user_data)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\crawler\expand_knowledge_base.py</h3>
+            <p><strong>问题数量</strong>: 12</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 148 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>- Python: eval(), exec(), os.system(), subprocess.call()</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 149 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>- JavaScript: eval(), Function(), child_process.exec()</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 150 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>- PHP: system(), exec(), shell_exec(), passthru()</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 158 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>1. 避免使用 eval() 和类似函数</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 165 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>os.system(f&quot;ping {user_input}&quot;)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 169 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>subprocess.run([&quot;ping&quot;, &quot;-c&quot;, &quot;1&quot;, shlex.quote(user_input)])</p>
+
+            </div>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 198 行</strong> - <code>XSS_RISK</code></p>
+                <p>element.innerHTML = userInput;</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 252 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>- Python: pickle.loads() 处理不受信任的数据</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 253 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>- Java: ObjectInputStream.readObject()</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 254 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>- PHP: unserialize()</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 266 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>data = pickle.loads(user_input)</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 270 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>data = json.loads(user_input)</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\scanner\ai_analyzer.py</h3>
+            <p><strong>问题数量</strong>: 15</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 106 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_import_re = re.compile(</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 196 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>re.compile(r&quot;^\s*this\.\w+\s*=\s*(?:async\s*)?\([^)]*\)\s*=&gt;&quot;),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 198 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>re.compile(r&quot;^\s*this\.\w+\s*=\s*(?:async\s+)?function\s*\([^)]*\)&quot;),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 200 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>re.compile(r&quot;^\s*(?:const|let|var)\s+\w+\s*=\s*(?:async\s*)?\([^)]*\)\s*=&gt;&quot;),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 202 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>re.compile(r&quot;^\s*(?:const|let|var)\s+\w+\s*=\s*(?:async\s+)?function\s*\(&quot;),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 204 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>re.compile(r&quot;^\s*(?:async\s+)?function\s+\w+\s*\(&quot;),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 206 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>re.compile(r&quot;^\s*(?:async\s+)?def\s+\w+\s*\(&quot;),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 208 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>re.compile(r&quot;^\s*\w+\s*:\s*(?:async\s+)?function\s*\(&quot;),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 210 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>re.compile(r&quot;^\s*(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{&quot;),</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 296 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_assign_re = re.compile(r&quot;^\s*(?:const|let|var)?\s*(\w+)\s*(?:=|:=)&quot;)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 298 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_arrow_params_re = re.compile(r&quot;\(([^)]*)\)\s*=&gt;&quot;)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 300 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_func_params_re = re.compile(r&quot;function\s*\w*\s*\(([^)]*)\)&quot;)</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 302 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>_py_params_re = re.compile(r&quot;def\s+\w+\s*\(([^)]*)\)&quot;)</p>
+
+            </div>
+
+            <h4 class="high">High 级别</h4>
+
+            <div class="finding high">
+                <p><strong>第 677 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>parsed = json.loads(response.strip())</p>
+
+            </div>
+
+            <div class="finding high">
+                <p><strong>第 686 行</strong> - <code>DESERIALIZATION</code></p>
+                <p>parsed = json.loads(match.group())</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\scanner\incremental_scanner.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 66 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现 subprocess.run 调用，建议检查参数是否可控。</p>
+
+            </div>
+
+            <div class="finding critical">
+                <p><strong>第 77 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>发现 subprocess.run 调用，建议检查参数是否可控。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\scanner\performance_optimizer.py</h3>
+            <p><strong>问题数量</strong>: 2</p>
+
+            <h4 class="medium">Medium 级别</h4>
+
+            <div class="finding medium">
+                <p><strong>第 50 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 md5，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+            <div class="finding medium">
+                <p><strong>第 67 行</strong> - <code>Weak Cryptography</code></p>
+                <p>使用弱加密算法 md5，建议使用 SHA256 或更强的算法。</p>
+
+            </div>
+
+        </div>
+
+        <div class="file-section">
+            <h3>📄 src\scanner\smart_remediation.py</h3>
+            <p><strong>问题数量</strong>: 1</p>
+
+            <h4 class="critical">Critical 级别</h4>
+
+            <div class="finding critical">
+                <p><strong>第 142 行</strong> - <code>RCE_COMMAND_EXEC</code></p>
+                <p>pattern = re.compile(</p>
+
+            </div>
+
+        </div>
+
+    </div>
+</body>
+</html>

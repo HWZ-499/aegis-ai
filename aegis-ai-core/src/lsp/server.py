@@ -41,6 +41,9 @@ class ScanError(Exception):
 from ..scanner.rag_enhancer import BUILTIN_REMEDIATION
 from ..scanner.smart_remediation import generate_smart_remediation
 
+# O1：Baseline 抑制 CRUD
+from ..scanner.baseline import Baseline, _finding_to_baseline_entry, _fingerprint
+
 # A：AI 修复建议（可选），与 CLI 共享 AIAnalyzer 实现
 try:
     from ..scanner.ai_analyzer import AIAnalyzer
@@ -700,6 +703,96 @@ def create_server() -> LanguageServer:
             insert_line = diag.range.start.line
             insert_pos = lsp.Position(line=insert_line, character=0)
 
+            # ── O1：Inline Suppression — 忽略此行的此规则 ──
+            # 检测文件语言以选择正确的注释风格
+            file_path_for_comment = uri_to_filepath(uri)
+            lang_for_comment = detect_language(file_path_for_comment)
+            if lang_for_comment == "python":
+                ignore_comment = f"# aegis-ignore: {rule_id}"
+            elif lang_for_comment == "php":
+                ignore_comment = f"// aegis-ignore: {rule_id}"
+            elif lang_for_comment in ("java", "go"):
+                ignore_comment = f"// aegis-ignore: {rule_id}"
+            else:
+                ignore_comment = f"// aegis-ignore: {rule_id}"
+
+            # 获取当前行的缩进
+            try:
+                doc_for_indent = server.workspace.get_text_document(uri)
+                doc_lines = doc_for_indent.source.splitlines()
+                if insert_line < len(doc_lines):
+                    current_line = doc_lines[insert_line]
+                    indent = current_line[: len(current_line) - len(current_line.lstrip())]
+                else:
+                    indent = ""
+            except (RuntimeError, KeyError):
+                indent = ""
+
+            ignore_edit = lsp.WorkspaceEdit(
+                changes={
+                    uri: [
+                        lsp.TextEdit(
+                            range=lsp.Range(start=insert_pos, end=insert_pos),
+                            new_text=indent + ignore_comment + "\n",
+                        ),
+                    ]
+                }
+            )
+            actions.append(
+                lsp.CodeAction(
+                    title=f"Aegis: Ignore this finding ({rule_id})",
+                    kind=lsp.CodeActionKind.QuickFix,
+                    diagnostics=[diag],
+                    edit=ignore_edit,
+                )
+            )
+
+            # ── O1：Inline Suppression — 忽略此行的所有规则 ──
+            if lang_for_comment == "python":
+                ignore_all_comment = "# aegis-ignore"
+            else:
+                ignore_all_comment = "// aegis-ignore"
+
+            ignore_all_edit = lsp.WorkspaceEdit(
+                changes={
+                    uri: [
+                        lsp.TextEdit(
+                            range=lsp.Range(start=insert_pos, end=insert_pos),
+                            new_text=indent + ignore_all_comment + "\n",
+                        ),
+                    ]
+                }
+            )
+            actions.append(
+                lsp.CodeAction(
+                    title="Aegis: Ignore all on this line",
+                    kind=lsp.CodeActionKind.QuickFix,
+                    diagnostics=[diag],
+                    edit=ignore_all_edit,
+                )
+            )
+
+            # ── O1：Add to Baseline — 将 finding 写入 .aegis-baseline.json ──
+            actions.append(
+                lsp.CodeAction(
+                    title=f"Aegis: Add to baseline ({rule_id})",
+                    kind=lsp.CodeActionKind.QuickFix,
+                    diagnostics=[diag],
+                    command=lsp.Command(
+                        title="Add to baseline",
+                        command="aegis.addToBaseline",
+                        arguments=[
+                            {
+                                "uri": uri,
+                                "rule_id": rule_id,
+                                "line": diag.range.start.line + 1,
+                                "message": diag.message[:200],
+                            }
+                        ],
+                    ),
+                )
+            )
+
             # M1 4.3：插入修复建议注释
             new_text = comment_text + "\n"
             edit = lsp.WorkspaceEdit(
@@ -884,6 +977,125 @@ def create_server() -> LanguageServer:
                     logger.exception("AI remediation generation failed for %s", rule_id)
         return actions
 
+    # ── O1: aegis.addToBaseline 命令处理（Code Action command 触发）──
+    @server.command("aegis.addToBaseline")
+    def on_add_to_baseline(args: list[Any]) -> None:
+        """将 finding 加入 .aegis-baseline.json（工作区根目录）。"""
+        if not args:
+            return
+        params = args[0] if isinstance(args[0], dict) else {}
+        finding_uri = params.get("uri", "")
+        rule_id = params.get("rule_id", "UNKNOWN")
+        line = int(params.get("line", 0))
+        if not finding_uri or not line:
+            return
+
+        file_path = uri_to_filepath(finding_uri)
+        # 推断工作区根目录
+        project_root = None
+        root_str = getattr(_workspace_ctx, "_project_path", None)
+        if root_str:
+            project_root = Path(root_str)
+        else:
+            project_root = Path(file_path).parent
+
+        baseline_path = project_root / ".aegis-baseline.json"
+        baseline = Baseline.load(baseline_path)
+
+        finding_like = {
+            "type": rule_id,
+            "file": file_path,
+            "line": line,
+        }
+        baseline.add_findings({file_path: [finding_like]}, project_root)
+        baseline.save(baseline_path, project_root)
+        logger.info("Added finding to baseline: %s:%s@L%d", rule_id, file_path, line)
+
+        # 重新扫描当前文件以刷新 diagnostics（baseline 中的 finding 将被过滤）
+        try:
+            doc = server.workspace.get_text_document(finding_uri)
+            _validate_document(server, finding_uri, doc.source)
+        except (RuntimeError, KeyError):
+            pass
+
+    # ── O2: aegis/generateFix — 为 Diff Preview 生成 AI 修复代码 ──
+    @server.feature("aegis/generateFix")
+    def on_generate_fix(params: dict[str, Any] | None) -> dict[str, Any] | None:
+        """生成 AI 修复代码并返回给客户端预览。"""
+        if not params:
+            return None
+        fix_uri = params.get("uri", "")
+        rule_id = str(params.get("rule_id", "UNKNOWN")).strip()
+        start_line = int(params.get("start_line", 0))
+        end_line = int(params.get("end_line", start_line))
+        message = params.get("message", "")
+
+        if not fix_uri or not start_line:
+            return None
+
+        file_path = uri_to_filepath(fix_uri)
+        lang = detect_language(file_path)
+
+        # 获取文档源码
+        try:
+            doc = server.workspace.get_text_document(fix_uri)
+            source = doc.source
+        except (RuntimeError, KeyError):
+            return None
+
+        # 尝试从 AI 缓存获取
+        ai_analyzer_inst = getattr(server, "_ai_analyzer", None)
+        if AI_ANALYZER_AVAILABLE and ai_analyzer_inst is None:
+            try:
+                ai_analyzer_inst = AIAnalyzer()
+                server._ai_analyzer = ai_analyzer_inst
+            except (ImportError, RuntimeError):
+                ai_analyzer_inst = None
+
+        if ai_analyzer_inst is None or not getattr(ai_analyzer_inst, "enabled", False):
+            return None
+
+        cache_key = (fix_uri, rule_id, start_line)
+        ai_cache = getattr(server, "_ai_cache", {})
+        result = ai_cache.get(cache_key) if ai_cache else None
+
+        if result is None:
+            finding_like = {
+                "type": rule_id,
+                "severity": "High",
+                "file": file_path,
+                "line": start_line,
+                "start_line": start_line,
+                "end_line": end_line,
+                "details": message,
+                "language": lang,
+            }
+            try:
+                result = ai_analyzer_inst.analyze_finding(
+                    finding_like,
+                    language=lang,
+                    source_code=source,
+                )
+                if result and ai_cache is not None:
+                    ai_cache[cache_key] = result
+            except (RuntimeError, KeyError, ValueError) as e:
+                logger.warning("generateFix AI analyze failed: %s", e)
+                return None
+
+        if not result or not result.fixed_code:
+            return None
+
+        return {
+            "uri": fix_uri,
+            "rule_id": rule_id,
+            "fixed_code": result.fixed_code,
+            "confidence": result.confidence,
+            "fix_suggestion": result.fix_suggestion or "",
+            "start_line": result.fix_start_line or start_line,
+            "end_line": result.fix_end_line or end_line,
+            "requires_review": result.requires_review,
+        }
+
     return server
 
 
@@ -1022,6 +1234,25 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
     disabled = set(_workspace_ctx.disabled_rules)
     if disabled:
         findings = [f for f in findings if f.get("type", f.get("rule_id", "")) not in disabled]
+
+    # O1: 过滤 aegis-ignore 行级抑制
+    from ..scanner.baseline import filter_suppressed_findings
+    findings = filter_suppressed_findings(findings, source)
+
+    # O1: 过滤 .aegis-baseline.json 中的已抑制 findings
+    project_root = None
+    root_str = getattr(_workspace_ctx, "_project_path", None)
+    if root_str:
+        project_root = Path(root_str)
+    else:
+        project_root = Path(file_path).parent
+    baseline_path = project_root / ".aegis-baseline.json"
+    if baseline_path.exists():
+        try:
+            baseline = Baseline.load(baseline_path)
+            findings = [f for f in findings if not baseline.contains(f, project_root)]
+        except (OSError, ValueError) as e:
+            logger.debug("Failed to load baseline: %s", e)
 
     # 过滤低于最低严重度的发现
     _severity_order = {"Critical": 4, "High": 3, "Medium": 2, "Low": 1}

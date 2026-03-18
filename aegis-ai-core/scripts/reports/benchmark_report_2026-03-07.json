@@ -1,0 +1,294 @@
+{
+  "target": "自建基准",
+  "date": "2026-03-07",
+  "metrics": {
+    "tp": 13,
+    "fp": 0,
+    "fn": 1,
+    "tn": 10,
+    "recall": 0.9286,
+    "precision": 1.0,
+    "fpr": 0.0,
+    "f1": 0.963
+  },
+  "by_category": {
+    "NOSQL_INJECTION": {
+      "tp": 6,
+      "tn": 3,
+      "fp": 0,
+      "fn": 0
+    },
+    "SQL_INJECTION": {
+      "tp": 2,
+      "tn": 2,
+      "fp": 0,
+      "fn": 0
+    },
+    "XSS_RISK": {
+      "tp": 2,
+      "tn": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    "RCE_COMMAND_EXEC": {
+      "tp": 2,
+      "tn": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    "HARDCODED_CREDENTIALS": {
+      "tp": 1,
+      "tn": 2,
+      "fp": 0,
+      "fn": 0
+    },
+    "PATH_TRAVERSAL": {
+      "tp": 0,
+      "tn": 1,
+      "fp": 0,
+      "fn": 1
+    }
+  },
+  "details": [
+    {
+      "id": "TP-NOSQL-01",
+      "category": "NOSQL_INJECTION",
+      "pattern": "direct_source",
+      "description": "直接 req.body 传入 findOne",
+      "expect": "VULN",
+      "detected": true,
+      "verdict": "TP",
+      "finding_count": 1
+    },
+    {
+      "id": "TP-NOSQL-02",
+      "category": "NOSQL_INJECTION",
+      "pattern": "variable_propagation",
+      "description": "变量间接传播",
+      "expect": "VULN",
+      "detected": true,
+      "verdict": "TP",
+      "finding_count": 1
+    },
+    {
+      "id": "TP-NOSQL-03",
+      "category": "NOSQL_INJECTION",
+      "pattern": "destructuring",
+      "description": "解构赋值传播",
+      "expect": "VULN",
+      "detected": true,
+      "verdict": "TP",
+      "finding_count": 1
+    },
+    {
+      "id": "TP-NOSQL-04",
+      "category": "NOSQL_INJECTION",
+      "pattern": "object_literal",
+      "description": "对象字面量含 req.body",
+      "expect": "VULN",
+      "detected": true,
+      "verdict": "TP",
+      "finding_count": 1
+    },
+    {
+      "id": "TP-NOSQL-05",
+      "category": "NOSQL_INJECTION",
+      "pattern": "dangerous_operator",
+      "description": "$where + 用户输入",
+      "expect": "VULN",
+      "detected": true,
+      "verdict": "TP",
+      "finding_count": 2
+    },
+    {
+      "id": "TP-NOSQL-06",
+      "category": "NOSQL_INJECTION",
+      "pattern": "dao_pattern",
+      "description": "DAO 模式更新",
+      "expect": "VULN",
+      "detected": true,
+      "verdict": "TP",
+      "finding_count": 1
+    },
+    {
+      "id": "TP-SQL-01",
+      "category": "SQL_INJECTION",
+      "pattern": "string_concat",
+      "description": "字符串拼接 SQL",
+      "expect": "VULN",
+      "detected": true,
+      "verdict": "TP",
+      "finding_count": 1
+    },
+    {
+      "id": "TP-SQL-02",
+      "category": "SQL_INJECTION",
+      "pattern": "template_literal",
+      "description": "模板字符串 SQL",
+      "expect": "VULN",
+      "detected": true,
+      "verdict": "TP",
+      "finding_count": 1
+    },
+    {
+      "id": "TP-XSS-01",
+      "category": "XSS_RISK",
+      "pattern": "innerHTML",
+      "description": "innerHTML 赋值",
+      "expect": "VULN",
+      "detected": true,
+      "verdict": "TP",
+      "finding_count": 1
+    },
+    {
+      "id": "TP-XSS-02",
+      "category": "XSS_RISK",
+      "pattern": "dangerouslySetInnerHTML",
+      "description": "React dangerouslySetInnerHTML",
+      "expect": "VULN",
+      "detected": true,
+      "verdict": "TP",
+      "finding_count": 2
+    },
+    {
+      "id": "TP-RCE-01",
+      "category": "RCE_COMMAND_EXEC",
+      "pattern": "eval",
+      "description": "eval 调用",
+      "expect": "VULN",
+      "detected": true,
+      "verdict": "TP",
+      "finding_count": 1
+    },
+    {
+      "id": "TP-RCE-02",
+      "category": "RCE_COMMAND_EXEC",
+      "pattern": "child_process",
+      "description": "child_process.exec",
+      "expect": "VULN",
+      "detected": true,
+      "verdict": "TP",
+      "finding_count": 1
+    },
+    {
+      "id": "TP-CRED-01",
+      "category": "HARDCODED_CREDENTIALS",
+      "pattern": "literal",
+      "description": "硬编码密码",
+      "expect": "VULN",
+      "detected": true,
+      "verdict": "TP",
+      "finding_count": 1
+    },
+    {
+      "id": "TP-PATH-01",
+      "category": "PATH_TRAVERSAL",
+      "pattern": "fs_read",
+      "description": "fs.readFile 用户输入路径",
+      "expect": "VULN",
+      "detected": false,
+      "verdict": "FN",
+      "finding_count": 0
+    },
+    {
+      "id": "TN-NOSQL-01",
+      "category": "NOSQL_INJECTION",
+      "pattern": "array_find",
+      "description": "Array.find 非 MongoDB",
+      "expect": "SAFE",
+      "detected": false,
+      "verdict": "TN",
+      "finding_count": 0
+    },
+    {
+      "id": "TN-NOSQL-02",
+      "category": "NOSQL_INJECTION",
+      "pattern": "variable_name",
+      "description": "变量名含 body 非用户输入",
+      "expect": "SAFE",
+      "detected": false,
+      "verdict": "TN",
+      "finding_count": 0
+    },
+    {
+      "id": "TN-XSS-01",
+      "category": "XSS_RISK",
+      "pattern": "textContent",
+      "description": "textContent 安全",
+      "expect": "SAFE",
+      "detected": false,
+      "verdict": "TN",
+      "finding_count": 0
+    },
+    {
+      "id": "TN-RCE-01",
+      "category": "RCE_COMMAND_EXEC",
+      "pattern": "regex_exec",
+      "description": "正则 exec 非 child_process",
+      "expect": "SAFE",
+      "detected": false,
+      "verdict": "TN",
+      "finding_count": 0
+    },
+    {
+      "id": "TN-CRED-01",
+      "category": "HARDCODED_CREDENTIALS",
+      "pattern": "env_var",
+      "description": "process.env 安全",
+      "expect": "SAFE",
+      "detected": false,
+      "verdict": "TN",
+      "finding_count": 0
+    },
+    {
+      "id": "TN-CRED-02",
+      "category": "HARDCODED_CREDENTIALS",
+      "pattern": "error_var",
+      "description": "passwordError 变量名",
+      "expect": "SAFE",
+      "detected": false,
+      "verdict": "TN",
+      "finding_count": 0
+    },
+    {
+      "id": "TN-NOSQL-03",
+      "category": "NOSQL_INJECTION",
+      "pattern": "sanitized",
+      "description": "parseInt 净化后不报",
+      "expect": "SAFE",
+      "detected": false,
+      "verdict": "TN",
+      "finding_count": 0
+    },
+    {
+      "id": "TN-SQL-01",
+      "category": "SQL_INJECTION",
+      "pattern": "no_sql_keyword",
+      "description": "无 SQL 关键字拼接",
+      "expect": "SAFE",
+      "detected": false,
+      "verdict": "TN",
+      "finding_count": 0
+    },
+    {
+      "id": "TN-SQL-02",
+      "category": "SQL_INJECTION",
+      "pattern": "parameterized",
+      "description": "参数化查询",
+      "expect": "SAFE",
+      "detected": false,
+      "verdict": "TN",
+      "finding_count": 0
+    },
+    {
+      "id": "TN-PATH-01",
+      "category": "PATH_TRAVERSAL",
+      "pattern": "static_path",
+      "description": "静态路径 fs.readFile",
+      "expect": "SAFE",
+      "detected": false,
+      "verdict": "TN",
+      "finding_count": 0
+    }
+  ]
+}

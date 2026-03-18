@@ -1,0 +1,3 @@
+[console_scripts]
+aegis-lsp = src.lsp.__main__:main
+aegis-scan = src.scanner.cli:main

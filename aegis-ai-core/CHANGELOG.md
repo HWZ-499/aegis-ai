@@ -5,6 +5,18 @@ All notable changes to the aegis-ai-core package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-03-18
+
+### Added
+
+- **Inline Suppression Code Actions (O1)** — LSP server now provides 3 Code Actions per Aegis diagnostic:
+  - "Ignore this finding" — generates language-aware `aegis-ignore: RULE_ID` comment
+  - "Ignore all on this line" — generates `aegis-ignore` comment (no rule filter)
+  - "Add to baseline" — triggers `aegis.addToBaseline` command to persist suppression
+- **`aegis.addToBaseline` LSP command** — writes finding to `.aegis-baseline.json` at workspace root, then re-validates the document to clear suppressed diagnostics
+- **`aegis/generateFix` LSP request** — generates AI fix code for diff preview, reuses AI cache, returns `fixed_code`, `confidence`, `start_line`, `end_line`, `requires_review`
+- **Baseline filtering in scan pipeline** — `_validate_document()` now calls `filter_suppressed_findings()` for inline comments and `Baseline.contains()` for `.aegis-baseline.json` entries before publishing diagnostics
+
 ## [1.2.1] - 2026-03-17
 
 ### Fixed

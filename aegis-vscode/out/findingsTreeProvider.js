@@ -68,15 +68,21 @@ class FindingsTreeProvider {
                 if (!byFile.has(uriStr))
                     byFile.set(uriStr, []);
                 const line = d.range.start.line + 1;
-                byFile.get(uriStr).push({ line, message: d.message, severity: d.severity });
+                const ruleId = type;
+                byFile.get(uriStr).push({ line, message: d.message, severity: d.severity, ruleId });
             }
         }
         if (element === undefined) {
-            return Array.from(aegisByType.entries()).map(([type, byFile]) => ({
-                kind: "group",
-                label: type,
-                type,
-            }));
+            return Array.from(aegisByType.entries()).map(([type, byFile]) => {
+                let count = 0;
+                for (const entries of byFile.values())
+                    count += entries.length;
+                return {
+                    kind: "group",
+                    label: `${type} (${count})`,
+                    type,
+                };
+            });
         }
         if (isGroupNode(element)) {
             const byFile = aegisByType.get(element.type);
@@ -101,6 +107,7 @@ class FindingsTreeProvider {
                 line: f.line,
                 message: f.message,
                 severity: f.severity,
+                ruleId: f.ruleId,
             }));
         }
         return [];

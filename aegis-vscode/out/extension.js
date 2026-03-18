@@ -50,6 +50,7 @@ const child_process_1 = require("child_process");
 const vscode_1 = require("vscode");
 const findingsTreeProvider_1 = require("./findingsTreeProvider");
 const reportWebview_1 = require("./reportWebview");
+const fixPreviewProvider_1 = require("./fixPreviewProvider");
 const node_1 = require("vscode-languageclient/node");
 // ─── Custom LSP notification types ─────────────────────────────────────────
 /** Python server sends `aegis/scanStart` when a file scan begins */
@@ -167,6 +168,9 @@ function activate(context) {
         showCollapseAll: true,
     });
     context.subscriptions.push(treeView);
+    // ── O2: Fix Preview Provider (aegis-fix: URI scheme for diff preview) ──
+    const fixPreviewProvider = new fixPreviewProvider_1.FixPreviewProvider();
+    context.subscriptions.push(vscode_1.workspace.registerTextDocumentContentProvider("aegis-fix", fixPreviewProvider));
     // Register commands (showOutput is always available; scan commands need client)
     context.subscriptions.push(vscode_1.commands.registerCommand("aegisAI.showOutput", () => {
         outputChannel.show();
@@ -206,6 +210,75 @@ function activate(context) {
             workspaceProgressReporter = null;
             workspaceScanResolve = null;
         });
+    }));
+    // ── O2: Preview AI Fix — Diff Editor command ──────────────────────────
+    context.subscriptions.push(vscode_1.commands.registerCommand("aegisAI.previewFix", async () => {
+        const editor = vscode_1.window.activeTextEditor;
+        if (!editor || !client) {
+            vscode_1.window.showWarningMessage("Aegis: No active editor or LSP not connected.");
+            return;
+        }
+        // Find the first Aegis diagnostic at the cursor position
+        const cursorPos = editor.selection.active;
+        const allDiags = vscode_1.languages.getDiagnostics(editor.document.uri);
+        const aegisDiag = allDiags.find((d) => d.source === "Aegis AI" &&
+            d.range.contains(cursorPos));
+        if (!aegisDiag) {
+            vscode_1.window.showInformationMessage("Aegis: No finding at cursor position.");
+            return;
+        }
+        const ruleId = typeof aegisDiag.code === "string"
+            ? aegisDiag.code
+            : aegisDiag.code?.value ?? "UNKNOWN";
+        // Request AI fix from LSP server
+        const result = await vscode_1.window.withProgress({ location: vscode_1.ProgressLocation.Notification, title: "Aegis: Generating AI fix…" }, async () => {
+            try {
+                return await client.sendRequest("aegis/generateFix", {
+                    uri: editor.document.uri.toString(),
+                    rule_id: ruleId,
+                    start_line: aegisDiag.range.start.line + 1,
+                    end_line: aegisDiag.range.end.line + 1,
+                    message: aegisDiag.message.substring(0, 500),
+                });
+            }
+            catch (e) {
+                outputChannel.appendLine(`[Aegis] generateFix request failed: ${e}`);
+                return null;
+            }
+        });
+        if (!result || !result.fixed_code) {
+            vscode_1.window.showInformationMessage("Aegis: AI could not generate a fix for this finding. (Check AI provider config)");
+            return;
+        }
+        // Build the full fixed version of the file
+        const originalSource = editor.document.getText();
+        const lines = originalSource.split("\n");
+        const fixStart = Math.max(0, (result.start_line || aegisDiag.range.start.line + 1) - 1);
+        const fixEnd = Math.min(lines.length, result.end_line || aegisDiag.range.end.line + 1);
+        const fixedLines = [
+            ...lines.slice(0, fixStart),
+            ...result.fixed_code.split("\n"),
+            ...lines.slice(fixEnd),
+        ];
+        const fixedSource = fixedLines.join("\n");
+        // Register fixed content in preview provider
+        const fixId = `${editor.document.uri.toString()}#${ruleId}#${aegisDiag.range.start.line}`;
+        const previewUri = fixPreviewProvider.setFix(fixId, { fixedSource });
+        // Open diff editor
+        const confidenceLabel = `${Math.round(result.confidence * 100)}%`;
+        const reviewTag = result.requires_review ? " ⚠ Review" : "";
+        await vscode_1.commands.executeCommand("vscode.diff", editor.document.uri, previewUri, `AI Fix Preview (${ruleId} ${confidenceLabel}${reviewTag})`, { preview: true });
+        // Offer to apply
+        const action = await vscode_1.window.showInformationMessage(`Aegis AI Fix (${confidenceLabel} confidence${reviewTag}): Apply this fix?`, "Apply Fix", "Dismiss");
+        if (action === "Apply Fix") {
+            const edit = new vscode_1.WorkspaceEdit();
+            const replaceRange = new vscode_1.Range(fixStart, 0, fixEnd, lines[fixEnd - 1]?.length ?? 0);
+            edit.replace(editor.document.uri, replaceRange, result.fixed_code);
+            await vscode_1.workspace.applyEdit(edit);
+            outputChannel.appendLine(`[Aegis] Applied AI fix for ${ruleId} at L${fixStart + 1}-${fixEnd}`);
+        }
+        // Clean up preview
+        fixPreviewProvider.removeFix(fixId);
     }));
     // ── Validate Python interpreter ────────────────────────────────────────
     try {

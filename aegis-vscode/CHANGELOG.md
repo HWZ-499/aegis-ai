@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.0] - 2026-03-18
+
+### Added
+- **Inline Suppression UX (O1)** — three new Code Actions on every Aegis finding:
+  - "Aegis: Ignore this finding" — inserts `// aegis-ignore: RULE_ID` above the line (language-aware: `#` for Python)
+  - "Aegis: Ignore all on this line" — inserts `// aegis-ignore` to suppress all rules
+  - "Aegis: Add to baseline" — writes the finding to `.aegis-baseline.json`, auto-rescans to remove it from diagnostics
+- **AI Fix Diff Preview (O2)** — new "Aegis: Preview AI Fix" command (`aegisAI.previewFix`):
+  - Opens a side-by-side diff editor showing original vs AI-fixed code
+  - Shows confidence percentage and review-required indicator in diff title
+  - "Apply Fix" / "Dismiss" dialog after preview
+  - Uses `aegis-fix:` virtual document content provider
+- **LSP `aegis/generateFix` request** — server-side handler that generates AI fix code with caching, returns fixed_code + confidence + line range
+- **LSP `aegis.addToBaseline` command** — server-side handler that writes findings to `.aegis-baseline.json` and triggers rescan
+- **Baseline filtering in scan pipeline** — `_validate_document()` now filters out both `aegis-ignore` line suppression and `.aegis-baseline.json` entries
+- **TreeView count labels** — group nodes now show finding count, e.g. `SQL_INJECTION (3)`
+
 ## [0.3.2] - 2026-03-18
 
 ### Fixed

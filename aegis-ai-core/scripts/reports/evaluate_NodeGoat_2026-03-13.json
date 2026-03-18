@@ -1,0 +1,47 @@
+{
+  "target": "NodeGoat",
+  "date": "2026-03-13",
+  "metrics": {
+    "tp": 12,
+    "fp": 0,
+    "fn": 0,
+    "tn": 0,
+    "recall": 1.0,
+    "precision": 1.0,
+    "fpr": 0.0,
+    "f1": 1.0
+  },
+  "by_category": {
+    "NOSQL_INJECTION": {
+      "tp": 5,
+      "tn": 0,
+      "fp": 0,
+      "fn": 0
+    },
+    "RCE_COMMAND_EXEC": {
+      "tp": 3,
+      "tn": 0,
+      "fp": 0,
+      "fn": 0
+    },
+    "HARDCODED_CREDENTIALS": {
+      "tp": 2,
+      "tn": 0,
+      "fp": 0,
+      "fn": 0
+    },
+    "OPEN_REDIRECT": {
+      "tp": 1,
+      "tn": 0,
+      "fp": 0,
+      "fn": 0
+    },
+    "XSS_RISK": {
+      "tp": 1,
+      "tn": 0,
+      "fp": 0,
+      "fn": 0
+    }
+  },
+  "details": []
+}

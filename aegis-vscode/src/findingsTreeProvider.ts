@@ -37,6 +37,7 @@ interface FindingNode {
   line: number;
   message: string;
   severity: number;
+  ruleId: string;
 }
 
 type TreeNode = GroupNode | FileNode | FindingNode;
@@ -92,7 +93,7 @@ export class FindingsTreeProvider implements TreeDataProvider<TreeNode> {
 
   getChildren(element?: TreeNode): TreeNode[] {
     const allDiags = languages.getDiagnostics();
-    const aegisByType = new Map<string, Map<string, { line: number; message: string; severity: number }[]>>();
+    const aegisByType = new Map<string, Map<string, { line: number; message: string; severity: number; ruleId: string }[]>>();
 
     for (const [uri, diags] of allDiags) {
       const aegis = diags.filter((d) => d.source === AEGIS_SOURCE);
@@ -107,16 +108,21 @@ export class FindingsTreeProvider implements TreeDataProvider<TreeNode> {
         const byFile = aegisByType.get(type)!;
         if (!byFile.has(uriStr)) byFile.set(uriStr, []);
         const line = d.range.start.line + 1;
-        byFile.get(uriStr)!.push({ line, message: d.message, severity: d.severity });
+        const ruleId = type;
+        byFile.get(uriStr)!.push({ line, message: d.message, severity: d.severity, ruleId });
       }
     }
 
     if (element === undefined) {
-      return Array.from(aegisByType.entries()).map(([type, byFile]) => ({
-        kind: "group" as const,
-        label: type,
-        type,
-      }));
+      return Array.from(aegisByType.entries()).map(([type, byFile]) => {
+        let count = 0;
+        for (const entries of byFile.values()) count += entries.length;
+        return {
+          kind: "group" as const,
+          label: `${type} (${count})`,
+          type,
+        };
+      });
     }
 
     if (isGroupNode(element)) {
@@ -140,6 +146,7 @@ export class FindingsTreeProvider implements TreeDataProvider<TreeNode> {
         line: f.line,
         message: f.message,
         severity: f.severity,
+        ruleId: f.ruleId,
       }));
     }
 

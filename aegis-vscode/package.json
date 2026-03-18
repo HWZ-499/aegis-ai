@@ -2,7 +2,7 @@
   "name": "aegis-ai-security",
   "displayName": "Aegis AI Security Scanner",
   "description": "Find and fix SQL injection, XSS, RCE, and 7+ vulnerability types in real-time. One-click AI patches. 100% F1 on OWASP NodeGoat. JS/TS/Python/PHP/Java/Go.",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "publisher": "wen-zai",
   "license": "MIT",
   "preview": true,
@@ -87,6 +87,11 @@
       {
         "command": "aegisAI.showReport",
         "title": "Aegis: Show Report",
+        "category": "Aegis AI"
+      },
+      {
+        "command": "aegisAI.previewFix",
+        "title": "Aegis: Preview AI Fix",
         "category": "Aegis AI"
       }
     ],
