@@ -435,7 +435,7 @@ class ReportGenerator:
 
     def generate_sarif(self, results: dict[str, list[dict]], stats: dict) -> str:
         """
-        生成 SARIF 格式报告（GitHub 支持）
+        生成 SARIF 2.1.0 格式报告（GitHub Advanced Security 兼容）。
 
         Args:
             results: 扫描结果字典
@@ -444,6 +444,9 @@ class ReportGenerator:
         Returns:
             SARIF 格式的报告字符串
         """
+        rules_map: dict[str, dict] = {}
+        sarif_results = self._convert_to_sarif_results(results, rules_map)
+
         sarif = {
             "version": "2.1.0",
             "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
@@ -451,24 +454,28 @@ class ReportGenerator:
                 {
                     "tool": {
                         "driver": {
-                            "name": "Aegis Security Scanner",
-                            "version": "1.0.0",
-                            "informationUri": "https://github.com/your-repo/aegis-ai",
+                            "name": "Aegis AI",
+                            "version": stats.get("scanner_version", "1.3.0"),
+                            "informationUri": "https://github.com/HWZ-499/aegis-ai",
+                            "rules": list(rules_map.values()),
                         }
                     },
-                    "results": self._convert_to_sarif_results(results),
+                    "results": sarif_results,
                 }
             ],
         }
 
         return json.dumps(sarif, indent=2, ensure_ascii=False)
 
-    def _convert_to_sarif_results(self, results: dict[str, list[dict]]) -> list[dict]:
+    def _convert_to_sarif_results(
+        self, results: dict[str, list[dict]], rules_map: dict[str, dict]
+    ) -> list[dict]:
         """
-        将扫描结果转换为 SARIF 格式
+        将扫描结果转换为 SARIF 格式，同时收集 rules 定义。
 
         Args:
             results: 扫描结果字典
+            rules_map: 输出——规则 ID → SARIF rule descriptor
 
         Returns:
             SARIF 格式的结果列表
@@ -477,21 +484,85 @@ class ReportGenerator:
 
         severity_map = {"Critical": "error", "High": "error", "Medium": "warning", "Low": "note"}
 
+        # CWE help URI template
+        _cwe_uri = "https://cwe.mitre.org/data/definitions/{}.html"
+
         for file_path, findings in results.items():
             for finding in findings:
-                sarif_result = {
-                    "ruleId": finding.get("type", "UNKNOWN"),
+                rule_id = finding.get("type", "UNKNOWN")
+
+                # Collect rule descriptor (deduped)
+                if rule_id not in rules_map:
+                    cwe = finding.get("cwe_id") or finding.get("cwe") or ""
+                    help_text = finding.get("fix_suggestion") or finding.get("remediation") or ""
+                    rule_desc: dict[str, Any] = {
+                        "id": rule_id,
+                        "shortDescription": {"text": rule_id.replace("_", " ").title()},
+                    }
+                    if help_text:
+                        rule_desc["help"] = {"text": help_text, "markdown": help_text}
+                    if cwe:
+                        cwe_num = cwe.replace("CWE-", "")
+                        rule_desc["properties"] = {"tags": [f"CWE-{cwe_num}", "security"]}
+                        rule_desc["helpUri"] = _cwe_uri.format(cwe_num)
+                    else:
+                        rule_desc["properties"] = {"tags": ["security"]}
+                    rules_map[rule_id] = rule_desc
+
+                start_line = finding.get("line", 1)
+                start_col = finding.get("column", 1) or 1
+                end_line = finding.get("end_line") or start_line
+                end_col = finding.get("end_column") or start_col
+
+                sarif_result: dict[str, Any] = {
+                    "ruleId": rule_id,
                     "level": severity_map.get(finding.get("severity", "Medium"), "warning"),
-                    "message": {"text": finding.get("details", "No details")},
+                    "message": {"text": finding.get("details") or finding.get("message") or "Security issue detected"},
                     "locations": [
                         {
                             "physicalLocation": {
-                                "artifactLocation": {"uri": file_path},
-                                "region": {"startLine": finding.get("line", 1), "startColumn": 1},
+                                "artifactLocation": {"uri": file_path, "uriBaseId": "%SRCROOT%"},
+                                "region": {
+                                    "startLine": start_line,
+                                    "startColumn": start_col,
+                                    "endLine": end_line,
+                                    "endColumn": end_col,
+                                },
                             }
                         }
                     ],
                 }
+
+                # O4: codeFlows — taint path 映射为 threadFlows（GitHub UI 可展示）
+                taint_analysis = finding.get("taint_analysis") or {}
+                full_path = taint_analysis.get("full_path")
+                if full_path and isinstance(full_path, dict):
+                    nodes = full_path.get("nodes") or []
+                    if nodes:
+                        locations = []
+                        for node in nodes:
+                            loc = {
+                                "location": {
+                                    "physicalLocation": {
+                                        "artifactLocation": {
+                                            "uri": node.get("filePath", file_path),
+                                            "uriBaseId": "%SRCROOT%",
+                                        },
+                                        "region": {
+                                            "startLine": node.get("line", 1),
+                                            "startColumn": node.get("column", 1) or 1,
+                                        },
+                                    },
+                                    "message": {
+                                        "text": f"{node.get('nodeType', 'VARIABLE')}: {node.get('name', '')}",
+                                    },
+                                }
+                            }
+                            locations.append(loc)
+                        sarif_result["codeFlows"] = [
+                            {"threadFlows": [{"locations": locations}]}
+                        ]
+
                 sarif_results.append(sarif_result)
 
         return sarif_results

@@ -44,6 +44,10 @@ from ..scanner.smart_remediation import generate_smart_remediation
 # O1：Baseline 抑制 CRUD
 from ..scanner.baseline import Baseline, _finding_to_baseline_entry, _fingerprint
 
+# O5：增量分析 & 依赖追踪
+from ..analysis.incremental_analyzer import IncrementalAnalyzer
+from ..analysis.dependency_tracker import DependencyTracker
+
 # A：AI 修复建议（可选），与 CLI 共享 AIAnalyzer 实现
 try:
     from ..scanner.ai_analyzer import AIAnalyzer
@@ -97,6 +101,13 @@ SCAN_TIMEOUT_SECONDS: float = 30.0
 MAX_FILE_SIZE_BYTES: int = 2 * 1024 * 1024  # 2 MB
 _pending_validation: dict[str, threading.Timer] = {}
 _pending_lock: threading.Lock = threading.Lock()
+
+# O3: 每个 URI 的 findings 缓存，用于 aegis/getTaintPath 等后续查询
+_findings_cache: dict[str, list[dict]] = {}
+
+# O5: 增量分析器实例和依赖追踪器实例
+_incremental_analyzer = IncrementalAnalyzer()
+_dependency_tracker = DependencyTracker()
 
 
 # ---------------------------------------------------------------------------
@@ -348,6 +359,15 @@ def finding_to_diagnostic(
             )
         )
 
+    # O3：将完整 taint path 数据附加到 diagnostic.data 供 Webview 使用
+    diag_data: dict[str, Any] = {}
+    taint_analysis = finding.get("taint_analysis") or {}
+    full_path = taint_analysis.get("full_path")
+    if full_path and taint_analysis.get("has_taint_path"):
+        diag_data["taintPath"] = full_path
+    elif finding.get("taint_details"):
+        diag_data["taintPath"] = finding["taint_details"]
+
     return lsp.Diagnostic(
         range=range_,
         message=message,
@@ -355,6 +375,7 @@ def finding_to_diagnostic(
         source="Aegis AI",
         code=code,
         related_information=related if related else None,
+        data=diag_data if diag_data else None,
     )
 
 
@@ -1096,6 +1117,42 @@ def create_server() -> LanguageServer:
             "requires_review": result.requires_review,
         }
 
+    # ── O3: aegis/getTaintPath — 返回指定 finding 的完整 taint path ──
+    @server.feature("aegis/getTaintPath")
+    def on_get_taint_path(params: dict[str, Any] | None) -> dict[str, Any] | None:
+        """返回指定 finding 的完整 taint path 用于 Webview 渲染。"""
+        if not params:
+            return None
+        tp_uri = params.get("uri", "")
+        tp_line = int(params.get("line", 0))
+        tp_rule_id = str(params.get("ruleId", "")).strip()
+        if not tp_uri or not tp_line:
+            return None
+
+        cached = _findings_cache.get(tp_uri, [])
+        for f in cached:
+            f_line = int(f.get("line", 0))
+            f_type = str(f.get("type", f.get("rule_id", ""))).strip()
+            if f_line == tp_line and f_type == tp_rule_id:
+                taint_analysis = f.get("taint_analysis") or {}
+                full_path = taint_analysis.get("full_path")
+                if full_path:
+                    return {
+                        "vulnType": f_type,
+                        "severity": f.get("severity", "Medium"),
+                        "taintPath": full_path,
+                    }
+                # Fallback: taint_details from to_dict()
+                taint_details = f.get("taint_details")
+                if taint_details:
+                    return {
+                        "vulnType": f_type,
+                        "severity": f.get("severity", "Medium"),
+                        "taintPath": taint_details,
+                    }
+                return None
+        return None
+
     return server
 
 
@@ -1190,35 +1247,61 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
     except RuntimeError as e:
         logger.debug("Resolving rules_dirs: %s", e)
 
-    # P1-3：单次扫描超时，避免巨型或复杂文件拖死
-    try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(
-                scan_document,
-                source,
-                file_path,
-                extra_rule_dirs,
-                rules_allowed_root,
-            )
-            findings = future.result(timeout=SCAN_TIMEOUT_SECONDS)
-    except concurrent.futures.TimeoutError:
-        logger.warning(
-            "Scan timed out after %.0fs for %s",
-            SCAN_TIMEOUT_SECONDS,
-            file_path,
-        )
-        findings = []
-    except ScanError as e:
-        logger.warning("Scan error for %s: %s", file_path, e)
+    # O5: 增量分析 — 检测是否只有部分函数变化，尝试复用缓存
+    _incremental_used = False
+    changed_funcs, full_rescan = _incremental_analyzer.get_changed_functions(
+        file_path, source, language
+    )
+    if not full_rescan and not changed_funcs:
+        # 完全未变化 — 使用缓存结果
+        cached_findings = _incremental_analyzer.get_cached_findings(file_path)
+        if cached_findings is not None:
+            findings = cached_findings
+            _incremental_used = True
+            logger.debug("Incremental: using cached findings for %s", file_path)
+
+    if not _incremental_used:
+        # P1-3：单次扫描超时，避免巨型或复杂文件拖死
         try:
-            server.protocol.notify(
-                NOTIFICATION_SCAN_ERROR,
-                {"uri": uri, "message": str(e)},
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(
+                    scan_document,
+                    source,
+                    file_path,
+                    extra_rule_dirs,
+                    rules_allowed_root,
+                )
+                findings = future.result(timeout=SCAN_TIMEOUT_SECONDS)
+        except concurrent.futures.TimeoutError:
+            logger.warning(
+                "Scan timed out after %.0fs for %s",
+                SCAN_TIMEOUT_SECONDS,
+                file_path,
             )
-        except RuntimeError as send_err:
-            logger.debug("Failed to send scanError notification: %s", send_err)
-        server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
-        return
+            findings = []
+        except ScanError as e:
+            logger.warning("Scan error for %s: %s", file_path, e)
+            try:
+                server.protocol.notify(
+                    NOTIFICATION_SCAN_ERROR,
+                    {"uri": uri, "message": str(e)},
+                )
+            except RuntimeError as send_err:
+                logger.debug("Failed to send scanError notification: %s", send_err)
+            server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
+            return
+
+        # O5: 更新增量缓存
+        _incremental_analyzer.update_cache(file_path, source, language, findings)
+
+        # O5: 更新依赖追踪 & 检查是否需要重扫导入方
+        project_root_str = getattr(_workspace_ctx, "_project_path", None) or str(Path(file_path).parent)
+        _dependency_tracker.update_imports(file_path, source, language, project_root_str)
+        if _dependency_tracker.update_export_hash(file_path, source):
+            affected = _dependency_tracker.get_affected_files(file_path) - {file_path}
+            for affected_fp in affected:
+                logger.info("O5: export change in %s triggers rescan of %s", file_path, affected_fp)
+                _incremental_analyzer.invalidate(affected_fp)
 
     # 合并跨文件分析结果
     cross_file_findings = _workspace_ctx.get_cross_file_findings(file_path)
@@ -1281,6 +1364,10 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
 
     diagnostics = [finding_to_diagnostic(f, uri, source_code=source, file_path=file_path) for f in findings]
     issue_count = len(diagnostics)
+
+    # O3: 缓存 findings 用于后续 aegis/getTaintPath 查询
+    _findings_cache[uri] = findings
+
     logger.info(
         "Published %d diagnostics for %s (%s)",
         issue_count,

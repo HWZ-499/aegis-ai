@@ -29,6 +29,7 @@ import {
 import { FindingsTreeProvider } from "./findingsTreeProvider";
 import { showReport } from "./reportWebview";
 import { FixPreviewProvider } from "./fixPreviewProvider";
+import { showTaintPathPanel, disposeTaintPathPanel, TaintPathData } from "./taintPathWebview";
 import {
   LanguageClient,
   LanguageClientOptions,
@@ -342,6 +343,134 @@ export function activate(context: ExtensionContext): void {
       fixPreviewProvider.removeFix(fixId);
     })
   );
+
+  // ── O3: Taint Path Decorations ─────────────────────────────────────────
+  const sourceDecoration = window.createTextEditorDecorationType({
+    backgroundColor: "rgba(76, 175, 80, 0.15)",
+    isWholeLine: true,
+    overviewRulerColor: "#4caf50",
+    overviewRulerLane: 2,
+  });
+  const sinkDecoration = window.createTextEditorDecorationType({
+    backgroundColor: "rgba(244, 67, 54, 0.15)",
+    isWholeLine: true,
+    overviewRulerColor: "#f44336",
+    overviewRulerLane: 2,
+  });
+  const propagationDecoration = window.createTextEditorDecorationType({
+    backgroundColor: "rgba(33, 150, 243, 0.08)",
+    isWholeLine: true,
+  });
+  context.subscriptions.push(sourceDecoration, sinkDecoration, propagationDecoration);
+
+  /** Clear all taint path decorations from the active editor. */
+  function clearTaintDecorations(): void {
+    const editor = window.activeTextEditor;
+    if (!editor) return;
+    editor.setDecorations(sourceDecoration, []);
+    editor.setDecorations(sinkDecoration, []);
+    editor.setDecorations(propagationDecoration, []);
+  }
+
+  // ── O3: Show Taint Path command ────────────────────────────────────────
+  context.subscriptions.push(
+    commands.registerCommand("aegisAI.showTaintPath", async (arg?: { uri: string; line: number; ruleId: string }) => {
+      if (!client) {
+        window.showWarningMessage("Aegis: LSP not connected.");
+        return;
+      }
+
+      let uri: string;
+      let line: number;
+      let ruleId: string;
+
+      if (arg && arg.uri && arg.line && arg.ruleId) {
+        // Called from TreeView context menu
+        uri = arg.uri;
+        line = arg.line;
+        ruleId = arg.ruleId;
+      } else {
+        // Called from editor — use diagnostic at cursor
+        const editor = window.activeTextEditor;
+        if (!editor) {
+          window.showWarningMessage("Aegis: No active editor.");
+          return;
+        }
+        const cursorPos = editor.selection.active;
+        const allDiags = languages.getDiagnostics(editor.document.uri);
+        const aegisDiag = allDiags.find(
+          (d) => d.source === "Aegis AI" && d.range.contains(cursorPos)
+        );
+        if (!aegisDiag) {
+          window.showInformationMessage("Aegis: No finding at cursor position.");
+          return;
+        }
+        uri = editor.document.uri.toString();
+        line = aegisDiag.range.start.line + 1;
+        ruleId =
+          typeof aegisDiag.code === "string"
+            ? aegisDiag.code
+            : (aegisDiag.code as { value: string })?.value ?? "UNKNOWN";
+      }
+
+      // Request taint path from LSP
+      const result = await window.withProgress(
+        { location: ProgressLocation.Notification, title: "Aegis: Loading taint path…" },
+        async () => {
+          try {
+            return await client!.sendRequest<TaintPathData | null>("aegis/getTaintPath", {
+              uri,
+              line,
+              ruleId,
+            });
+          } catch (e) {
+            outputChannel.appendLine(`[Aegis] getTaintPath failed: ${e}`);
+            return null;
+          }
+        }
+      );
+
+      if (!result || !result.taintPath?.nodes?.length) {
+        window.showInformationMessage("Aegis: No taint path available for this finding.");
+        return;
+      }
+
+      // Show Webview
+      showTaintPathPanel(context.extensionUri, result);
+
+      // Apply editor decorations
+      clearTaintDecorations();
+      const editor = window.activeTextEditor;
+      if (editor) {
+        const sourceRanges: Range[] = [];
+        const sinkRanges: Range[] = [];
+        const propRanges: Range[] = [];
+        for (const node of result.taintPath.nodes) {
+          const nodeLine = Math.max(0, node.line - 1);
+          const range = new Range(nodeLine, 0, nodeLine, 0);
+          const nt = node.nodeType.toUpperCase();
+          if (nt === "SOURCE") {
+            sourceRanges.push(range);
+          } else if (nt === "SINK") {
+            sinkRanges.push(range);
+          } else {
+            propRanges.push(range);
+          }
+        }
+        editor.setDecorations(sourceDecoration, sourceRanges);
+        editor.setDecorations(sinkDecoration, sinkRanges);
+        editor.setDecorations(propagationDecoration, propRanges);
+      }
+    })
+  );
+
+  // Clear taint decorations when editor changes
+  context.subscriptions.push(
+    window.onDidChangeActiveTextEditor(() => clearTaintDecorations())
+  );
+
+  // Dispose taint path panel on deactivation
+  context.subscriptions.push({ dispose: () => disposeTaintPathPanel() });
 
   // ── Validate Python interpreter ────────────────────────────────────────
   try {

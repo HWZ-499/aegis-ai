@@ -5,6 +5,27 @@ All notable changes to the aegis-ai-core package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-03-18
+
+### Added
+
+- **Dataflow Visualization support (O3)** — enriched taint analysis pipeline:
+  - `TaintPath.to_full_dict()` — full serializable taint path with nodes (type, name, file, line, column, code snippet), edges (type, line, description), path metadata (length, sanitized, risk level, confidence)
+  - `taint_enhancer.py` now includes `full_path` in taint analysis results
+  - `finding_to_diagnostic()` enriches LSP diagnostics with `data.taintPath` for client-side visualization
+  - `_findings_cache` — server-side cache of scan results per document URI
+  - `aegis/getTaintPath` LSP request handler — returns full taint path for a finding at a given location
+- **GitHub Advanced Security SARIF enhancement (O4)**:
+  - `generate_sarif()` rewritten with proper SARIF 2.1.0 compliance
+  - `rules` array with CWE tags, help URIs, and severity-mapped levels
+  - `codeFlows` / `threadFlows` generated from taint path nodes for GHAS visualization
+  - `%SRCROOT%` uriBaseId for correct GitHub path resolution
+  - GitHub Actions workflow template (`templates/aegis-scan.yml`)
+- **Incremental Scanning (O5)** — function-level change detection:
+  - `IncrementalAnalyzer` — tree-sitter AST function extraction, MD5 content hashing, function-level findings cache, automatic full-rescan fallback when >60% functions change
+  - `DependencyTracker` — JS/Python import graph, export signature hashing, affected-file cascade for cross-file invalidation
+  - Integrated into `_validate_document()` — unchanged files skip full scan, partial results merged with cache, dependents invalidated on export changes
+
 ## [1.3.0] - 2026-03-18
 
 ### Added

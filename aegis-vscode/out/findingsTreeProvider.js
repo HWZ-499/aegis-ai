@@ -48,7 +48,7 @@ class FindingsTreeProvider {
             arguments: [finding.uri, { selection: { start: { line: finding.line - 1, character: 0 }, end: { line: finding.line - 1, character: 0 } } }],
         };
         item.tooltip = finding.message;
-        item.contextValue = "aegisFinding";
+        item.contextValue = finding.hasTaintPath ? "aegisFindingWithTaintPath" : "aegisFinding";
         return item;
     }
     getChildren(element) {
@@ -69,7 +69,10 @@ class FindingsTreeProvider {
                     byFile.set(uriStr, []);
                 const line = d.range.start.line + 1;
                 const ruleId = type;
-                byFile.get(uriStr).push({ line, message: d.message, severity: d.severity, ruleId });
+                // O3: check if diagnostic carries taint path data
+                const diagData = d.data;
+                const hasTaintPath = !!(diagData && diagData.taintPath && diagData.taintPath.nodes && diagData.taintPath.nodes.length > 0);
+                byFile.get(uriStr).push({ line, message: d.message, severity: d.severity, ruleId, hasTaintPath });
             }
         }
         if (element === undefined) {
@@ -108,6 +111,7 @@ class FindingsTreeProvider {
                 message: f.message,
                 severity: f.severity,
                 ruleId: f.ruleId,
+                hasTaintPath: f.hasTaintPath,
             }));
         }
         return [];

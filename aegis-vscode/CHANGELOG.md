@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.5.0] - 2026-03-18
+
+### Added
+- **Dataflow Visualization (O3)** — new "Aegis: Show Taint Path" command (`aegisAI.showTaintPath`):
+  - Interactive Webview panel with color-coded node cards: SOURCE (green), SINK (red), VARIABLE (blue), SANITIZER (grey)
+  - Click any node to jump to its exact code location in the editor
+  - Editor decorations highlight source, sink, and propagation nodes in-place
+  - Works from cursor position or TreeView context menu (right-click on any finding with taint data)
+  - CSP-safe HTML rendering with nonce-based script execution
+- **GitHub Advanced Security integration (O4)** — SARIF output now includes:
+  - `codeFlows` / `threadFlows` tracing taint propagation through source → propagation → sink
+  - Dedicated `rules` array with CWE tag references and help URIs
+  - `%SRCROOT%` uriBaseId for correct GitHub code navigation
+  - GitHub Actions workflow template (`templates/aegis-scan.yml`) for automated scanning in CI
+- **Incremental Scanning (O5)** — performance optimization for repeat scans:
+  - Function-level change detection using tree-sitter AST extraction + content hashing
+  - Cached findings reuse for unchanged functions (skip re-analysis)
+  - Cross-file dependency tracking — automatically rescans importers when exported signatures change
+  - Supports JS/TS/Python/PHP/Java/Go function extraction
+- **LSP `aegis/getTaintPath` request** — server-side handler that returns full taint path data for a finding at a given location
+- **TreeView taint path context menu** — findings with taint data show "Show Taint Path" in right-click menu
+
 ## [0.4.0] - 2026-03-18
 
 ### Added

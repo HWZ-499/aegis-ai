@@ -51,6 +51,7 @@ const vscode_1 = require("vscode");
 const findingsTreeProvider_1 = require("./findingsTreeProvider");
 const reportWebview_1 = require("./reportWebview");
 const fixPreviewProvider_1 = require("./fixPreviewProvider");
+const taintPathWebview_1 = require("./taintPathWebview");
 const node_1 = require("vscode-languageclient/node");
 // ─── Custom LSP notification types ─────────────────────────────────────────
 /** Python server sends `aegis/scanStart` when a file scan begins */
@@ -280,6 +281,119 @@ function activate(context) {
         // Clean up preview
         fixPreviewProvider.removeFix(fixId);
     }));
+    // ── O3: Taint Path Decorations ─────────────────────────────────────────
+    const sourceDecoration = vscode_1.window.createTextEditorDecorationType({
+        backgroundColor: "rgba(76, 175, 80, 0.15)",
+        isWholeLine: true,
+        overviewRulerColor: "#4caf50",
+        overviewRulerLane: 2,
+    });
+    const sinkDecoration = vscode_1.window.createTextEditorDecorationType({
+        backgroundColor: "rgba(244, 67, 54, 0.15)",
+        isWholeLine: true,
+        overviewRulerColor: "#f44336",
+        overviewRulerLane: 2,
+    });
+    const propagationDecoration = vscode_1.window.createTextEditorDecorationType({
+        backgroundColor: "rgba(33, 150, 243, 0.08)",
+        isWholeLine: true,
+    });
+    context.subscriptions.push(sourceDecoration, sinkDecoration, propagationDecoration);
+    /** Clear all taint path decorations from the active editor. */
+    function clearTaintDecorations() {
+        const editor = vscode_1.window.activeTextEditor;
+        if (!editor)
+            return;
+        editor.setDecorations(sourceDecoration, []);
+        editor.setDecorations(sinkDecoration, []);
+        editor.setDecorations(propagationDecoration, []);
+    }
+    // ── O3: Show Taint Path command ────────────────────────────────────────
+    context.subscriptions.push(vscode_1.commands.registerCommand("aegisAI.showTaintPath", async (arg) => {
+        if (!client) {
+            vscode_1.window.showWarningMessage("Aegis: LSP not connected.");
+            return;
+        }
+        let uri;
+        let line;
+        let ruleId;
+        if (arg && arg.uri && arg.line && arg.ruleId) {
+            // Called from TreeView context menu
+            uri = arg.uri;
+            line = arg.line;
+            ruleId = arg.ruleId;
+        }
+        else {
+            // Called from editor — use diagnostic at cursor
+            const editor = vscode_1.window.activeTextEditor;
+            if (!editor) {
+                vscode_1.window.showWarningMessage("Aegis: No active editor.");
+                return;
+            }
+            const cursorPos = editor.selection.active;
+            const allDiags = vscode_1.languages.getDiagnostics(editor.document.uri);
+            const aegisDiag = allDiags.find((d) => d.source === "Aegis AI" && d.range.contains(cursorPos));
+            if (!aegisDiag) {
+                vscode_1.window.showInformationMessage("Aegis: No finding at cursor position.");
+                return;
+            }
+            uri = editor.document.uri.toString();
+            line = aegisDiag.range.start.line + 1;
+            ruleId =
+                typeof aegisDiag.code === "string"
+                    ? aegisDiag.code
+                    : aegisDiag.code?.value ?? "UNKNOWN";
+        }
+        // Request taint path from LSP
+        const result = await vscode_1.window.withProgress({ location: vscode_1.ProgressLocation.Notification, title: "Aegis: Loading taint path…" }, async () => {
+            try {
+                return await client.sendRequest("aegis/getTaintPath", {
+                    uri,
+                    line,
+                    ruleId,
+                });
+            }
+            catch (e) {
+                outputChannel.appendLine(`[Aegis] getTaintPath failed: ${e}`);
+                return null;
+            }
+        });
+        if (!result || !result.taintPath?.nodes?.length) {
+            vscode_1.window.showInformationMessage("Aegis: No taint path available for this finding.");
+            return;
+        }
+        // Show Webview
+        (0, taintPathWebview_1.showTaintPathPanel)(context.extensionUri, result);
+        // Apply editor decorations
+        clearTaintDecorations();
+        const editor = vscode_1.window.activeTextEditor;
+        if (editor) {
+            const sourceRanges = [];
+            const sinkRanges = [];
+            const propRanges = [];
+            for (const node of result.taintPath.nodes) {
+                const nodeLine = Math.max(0, node.line - 1);
+                const range = new vscode_1.Range(nodeLine, 0, nodeLine, 0);
+                const nt = node.nodeType.toUpperCase();
+                if (nt === "SOURCE") {
+                    sourceRanges.push(range);
+                }
+                else if (nt === "SINK") {
+                    sinkRanges.push(range);
+                }
+                else {
+                    propRanges.push(range);
+                }
+            }
+            editor.setDecorations(sourceDecoration, sourceRanges);
+            editor.setDecorations(sinkDecoration, sinkRanges);
+            editor.setDecorations(propagationDecoration, propRanges);
+        }
+    }));
+    // Clear taint decorations when editor changes
+    context.subscriptions.push(vscode_1.window.onDidChangeActiveTextEditor(() => clearTaintDecorations()));
+    // Dispose taint path panel on deactivation
+    context.subscriptions.push({ dispose: () => (0, taintPathWebview_1.disposeTaintPathPanel)() });
     // ── Validate Python interpreter ────────────────────────────────────────
     try {
         const pyVersion = (0, child_process_1.execFileSync)(pythonPath, ["--version"], {

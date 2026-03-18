@@ -200,6 +200,7 @@ class TaintEnhancer:
                         "path_length": len(path),
                         "path_string": path.to_string(),
                         "is_sanitized": path.is_sanitized,
+                        "full_path": path.to_full_dict(),
                     }
 
             # 检查行号附近是否有被污染的节点

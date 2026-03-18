@@ -185,6 +185,25 @@ class TaintPath:
             parts.append(f"{node.name} ({location})")
         return " -> ".join(parts)
 
+    def _node_to_dict(self, node: TaintNode) -> dict[str, Any]:
+        """将单个节点转为字典。"""
+        return {
+            "nodeType": node.node_type.name,
+            "name": node.name,
+            "filePath": node.file_path,
+            "line": node.line,
+            "column": node.column,
+            "codeSnippet": node.code_snippet,
+        }
+
+    def _edge_to_dict(self, edge: TaintEdge) -> dict[str, Any]:
+        """将单条边转为字典。"""
+        return {
+            "edgeType": edge.edge_type.name,
+            "line": edge.line,
+            "description": edge.description,
+        }
+
     def to_dict(self) -> dict[str, Any]:
         """转换为字典格式"""
         return {
@@ -205,6 +224,19 @@ class TaintPath:
             "risk_level": self.risk_level,
             "confidence": self.confidence,
             "path_string": self.to_string(),
+        }
+
+    def to_full_dict(self) -> dict[str, Any]:
+        """转换为包含所有节点和边的完整字典格式（用于 Webview 可视化）。"""
+        nodes = [self._node_to_dict(n) for n in self.get_full_path()]
+        edges = [self._edge_to_dict(e) for e in self.path_edges]
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "pathLength": len(self),
+            "isSanitized": self.is_sanitized,
+            "riskLevel": self.risk_level,
+            "confidence": self.confidence,
         }
 
 

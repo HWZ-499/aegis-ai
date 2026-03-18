@@ -1,0 +1,45 @@
+# Aegis AI Security Scan
+# Scans your code for vulnerabilities and uploads SARIF results
+# to GitHub Advanced Security → Code scanning alerts.
+#
+# Usage: Copy this file to .github/workflows/aegis-scan.yml
+#
+# Prerequisites:
+#   - Repository must have GitHub Advanced Security enabled
+#     (free for public repos; requires GHAS license for private repos)
+
+name: Aegis AI Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  security-events: write   # Required to upload SARIF
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Aegis AI
+        run: pip install aegis-ai-core
+
+      - name: Run Aegis Scan
+        run: aegis-scan . --format sarif --output results.sarif
+
+      - name: Upload SARIF to GitHub
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: results.sarif
+          category: aegis-ai
