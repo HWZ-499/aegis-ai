@@ -39,6 +39,10 @@ NodeGoat/
 
 # 基准测试报告（本地生成，体积较大）
 aegis-ai-core/reports/
+aegis-ai-core/scan-report.html
+aegis-ai-core/results.sarif
+aegis-ai-core/coverage.xml
+aegis-ai-core/htmlcov/
 
 # 私人文档（不进版本控制）
 docs/interview/
@@ -64,7 +68,10 @@ aegis-ai-core/debug-*.log
 aegis-ai-core/real_world_targets/
 
 # VSCode 扩展旧版本（只保留最新）
-aegis-vscode/aegis-ai-security-0.1.0.vsix
+aegis-vscode/*.vsix
+
+# VSCode 扩展编译输出（构建/测试时生成，不作为源码）
+aegis-vscode/out/
 
 # VSCode 测试下载的 VS Code 实例
 .vscode-test/

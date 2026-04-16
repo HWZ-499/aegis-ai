@@ -9,18 +9,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY aegis-ai-core/requirements.txt aegis-ai-core/pyproject.toml ./aegis-ai-core/
 
 RUN pip install --no-cache-dir -r aegis-ai-core/requirements.txt \
-    && pip install --no-cache-dir httpx pydantic-settings
+    && pip install --no-cache-dir pydantic-settings
 
 COPY aegis-ai-core/ ./aegis-ai-core/
 
 WORKDIR /app/aegis-ai-core
-
-# ── FastAPI HTTP Server ───────────────────────────────────────
-FROM base AS server
-
-EXPOSE 8000
-
-CMD ["uvicorn", "src.server.aegis_server:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # ── LSP Server (stdio, for IDE integration) ───────────────────
 FROM base AS lsp
