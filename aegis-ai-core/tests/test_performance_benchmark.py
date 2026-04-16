@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from src.analysis.analyzers.go_analyzer import GoAnalyzer
 from src.analysis.analyzers.javascript_analyzer import JavaScriptAnalyzer
 from src.analysis.analyzers.python_analyzer import PythonAnalyzer
@@ -19,21 +21,18 @@ from src.analysis.rule_engine import (
     analyze_javascript,
     analyze_php,
     analyze_python,
-    get_default_rules_for_language,
 )
 from src.analysis.rules import (
     GoDeserializationAstRule,
     GoRCEAstRule,
-    JavaDeserializationAstRule,
-    JavaRCEAstRule,
     JavaScriptDeserializationAstRule,
     JavaScriptRCEAstRule,
     PythonDeserializationAstRule,
     PythonRCEAstRule,
 )
 
-
 FIXTURE_DIR = Path(__file__).parent / "rules"
+pytestmark = pytest.mark.benchmark
 
 
 def _load_sample(relative: str) -> tuple[str, str]:
@@ -137,4 +136,3 @@ def test_benchmark_go_single_file_ast_only(benchmark) -> None:
         assert isinstance(findings, list)
 
     benchmark(run)
-

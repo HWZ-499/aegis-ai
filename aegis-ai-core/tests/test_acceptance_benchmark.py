@@ -16,10 +16,8 @@ test_acceptance_benchmark.py - 阶段一 + 阶段二 综合验收基准测试
 """
 
 import sys
-import json
-from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+from pathlib import Path
 
 import pytest
 
@@ -29,10 +27,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # 阶段四：用例与 benchmark 模块共用，单一数据源
-from src.scanner.benchmark_cases import BenchCase, BENCH_CASES_TP as TP_CASES, BENCH_CASES_TN as TN_CASES
-
 from src.analysis.base.analysis_context import AnalysisContext
 from src.analysis.base.js_dataflow_collector import JavaScriptDataFlowCollector
+from src.scanner.benchmark_cases import BENCH_CASES_TN as TN_CASES
+from src.scanner.benchmark_cases import BENCH_CASES_TP as TP_CASES
+from src.scanner.benchmark_cases import BenchCase
 
 # ── Tree-sitter ──
 try:
@@ -49,13 +48,14 @@ except Exception:
 
 # ── 所有规则 ──
 try:
+    from src.analysis.rules.deserialization.javascript_ast_rule import JavaScriptDeserializationAstRule
+    from src.analysis.rules.hardcoded_credentials.javascript_ast_rule import JavaScriptHardcodedCredentialsAstRule
     from src.analysis.rules.nosql_injection.javascript_ast_rule import JavaScriptNoSQLInjectionAstRule
+    from src.analysis.rules.path_traversal.javascript_ast_rule import JavaScriptPathTraversalAstRule
+    from src.analysis.rules.rce.javascript_ast_rule import JavaScriptRCEAstRule
     from src.analysis.rules.sql_injection.javascript_ast_rule import JavaScriptSQLInjectionAstRule
     from src.analysis.rules.xss.javascript_ast_rule import JavaScriptXSSAstRule
-    from src.analysis.rules.rce.javascript_ast_rule import JavaScriptRCEAstRule
-    from src.analysis.rules.hardcoded_credentials.javascript_ast_rule import JavaScriptHardcodedCredentialsAstRule
-    from src.analysis.rules.path_traversal.javascript_ast_rule import JavaScriptPathTraversalAstRule
-    from src.analysis.rules.deserialization.javascript_ast_rule import JavaScriptDeserializationAstRule
+
     ALL_RULES_AVAILABLE = True
 except ImportError:
     ALL_RULES_AVAILABLE = False
@@ -64,13 +64,21 @@ pytestmark = pytest.mark.skipif(
     not TREE_SITTER_AVAILABLE or not ALL_RULES_AVAILABLE,
     reason="tree-sitter 或规则模块不可用",
 )
+pytestmark = [
+    pytest.mark.acceptance,
+    pytest.mark.skipif(
+        not TREE_SITTER_AVAILABLE or not ALL_RULES_AVAILABLE,
+        reason="tree-sitter 或规则模块不可用",
+    ),
+]
 
 
 # =====================================================================
 # 扫描引擎
 # =====================================================================
 
-def _full_scan(code: str) -> List[Dict]:
+
+def _full_scan(code: str) -> list[dict]:
     """
     用所有规则扫描一段 JS 代码。
 
@@ -105,14 +113,16 @@ def _full_scan(code: str) -> List[Dict]:
 # 量化统计（用例见 src.scanner.benchmark_cases）
 # =====================================================================
 
+
 @dataclass
 class BenchmarkResult:
     """基准测试结果。"""
-    tp: int = 0   # True Positive
-    fp: int = 0   # False Positive
-    fn: int = 0   # False Negative
-    tn: int = 0   # True Negative
-    details: List[Dict] = field(default_factory=list)
+
+    tp: int = 0  # True Positive
+    fp: int = 0  # False Positive
+    fn: int = 0  # False Negative
+    tn: int = 0  # True Negative
+    details: list[dict] = field(default_factory=list)
 
     @property
     def recall(self) -> float:
@@ -131,7 +141,7 @@ class BenchmarkResult:
         return 2 * p * r / (p + r) if (p + r) > 0 else 0.0
 
 
-def _run_benchmark(cases: List[BenchCase]) -> BenchmarkResult:
+def _run_benchmark(cases: list[BenchCase]) -> BenchmarkResult:
     """运行所有用例，统计结果。"""
     result = BenchmarkResult()
 
@@ -156,16 +166,18 @@ def _run_benchmark(cases: List[BenchCase]) -> BenchmarkResult:
                 result.tn += 1
                 verdict = "TN"
 
-        result.details.append({
-            "id": case.id,
-            "category": case.category,
-            "pattern": case.pattern,
-            "description": case.description,
-            "expect": "VULN" if case.expect_finding else "SAFE",
-            "detected": detected,
-            "verdict": verdict,
-            "finding_count": len(relevant),
-        })
+        result.details.append(
+            {
+                "id": case.id,
+                "category": case.category,
+                "pattern": case.pattern,
+                "description": case.description,
+                "expect": "VULN" if case.expect_finding else "SAFE",
+                "detected": detected,
+                "verdict": verdict,
+                "finding_count": len(relevant),
+            }
+        )
 
     return result
 
@@ -173,6 +185,7 @@ def _run_benchmark(cases: List[BenchCase]) -> BenchmarkResult:
 # =====================================================================
 # Pytest 入口
 # =====================================================================
+
 
 class TestAcceptanceBenchmark:
     """综合验收基准测试。"""
@@ -222,7 +235,7 @@ class TestAcceptanceBenchmark:
         report_lines.append("")
 
         # 按漏洞类型分组统计
-        cats: Dict[str, Dict[str, int]] = {}
+        cats: dict[str, dict[str, int]] = {}
         for d in result.details:
             cat = d["category"]
             if cat not in cats:

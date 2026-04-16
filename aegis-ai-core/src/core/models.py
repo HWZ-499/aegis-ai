@@ -137,11 +137,13 @@ class Finding(BaseModel):
         for item in rl_raw if isinstance(rl_raw, list) else []:
             if isinstance(item, dict):
                 try:
+                    raw_line = item.get("start_line", item.get("line", 0))
+                    raw_column = item.get("start_character", item.get("column", 0))
                     related_locations.append(
                         RelatedLocation(
                             file_path=str(item.get("file_path", item.get("file", ""))),
-                            line=int(item.get("start_line", item.get("line", 0))),
-                            column=int(item.get("start_character", item.get("column", 0))),
+                            line=int(raw_line) if isinstance(raw_line, (int, float, str)) else 0,
+                            column=int(raw_column) if isinstance(raw_column, (int, float, str)) else 0,
                             message=str(item.get("message", "")),
                         )
                     )

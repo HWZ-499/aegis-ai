@@ -14,30 +14,30 @@ if str(PROJECT_ROOT) not in __import__("sys").path:
 from src.analysis.rule_engine import scan_code_locally
 
 # TP：DVWA low 风格，应检出 SQL_INJECTION
-PHP_TP_SQLI = '''
+PHP_TP_SQLI = """
 <?php
 $id = $_REQUEST['id'];
 $query  = "SELECT first_name, last_name FROM users WHERE user_id = '$id';";
 $result = mysqli_query($conn, $query);
-'''
+"""
 
 
 # TN：参数化查询，不应报 SQL_INJECTION
-PHP_TN_PARAMETERIZED = '''
+PHP_TN_PARAMETERIZED = """
 <?php
 $id = $_REQUEST['id'];
 $stmt = $conn->prepare("SELECT first_name, last_name FROM users WHERE user_id = ?");
 $stmt->bind_param("s", $id);
 $stmt->execute();
-'''
+"""
 
 
 # TN：无 SQL 拼接，不应报 SQL_INJECTION
-PHP_TN_NO_SQL = '''
+PHP_TN_NO_SQL = """
 <?php
 $name = $_GET['name'];
 echo "Hello " . htmlspecialchars($name);
-'''
+"""
 
 
 def _php_scan(code: str) -> list:

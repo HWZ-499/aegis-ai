@@ -28,9 +28,7 @@ def test_ast_analyzer():
 
     # 读取测试代码
     test_file = _current_dir / "test_vulnerable_code.py"
-    if not test_file.exists():
-        print("❌ 测试文件不存在: test_vulnerable_code.py")
-        return False
+    assert test_file.exists(), "测试文件不存在: test_vulnerable_code.py"
 
     with open(test_file, encoding="utf-8") as f:
         test_code = f.read()
@@ -48,7 +46,7 @@ def test_ast_analyzer():
         print(f"      严重程度: {finding.get('severity', 'Medium')}")
         print(f"      详情: {finding.get('details', 'No details')[:60]}...")
 
-    return len(findings) > 0
+    assert len(findings) > 0
 
 
 def test_regex_scanner():
@@ -74,7 +72,7 @@ def test_regex_scanner():
         print(f"      类型: {finding.get('type', 'Unknown')}")
         print(f"      内容: {finding.get('content', 'No content')[:60]}...")
 
-    return len(findings) > 0
+    assert len(findings) > 0
 
 
 def test_merge_findings():
@@ -111,7 +109,7 @@ def test_merge_findings():
             emoji = {"Critical": "🔴", "High": "🟠", "Medium": "🟡", "Low": "🟢"}.get(severity, "⚪")
             print(f"     {emoji} {severity}: {count}")
 
-    return len(merged) > 0
+    assert len(merged) > 0
 
 
 def test_project_scanner():
@@ -122,9 +120,7 @@ def test_project_scanner():
 
     # 扫描当前项目的 src 目录
     src_dir = _project_root / "src"
-    if not src_dir.exists():
-        print("❌ src 目录不存在")
-        return False
+    assert src_dir.exists(), "src 目录不存在"
 
     scanner = ProjectScanner(str(src_dir))
     scanner.scan_project(verbose=True)
@@ -136,7 +132,7 @@ def test_project_scanner():
     print(f"   总问题数: {stats['total_issues']}")
     print(f"   扫描耗时: {stats['scan_time']:.2f} 秒")
 
-    return stats["scanned_files"] > 0
+    assert stats["scanned_files"] > 0
 
 
 def test_project_scanner_support_level():
@@ -211,7 +207,10 @@ def test_report_generator():
     print("✅ SARIF 报告生成成功")
     print(f"   长度: {len(sarif_report)} 字符")
 
-    return True
+    assert json_report
+    assert md_report
+    assert html_report
+    assert sarif_report
 
 
 if __name__ == "__main__":

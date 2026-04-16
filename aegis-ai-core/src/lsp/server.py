@@ -15,6 +15,7 @@ TDD 对齐：
 from __future__ import annotations
 
 import concurrent.futures
+import fnmatch
 import logging
 import threading
 from pathlib import Path
@@ -27,26 +28,11 @@ if TYPE_CHECKING:
 from lsprotocol import types as lsp
 from pygls.lsp.server import LanguageServer
 
-logger = logging.getLogger(__name__)
-
-# P1-1：扫描失败时向客户端发送 aegis/scanError 通知
-NOTIFICATION_SCAN_ERROR = "aegis/scanError"
-
-
-class ScanError(Exception):
-    """扫描过程发生异常时抛出，供 _validate_document 捕获并通知客户端。"""
-
-
-# M1：内置修复建议（与 rag_enhancer 结构一致，避免 LSP 层依赖 scanner）
+from ..analysis.dependency_tracker import DependencyTracker
+from ..analysis.incremental_analyzer import IncrementalAnalyzer
+from ..scanner.baseline import Baseline
 from ..scanner.rag_enhancer import BUILTIN_REMEDIATION
 from ..scanner.smart_remediation import generate_smart_remediation
-
-# O1：Baseline 抑制 CRUD
-from ..scanner.baseline import Baseline, _finding_to_baseline_entry, _fingerprint
-
-# O5：增量分析 & 依赖追踪
-from ..analysis.incremental_analyzer import IncrementalAnalyzer
-from ..analysis.dependency_tracker import DependencyTracker
 
 # A：AI 修复建议（可选），与 CLI 共享 AIAnalyzer 实现
 try:
@@ -56,6 +42,16 @@ try:
 except ImportError:
     AI_ANALYZER_AVAILABLE = False
     AIAnalyzer = None  # type: ignore[misc,assignment]
+
+logger = logging.getLogger(__name__)
+
+# P1-1：扫描失败时向客户端发送 aegis/scanError 通知
+NOTIFICATION_SCAN_ERROR = "aegis/scanError"
+
+
+class ScanError(Exception):
+    """扫描过程发生异常时抛出，供 _validate_document 捕获并通知客户端。"""
+
 
 # ---------------------------------------------------------------------------
 # 常量 & 映射
@@ -150,8 +146,18 @@ class WorkspaceContext:
     def scan_on_change(self) -> bool:
         return cast(bool, self._init_options.get("scan_on_change", True))
 
+    @property
+    def exclude_patterns(self) -> list[str]:
+        return cast(list[str], self._init_options.get("exclude_patterns", []))
+
+    @property
+    def experimental_cross_file(self) -> bool:
+        return cast(bool, self._init_options.get("experimental_cross_file", False))
+
     def build_graph_async(self, project_path: str) -> None:
         """在后台线程中构建依赖图（不阻塞 LSP 事件循环）。"""
+        if not self.experimental_cross_file:
+            return
         with self._lock:
             if self._building:
                 return
@@ -186,6 +192,8 @@ class WorkspaceContext:
         Returns:
             finding dict 列表，当前为空。
         """
+        if not self.experimental_cross_file:
+            return []
         return []
 
     def invalidate(self) -> None:
@@ -236,6 +244,182 @@ def uri_to_filepath(uri: str) -> str:
     return raw_path
 
 
+def _coerce_payload(value: Any) -> dict[str, Any]:
+    """
+    将 pygls 自定义 feature/command 的参数统一转成 dict。
+
+    某些情况下 pygls 会把 JSON object 反序列化成带属性的 Object，
+    不能直接调用 ``.get()``。
+    """
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    try:
+        items = getattr(value, "items", None)
+        if callable(items):
+            return dict(items())
+    except (RuntimeError, TypeError, ValueError):
+        pass
+    try:
+        data = vars(value)
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if not k.startswith("_")}
+    except TypeError:
+        pass
+    return {}
+
+
+def _comment_prefix_for_language(language: str | None) -> str:
+    """返回对应语言的单行注释前缀。"""
+    if (language or "").lower() == "python":
+        return "#"
+    return "//"
+
+
+def _build_comment_block(lines: list[str], language: str | None, indent: str = "") -> str:
+    """按语言生成多行注释块，并保留当前行缩进。"""
+    prefix = _comment_prefix_for_language(language)
+    rendered: list[str] = []
+    for line in lines:
+        if not line:
+            rendered.append(indent + prefix)
+        else:
+            rendered.append(f"{indent}{prefix} {line}")
+    return "\n".join(rendered)
+
+
+def _indent_block(text: str, indent: str) -> str:
+    """为多行文本整体补齐缩进。"""
+    return "\n".join((indent + line) if line else line for line in text.splitlines())
+
+
+_AEGIS_COMMENT_MARKERS = (
+    "Aegis 修复建议",
+    "Aegis AI 修复建议",
+)
+
+
+def _is_aegis_generated_comment(line: str) -> bool:
+    """判断当前行是否为 Aegis 生成的修复建议注释。"""
+    stripped = line.strip()
+    if not stripped.startswith(("#", "//")):
+        return False
+    return any(marker in stripped for marker in _AEGIS_COMMENT_MARKERS)
+
+
+def _find_aegis_comment_block(lines: list[str], zero_based_line: int) -> tuple[int, int] | None:
+    """
+    找到包含当前行的 Aegis 注释块。
+
+    Returns:
+        (start_line, end_line_exclusive)；若当前行不在 Aegis 注释块中则返回 ``None``。
+    """
+    if zero_based_line < 0 or zero_based_line >= len(lines):
+        return None
+
+    if not lines[zero_based_line].strip().startswith(("#", "//")):
+        return None
+
+    marker_line: int | None = None
+    cursor = zero_based_line
+    while cursor >= 0 and lines[cursor].strip().startswith(("#", "//")):
+        if _is_aegis_generated_comment(lines[cursor]):
+            marker_line = cursor
+            break
+        cursor -= 1
+
+    if marker_line is None:
+        return None
+
+    end = marker_line + 1
+    while end < len(lines) and lines[end].strip().startswith(("#", "//")):
+        end += 1
+
+    return marker_line, end
+
+
+def _is_path_excluded(file_path: str, project_root: str | None, patterns: list[str]) -> bool:
+    """按 VS Code 传入的 glob 模式判断当前路径是否应跳过扫描。"""
+    if not patterns:
+        return False
+    path = Path(file_path)
+    normalized_full = path.as_posix()
+    normalized_rel = normalized_full
+    if project_root:
+        try:
+            normalized_rel = path.relative_to(Path(project_root)).as_posix()
+        except ValueError:
+            normalized_rel = normalized_full
+
+    candidates = {normalized_full, normalized_rel, "/" + normalized_rel}
+    for pattern in patterns:
+        normalized_pattern = pattern.replace("\\", "/")
+        for candidate in candidates:
+            if fnmatch.fnmatch(candidate, normalized_pattern):
+                return True
+    return False
+
+
+def _is_actionable_example_code(snippet: str) -> bool:
+    """
+    判断 suggested_code 是否包含真正可替换的代码。
+
+    纯注释示例不应暴露为「应用示例代码」，否则用户会误以为已完成修复。
+    """
+    for raw_line in snippet.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith(("//", "#", "/*", "*", "*/", "<!--")):
+            continue
+        return True
+    return False
+
+
+def _get_line_indent(doc_lines: list[str], zero_based_line: int) -> str:
+    """获取指定行的前导缩进。"""
+    if 0 <= zero_based_line < len(doc_lines):
+        current_line = doc_lines[zero_based_line]
+        return current_line[: len(current_line) - len(current_line.lstrip())]
+    return ""
+
+
+def _replacement_range_for_diagnostic(diag: lsp.Diagnostic, doc_lines: list[str]) -> lsp.Range:
+    """
+    生成适合代码替换的 range：从起始行行首到结束行行尾。
+    """
+    start_line = diag.range.start.line
+    end_line = diag.range.end.line
+    if 0 <= end_line < len(doc_lines):
+        end_char = len(doc_lines[end_line])
+    else:
+        end_char = diag.range.end.character
+    return lsp.Range(
+        start=lsp.Position(line=start_line, character=0),
+        end=lsp.Position(line=end_line, character=end_char),
+    )
+
+
+def _build_action_guidance(has_example_fix: bool) -> str:
+    """统一 hover/tree 说明，明确哪些动作会改代码，哪些只是建议或抑制。"""
+    example_line = (
+        "应用示例修复代码: 会替换代码并触发复扫。"
+        if has_example_fix
+        else "应用示例修复代码: 当前规则没有安全替换模板，灯泡中不会显示此操作。"
+    )
+    return "\n".join(
+        [
+            "Aegis 可用操作:",
+            "- 应用 AI 精准修复: 会替换代码并触发复扫（需要已配置 AI）。",
+            f"- {example_line}",
+            "- 插入修复建议注释: 只会插入建议，不会修复代码。",
+            "- 插入 AI 修复建议: 只会插入建议，不会修复代码（需要已配置 AI）。",
+            "- Ignore / Add to baseline: 接受并隐藏当前问题，不是修复代码。",
+        ]
+    )
+
+
 def _filepath_to_uri(file_path: str) -> str:
     """
     将本地文件路径转为 LSP 的 file URI。
@@ -280,6 +464,7 @@ def finding_to_diagnostic(
     severity = SEVERITY_MAP.get(severity_str, lsp.DiagnosticSeverity.Warning)
     message = finding.get("details", finding.get("message", "Security issue detected"))
     code = finding.get("type", "UNKNOWN")
+    example_fix_available = False
 
     # ── TaintGraph 污点链附加信息（PHP-TaintGraph 来源）──
     # 将 source 行号和变量名直接嵌入消息，悬停即可看到完整流向
@@ -308,6 +493,7 @@ def finding_to_diagnostic(
             message += "\n修复建议: " + smart.message
             if smart.suggested_code:
                 message += "\n建议修复代码:\n" + smart.suggested_code
+                example_fix_available = _is_actionable_example_code(smart.suggested_code)
         except (RuntimeError, ValueError, KeyError) as e:
             logger.debug("Smart remediation failed for %s: %s", fp, e)
     if not (source_code and fp) or not message.count("建议修复代码"):
@@ -328,12 +514,19 @@ def finding_to_diagnostic(
                     php_code = _PHP_REMEDIATION_CODE.get(str(code).strip())
                     if php_code:
                         message += "\n建议修复代码 (PHP):\n" + php_code.strip()
+                        example_fix_available = _is_actionable_example_code(php_code)
                 else:
                     framework_code = _pick_framework_suggested_code(remediation, fp or finding.get("file", ""))
                     if framework_code:
                         message += "\n建议修复代码:\n" + framework_code.strip()
+                        example_fix_available = _is_actionable_example_code(framework_code)
                     elif remediation.get("suggested_code"):
-                        message += "\n建议修复代码:\n" + remediation["suggested_code"].strip()
+                        suggested_code = remediation["suggested_code"].strip()
+                        message += "\n建议修复代码:\n" + suggested_code
+                        example_fix_available = _is_actionable_example_code(suggested_code)
+
+    if "Aegis 可用操作:" not in message:
+        message = message.rstrip() + "\n\n" + _build_action_guidance(example_fix_available)
 
     # related_locations -> Diagnostic.relatedInformation（TDD 7.2）
     related: list[lsp.DiagnosticRelatedInformation] = []
@@ -471,20 +664,21 @@ def _pick_framework_suggested_code(remediation: dict[str, Any], file_path: str) 
     return None
 
 
-def _remediation_to_comment_text(rule_id: str) -> str:
+def _remediation_to_comment_text(rule_id: str, language: str | None = None) -> str:
     """将修复建议格式化为可插入的注释文本（多行）。"""
     data = _get_remediation_for_rule(rule_id)
+    prefix = _comment_prefix_for_language(language)
     if not data:
-        return f"// Aegis: {rule_id} - 请查阅安全修复指南"
-    lines = [f"// Aegis 修复建议 ({rule_id}):", f"// {data.get('description', '')}"]
+        return f"{prefix} Aegis: {rule_id} - 请查阅安全修复指南"
+    lines = [f"Aegis 修复建议 ({rule_id}):", f"{data.get('description', '')}"]
     for i, s in enumerate(data.get("remediation") or [], 1):
-        lines.append(f"//   {i}. {s}")
+        lines.append(f"  {i}. {s}")
     refs = data.get("references") or []
     if refs:
-        lines.append("// 参考:")
+        lines.append("参考:")
         for r in refs[:3]:
-            lines.append(f"//   {r}")
-    return "\n".join(lines)
+            lines.append(f"  {r}")
+    return _build_comment_block(lines, language)
 
 
 def _extract_code_context(
@@ -548,35 +742,47 @@ def scan_document(
 
     try:
         if language == "python":
-            return analyze_python(
-                source,
-                file_path,
-                extra_rule_dirs=extra_rule_dirs,
-                rules_allowed_root=rules_allowed_root,
+            return cast(
+                list[dict[str, Any]],
+                analyze_python(
+                    source,
+                    file_path,
+                    extra_rule_dirs=extra_rule_dirs,
+                    rules_allowed_root=rules_allowed_root,
+                ),
             )
         elif language in ("javascript", "typescript"):
-            return analyze_javascript(
-                source,
-                file_path,
-                language=language,
-                extra_rule_dirs=extra_rule_dirs,
-                rules_allowed_root=rules_allowed_root,
+            return cast(
+                list[dict[str, Any]],
+                analyze_javascript(
+                    source,
+                    file_path,
+                    language=language,
+                    extra_rule_dirs=extra_rule_dirs,
+                    rules_allowed_root=rules_allowed_root,
+                ),
             )
         elif language == "php":
-            return analyze_php(source, file_path)
+            return cast(list[dict[str, Any]], analyze_php(source, file_path))
         elif language == "java":
-            return analyze_java(
-                source,
-                file_path,
-                extra_rule_dirs=extra_rule_dirs,
-                rules_allowed_root=rules_allowed_root,
+            return cast(
+                list[dict[str, Any]],
+                analyze_java(
+                    source,
+                    file_path,
+                    extra_rule_dirs=extra_rule_dirs,
+                    rules_allowed_root=rules_allowed_root,
+                ),
             )
         elif language == "go":
-            return analyze_go(
-                source,
-                file_path,
-                extra_rule_dirs=extra_rule_dirs,
-                rules_allowed_root=rules_allowed_root,
+            return cast(
+                list[dict[str, Any]],
+                analyze_go(
+                    source,
+                    file_path,
+                    extra_rule_dirs=extra_rule_dirs,
+                    rules_allowed_root=rules_allowed_root,
+                ),
             )
     except Exception as e:  # Intentional: re-raises as ScanError
         logger.exception("Scan failed for %s", file_path)
@@ -602,7 +808,7 @@ def create_server() -> LanguageServer:
     @server.feature(lsp.INITIALIZE)
     def on_initialize(params: lsp.InitializeParams) -> None:
         """初始化时读取客户端配置，启动跨文件图构建。"""
-        init_opts = params.initialization_options or {}
+        init_opts = _coerce_payload(params.initialization_options)
         _workspace_ctx.configure(init_opts)
 
         root = None
@@ -639,21 +845,13 @@ def create_server() -> LanguageServer:
         if not _workspace_ctx.scan_on_change:
             return
         uri = params.text_document.uri
-        _cancel_pending_validation(uri)
-        timer = threading.Timer(
-            DEBOUNCE_SECONDS,
-            _debounced_validate,
-            args=(server, uri),
-        )
-        timer.daemon = True
-        with _pending_lock:
-            _pending_validation[uri] = timer
-        timer.start()
+        _schedule_validation(server, uri)
 
     # P1-2：扩展命令「扫描当前文件」触发的自定义通知
     @server.feature("aegis/requestScan")
     def on_request_scan(params: dict[str, Any] | None) -> None:
-        uri = (params or {}).get("uri", "")
+        payload = _coerce_payload(params)
+        uri = payload.get("uri", "")
         if not uri:
             return
         try:
@@ -697,6 +895,46 @@ def create_server() -> LanguageServer:
         """
         actions: list[lsp.CodeAction] = []
         uri = params.text_document.uri
+        doc_lines: list[str] = []
+        doc_source_for_actions = ""
+        try:
+            doc_for_actions = server.workspace.get_text_document(uri)
+            doc_source_for_actions = doc_for_actions.source
+            doc_lines = doc_source_for_actions.splitlines()
+        except (RuntimeError, KeyError):
+            doc_for_actions = None
+
+        comment_block = _find_aegis_comment_block(doc_lines, params.range.start.line)
+        if comment_block:
+            start_line, end_line = comment_block
+            if end_line < len(doc_lines):
+                delete_end = lsp.Position(line=end_line, character=0)
+            else:
+                last_line = max(0, len(doc_lines) - 1)
+                delete_end = lsp.Position(
+                    line=last_line,
+                    character=len(doc_lines[last_line]) if doc_lines else 0,
+                )
+            actions.append(
+                lsp.CodeAction(
+                    title="Aegis: Remove Inserted Remediation Comments",
+                    kind=lsp.CodeActionKind.QuickFix,
+                    edit=lsp.WorkspaceEdit(
+                        changes={
+                            uri: [
+                                lsp.TextEdit(
+                                    range=lsp.Range(
+                                        start=lsp.Position(line=start_line, character=0),
+                                        end=delete_end,
+                                    ),
+                                    new_text="",
+                                )
+                            ]
+                        }
+                    ),
+                )
+            )
+
         aegis_diagnostics = [
             d
             for d in (params.context.diagnostics or [])
@@ -709,18 +947,21 @@ def create_server() -> LanguageServer:
         ai_analyzer: Any | None = getattr(server, "_ai_analyzer", None)
         if AI_ANALYZER_AVAILABLE and ai_analyzer is None:
             try:
-                ai_analyzer = AIAnalyzer()
-                server._ai_analyzer = ai_analyzer
+                ai_analyzer = AIAnalyzer(enabled=bool(_workspace_ctx._init_options.get("ai_enabled", True)))
+                cast(Any, server)._ai_analyzer = ai_analyzer
             except (ImportError, RuntimeError):
                 ai_analyzer = None
 
         for diag in aegis_diagnostics:
+            preferred_actions: list[lsp.CodeAction] = []
+            replacement_actions: list[lsp.CodeAction] = []
+            guidance_actions: list[lsp.CodeAction] = []
+            suppression_actions: list[lsp.CodeAction] = []
             rule_id = getattr(diag, "code", None) or ""
             if isinstance(rule_id, lsp.CodeDescription):
                 rule_id = ""
             rule_id = str(rule_id).strip() or "UNKNOWN"
             remediation = _get_remediation_for_rule(rule_id)
-            comment_text = _remediation_to_comment_text(rule_id)
             insert_line = diag.range.start.line
             insert_pos = lsp.Position(line=insert_line, character=0)
 
@@ -728,24 +969,15 @@ def create_server() -> LanguageServer:
             # 检测文件语言以选择正确的注释风格
             file_path_for_comment = uri_to_filepath(uri)
             lang_for_comment = detect_language(file_path_for_comment)
-            if lang_for_comment == "python":
-                ignore_comment = f"# aegis-ignore: {rule_id}"
-            elif lang_for_comment == "php":
-                ignore_comment = f"// aegis-ignore: {rule_id}"
-            elif lang_for_comment in ("java", "go"):
-                ignore_comment = f"// aegis-ignore: {rule_id}"
-            else:
-                ignore_comment = f"// aegis-ignore: {rule_id}"
+            comment_text = _remediation_to_comment_text(rule_id, lang_for_comment)
+            ignore_prefix = _comment_prefix_for_language(lang_for_comment)
+            ignore_comment = f"{ignore_prefix} aegis-ignore: {rule_id}"
 
             # 获取当前行的缩进
             try:
                 doc_for_indent = server.workspace.get_text_document(uri)
                 doc_lines = doc_for_indent.source.splitlines()
-                if insert_line < len(doc_lines):
-                    current_line = doc_lines[insert_line]
-                    indent = current_line[: len(current_line) - len(current_line.lstrip())]
-                else:
-                    indent = ""
+                indent = _get_line_indent(doc_lines, insert_line)
             except (RuntimeError, KeyError):
                 indent = ""
 
@@ -759,9 +991,9 @@ def create_server() -> LanguageServer:
                     ]
                 }
             )
-            actions.append(
+            suppression_actions.append(
                 lsp.CodeAction(
-                    title=f"Aegis: Ignore this finding ({rule_id})",
+                    title=f"Aegis: Ignore this finding ({rule_id}, suppression only)",
                     kind=lsp.CodeActionKind.QuickFix,
                     diagnostics=[diag],
                     edit=ignore_edit,
@@ -769,10 +1001,7 @@ def create_server() -> LanguageServer:
             )
 
             # ── O1：Inline Suppression — 忽略此行的所有规则 ──
-            if lang_for_comment == "python":
-                ignore_all_comment = "# aegis-ignore"
-            else:
-                ignore_all_comment = "// aegis-ignore"
+            ignore_all_comment = f"{ignore_prefix} aegis-ignore"
 
             ignore_all_edit = lsp.WorkspaceEdit(
                 changes={
@@ -784,9 +1013,9 @@ def create_server() -> LanguageServer:
                     ]
                 }
             )
-            actions.append(
+            suppression_actions.append(
                 lsp.CodeAction(
-                    title="Aegis: Ignore all on this line",
+                    title="Aegis: Ignore all on this line (suppression only)",
                     kind=lsp.CodeActionKind.QuickFix,
                     diagnostics=[diag],
                     edit=ignore_all_edit,
@@ -794,9 +1023,9 @@ def create_server() -> LanguageServer:
             )
 
             # ── O1：Add to Baseline — 将 finding 写入 .aegis-baseline.json ──
-            actions.append(
+            suppression_actions.append(
                 lsp.CodeAction(
-                    title=f"Aegis: Add to baseline ({rule_id})",
+                    title=f"Aegis: Add to baseline ({rule_id}, suppression only)",
                     kind=lsp.CodeActionKind.QuickFix,
                     diagnostics=[diag],
                     command=lsp.Command(
@@ -815,7 +1044,7 @@ def create_server() -> LanguageServer:
             )
 
             # M1 4.3：插入修复建议注释
-            new_text = comment_text + "\n"
+            new_text = _indent_block(comment_text, indent) + "\n"
             edit = lsp.WorkspaceEdit(
                 changes={
                     uri: [
@@ -823,9 +1052,9 @@ def create_server() -> LanguageServer:
                     ]
                 }
             )
-            actions.append(
+            guidance_actions.append(
                 lsp.CodeAction(
-                    title=f"Aegis: 插入修复建议注释（{rule_id}）",
+                    title=f"Aegis: 插入修复建议注释（{rule_id}，不会修复代码）",
                     kind=lsp.CodeActionKind.QuickFix,
                     diagnostics=[diag],
                     edit=edit,
@@ -833,22 +1062,44 @@ def create_server() -> LanguageServer:
             )
 
             # M1 4.4：若有 suggested_code，提供「应用示例代码」Quick Fix
-            suggested = (remediation or {}).get("suggested_code")
-            if suggested and isinstance(suggested, str) and suggested.strip():
-                code_text = suggested.strip() + "\n"
+            example_code = ""
+            try:
+                if doc_source_for_actions:
+                    smart_example = generate_smart_remediation(
+                        {
+                            "type": rule_id,
+                            "line": diag.range.start.line + 1,
+                            "start_line": diag.range.start.line + 1,
+                            "end_line": diag.range.end.line + 1,
+                        },
+                        doc_source_for_actions,
+                        file_path_for_comment,
+                    ).suggested_code
+                    if smart_example:
+                        example_code = smart_example
+            except (RuntimeError, ValueError, KeyError) as e:
+                logger.debug("Smart example code generation failed for %s: %s", rule_id, e)
+            if not example_code:
+                suggested = (remediation or {}).get("suggested_code")
+                if suggested and isinstance(suggested, str):
+                    example_code = suggested
+
+            if example_code and _is_actionable_example_code(example_code):
+                code_text = _indent_block(example_code.strip(), indent) + "\n"
+                replace_range = _replacement_range_for_diagnostic(diag, doc_lines)
                 code_edit = lsp.WorkspaceEdit(
                     changes={
                         uri: [
                             lsp.TextEdit(
-                                range=lsp.Range(start=insert_pos, end=insert_pos),
+                                range=replace_range,
                                 new_text=code_text,
                             ),
                         ]
                     }
                 )
-                actions.append(
+                replacement_actions.append(
                     lsp.CodeAction(
-                        title=f"Aegis: 应用示例代码（{rule_id}）",
+                        title=f"Aegis: 应用示例修复代码（{rule_id}，会替换代码并触发复扫）",
                         kind=lsp.CodeActionKind.QuickFix,
                         diagnostics=[diag],
                         edit=code_edit,
@@ -889,7 +1140,7 @@ def create_server() -> LanguageServer:
                         cache_key = (uri, rule_id, diag_start_line)
                         ai_cache = getattr(server, "_ai_cache", None)
                         if ai_cache is None:
-                            server._ai_cache = {}
+                            cast(Any, server)._ai_cache = {}
                             ai_cache = getattr(server, "_ai_cache", {})
                         # Evict oldest entries when cache exceeds 256 items
                         if ai_cache and len(ai_cache) > 256:
@@ -917,15 +1168,11 @@ def create_server() -> LanguageServer:
                             if result.fixed_code and result.confidence >= 0.75 and not result.requires_review:
                                 # 替换整个漏洞 range（保留缩进：从 result.fixed_code 原样写入）
                                 replace_range = lsp.Range(
-                                    start=lsp.Position(line=diag.range.start.line, character=0),
-                                    end=lsp.Position(
-                                        line=diag.range.end.line,
-                                        character=diag.range.end.character,
-                                    ),
+                                    start=_replacement_range_for_diagnostic(diag, doc_lines).start,
+                                    end=_replacement_range_for_diagnostic(diag, doc_lines).end,
                                 )
                                 fixed_text = result.fixed_code
-                                if not fixed_text.endswith("\n"):
-                                    fixed_text += "\n"
+                                fixed_text = _indent_block(fixed_text.strip(), indent) + "\n"
                                 replace_edit = lsp.WorkspaceEdit(
                                     changes={
                                         uri: [
@@ -939,8 +1186,10 @@ def create_server() -> LanguageServer:
                                 preview = (fixed_text.strip().replace("\n", " "))[:40]
                                 if len(fixed_text.strip()) > 40:
                                     preview += "…"
-                                title = f"Aegis: ✓ 应用 AI 精准修复 | {preview}"
-                                actions.append(
+                                title = f"Aegis: 应用 AI 精准修复（{rule_id}，会替换代码并触发复扫）"
+                                if preview:
+                                    title += f" | {preview}"
+                                preferred_actions.append(
                                     lsp.CodeAction(
                                         title=title,
                                         kind=lsp.CodeActionKind.QuickFix,
@@ -952,21 +1201,19 @@ def create_server() -> LanguageServer:
 
                             # ── 低置信度或无 fixed_code：插入 diff 格式注释 ──
                             else:
-                                comment_lines = [
-                                    f"// Aegis AI 修复建议 ({rule_id}) 置信度 {result.confidence:.0%}",
-                                ]
+                                comment_lines = [f"Aegis AI 修复建议 ({rule_id}) 置信度 {result.confidence:.0%}"]
                                 if result.requires_review:
-                                    comment_lines.append("// ⚠ 需人工复核")
+                                    comment_lines.append("⚠ 需人工复核")
 
                                 if result.fix_suggestion:
-                                    comment_lines.append(f"// 思路: {result.fix_suggestion}")
+                                    comment_lines.append(f"思路: {result.fix_suggestion}")
 
                                 if result.fixed_code:
-                                    comment_lines.append("// 建议修改为 (diff 格式):")
+                                    comment_lines.append("建议修改为:")
                                     for ln in result.fixed_code.splitlines():
-                                        comment_lines.append("// + " + ln)
+                                        comment_lines.append(ln)
 
-                                ai_comment = "\n".join(comment_lines)
+                                ai_comment = _build_comment_block(comment_lines, lang_for_comment, indent)
                                 ai_edit = lsp.WorkspaceEdit(
                                     changes={
                                         uri: [
@@ -982,10 +1229,10 @@ def create_server() -> LanguageServer:
                                 )
                                 if preview and len((result.fixed_code or result.fix_suggestion or "").strip()) > 40:
                                     preview += "…"
-                                title = f"Aegis: 插入 AI 修复建议（{rule_id}）"
+                                title = f"Aegis: 插入 AI 修复建议（{rule_id}，不会修复代码）"
                                 if preview:
                                     title += f" | {preview}"
-                                actions.append(
+                                guidance_actions.append(
                                     lsp.CodeAction(
                                         title=title,
                                         kind=lsp.CodeActionKind.QuickFix,
@@ -996,6 +1243,10 @@ def create_server() -> LanguageServer:
                 except (RuntimeError, KeyError, ValueError):
                     # AI 分析失败时静默忽略，不影响其他 CodeAction
                     logger.exception("AI remediation generation failed for %s", rule_id)
+            actions.extend(preferred_actions)
+            actions.extend(replacement_actions)
+            actions.extend(guidance_actions)
+            actions.extend(suppression_actions)
         return actions
 
     # ── O1: aegis.addToBaseline 命令处理（Code Action command 触发）──
@@ -1004,7 +1255,7 @@ def create_server() -> LanguageServer:
         """将 finding 加入 .aegis-baseline.json（工作区根目录）。"""
         if not args:
             return
-        params = args[0] if isinstance(args[0], dict) else {}
+        params = _coerce_payload(args[0])
         finding_uri = params.get("uri", "")
         rule_id = params.get("rule_id", "UNKNOWN")
         line = int(params.get("line", 0))
@@ -1031,6 +1282,21 @@ def create_server() -> LanguageServer:
         baseline.add_findings({file_path: [finding_like]}, project_root)
         baseline.save(baseline_path, project_root)
         logger.info("Added finding to baseline: %s:%s@L%d", rule_id, file_path, line)
+        try:
+            server.window_show_message(
+                lsp.ShowMessageParams(
+                    type=lsp.MessageType.Info,
+                    message=f"Aegis: 已加入 baseline -> {baseline_path.name} ({rule_id})",
+                )
+            )
+            server.window_log_message(
+                lsp.LogMessageParams(
+                    type=lsp.MessageType.Info,
+                    message=f"[Aegis] Baseline updated: {baseline_path}",
+                )
+            )
+        except RuntimeError as e:
+            logger.debug("Failed to notify baseline update: %s", e)
 
         # 重新扫描当前文件以刷新 diagnostics（baseline 中的 finding 将被过滤）
         try:
@@ -1043,13 +1309,25 @@ def create_server() -> LanguageServer:
     @server.feature("aegis/generateFix")
     def on_generate_fix(params: dict[str, Any] | None) -> dict[str, Any] | None:
         """生成 AI 修复代码并返回给客户端预览。"""
-        if not params:
+        payload = _coerce_payload(params)
+        if not payload:
             return None
-        fix_uri = params.get("uri", "")
-        rule_id = str(params.get("rule_id", "UNKNOWN")).strip()
-        start_line = int(params.get("start_line", 0))
-        end_line = int(params.get("end_line", start_line))
-        message = params.get("message", "")
+        fix_uri = payload.get("uri", "")
+        rule_id = str(payload.get("rule_id", "UNKNOWN")).strip()
+        start_line = int(payload.get("start_line", 0))
+        end_line = int(payload.get("end_line", start_line))
+        message = payload.get("message", "")
+
+        def _error_response(error_code: str, error_message: str) -> dict[str, Any]:
+            return {
+                "uri": fix_uri,
+                "rule_id": rule_id,
+                "error_code": error_code,
+                "error_message": error_message,
+                "start_line": start_line,
+                "end_line": end_line,
+                "requires_review": True,
+            }
 
         if not fix_uri or not start_line:
             return None
@@ -1068,13 +1346,16 @@ def create_server() -> LanguageServer:
         ai_analyzer_inst = getattr(server, "_ai_analyzer", None)
         if AI_ANALYZER_AVAILABLE and ai_analyzer_inst is None:
             try:
-                ai_analyzer_inst = AIAnalyzer()
-                server._ai_analyzer = ai_analyzer_inst
+                ai_analyzer_inst = AIAnalyzer(enabled=bool(_workspace_ctx._init_options.get("ai_enabled", True)))
+                cast(Any, server)._ai_analyzer = ai_analyzer_inst
             except (ImportError, RuntimeError):
                 ai_analyzer_inst = None
 
         if ai_analyzer_inst is None or not getattr(ai_analyzer_inst, "enabled", False):
-            return None
+            return _error_response(
+                "provider_not_configured",
+                "AI provider is not configured. Set Aegis › AI: Provider and the matching API key.",
+            )
 
         cache_key = (fix_uri, rule_id, start_line)
         ai_cache = getattr(server, "_ai_cache", {})
@@ -1101,10 +1382,22 @@ def create_server() -> LanguageServer:
                     ai_cache[cache_key] = result
             except (RuntimeError, KeyError, ValueError) as e:
                 logger.warning("generateFix AI analyze failed: %s", e)
-                return None
+                return _error_response("provider_unavailable", f"AI provider request failed: {e}")
 
-        if not result or not result.fixed_code:
-            return None
+        if not result:
+            return _error_response("provider_unavailable", "AI provider did not return a result.")
+
+        if getattr(result, "error_code", None):
+            return _error_response(
+                str(result.error_code),
+                str(result.error_message or "AI fix request failed."),
+            )
+
+        if not result.fixed_code:
+            return _error_response(
+                "no_applicable_fix",
+                "AI reviewed this finding but did not return a safe replacement.",
+            )
 
         return {
             "uri": fix_uri,
@@ -1121,11 +1414,12 @@ def create_server() -> LanguageServer:
     @server.feature("aegis/getTaintPath")
     def on_get_taint_path(params: dict[str, Any] | None) -> dict[str, Any] | None:
         """返回指定 finding 的完整 taint path 用于 Webview 渲染。"""
-        if not params:
+        payload = _coerce_payload(params)
+        if not payload:
             return None
-        tp_uri = params.get("uri", "")
-        tp_line = int(params.get("line", 0))
-        tp_rule_id = str(params.get("ruleId", "")).strip()
+        tp_uri = payload.get("uri", "")
+        tp_line = int(payload.get("line", 0))
+        tp_rule_id = str(payload.get("ruleId", "")).strip()
         if not tp_uri or not tp_line:
             return None
 
@@ -1167,6 +1461,20 @@ def _cancel_pending_validation(uri: str) -> None:
             logger.debug("Failed to cancel pending timer for %s: %s", uri, e)
 
 
+def _schedule_validation(server: LanguageServer, uri: str, delay: float = DEBOUNCE_SECONDS) -> None:
+    """为指定文档安排一次防抖验证。"""
+    _cancel_pending_validation(uri)
+    timer = threading.Timer(
+        delay,
+        _debounced_validate,
+        args=(server, uri),
+    )
+    timer.daemon = True
+    with _pending_lock:
+        _pending_validation[uri] = timer
+    timer.start()
+
+
 def _debounced_validate(server: LanguageServer, uri: str) -> None:
     """M2：防抖到期后从 workspace 取当前文档内容并执行验证。"""
     with _pending_lock:
@@ -1192,6 +1500,12 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
     language = detect_language(file_path)
 
     if language is None:
+        server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
+        return
+
+    project_root = getattr(_workspace_ctx, "_project_path", None)
+    if _is_path_excluded(file_path, project_root, _workspace_ctx.exclude_patterns):
+        logger.info("Skipping excluded file for LSP scan: %s", file_path)
         server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
         return
 
@@ -1249,9 +1563,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
 
     # O5: 增量分析 — 检测是否只有部分函数变化，尝试复用缓存
     _incremental_used = False
-    changed_funcs, full_rescan = _incremental_analyzer.get_changed_functions(
-        file_path, source, language
-    )
+    changed_funcs, full_rescan = _incremental_analyzer.get_changed_functions(file_path, source, language)
     if not full_rescan and not changed_funcs:
         # 完全未变化 — 使用缓存结果
         cached_findings = _incremental_analyzer.get_cached_findings(file_path)
@@ -1320,6 +1632,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
 
     # O1: 过滤 aegis-ignore 行级抑制
     from ..scanner.baseline import filter_suppressed_findings
+
     findings = filter_suppressed_findings(findings, source)
 
     # O1: 过滤 .aegis-baseline.json 中的已抑制 findings
@@ -1353,11 +1666,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
                 version_before,
                 doc.version,
             )
-            server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
-            try:
-                server.protocol.notify("aegis/scanEnd", {"uri": uri, "issueCount": 0})
-            except RuntimeError as e:
-                logger.debug("Failed to send scanEnd notification: %s", e)
+            _schedule_validation(server, uri, delay=0.05)
             return
     except RuntimeError as e:
         logger.debug("Failed to check document version: %s", e)
@@ -1392,7 +1701,7 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
                 return
             cache = getattr(server, "_ai_cache", None)
             if cache is None:
-                server._ai_cache = {}
+                cast(Any, server)._ai_cache = {}
                 cache = getattr(server, "_ai_cache", {})
             for f in findings:
                 if f.get("severity") not in ("Critical", "High"):

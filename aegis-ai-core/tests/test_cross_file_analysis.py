@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 _project_root = Path(__file__).resolve().parent.parent
 
 

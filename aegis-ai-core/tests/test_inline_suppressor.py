@@ -9,10 +9,7 @@ test_inline_suppressor.py - InlineSuppressor 单元测试
 - filter_findings 集成
 """
 
-import pytest
-
 from src.scanner.false_positive_manager import InlineSuppressor
-
 
 # ---------------------------------------------------------------------------
 # 辅助函数
@@ -50,7 +47,7 @@ class TestWildcardSuppression:
         code = "safe_line = 1\nresult = requests.get(user_url)  # aegis-ignore\n"
         sup = InlineSuppressor(code)
         assert not sup.is_suppressed(1, "SSRF")  # line 1 is safe
-        assert sup.is_suppressed(2, "SSRF")       # line 2 is suppressed
+        assert sup.is_suppressed(2, "SSRF")  # line 2 is suppressed
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +67,7 @@ class TestTypedSuppression:
         assert not sup.is_suppressed(1, "SQL_INJECTION")
 
     def test_slash_typed_matches(self):
-        code = 'const r = fetch(url); // aegis-ignore: SSRF\n'
+        code = "const r = fetch(url); // aegis-ignore: SSRF\n"
         sup = InlineSuppressor(code)
         assert sup.is_suppressed(1, "SSRF")
 
@@ -142,9 +139,9 @@ class TestFilterFindings:
 
     def test_multiline_code_selective_suppression(self):
         code = (
-            "safe_call()\n"                                  # line 1
+            "safe_call()\n"  # line 1
             "result = requests.get(url1)  # aegis-ignore\n"  # line 2
-            "result2 = requests.get(url2)\n"                 # line 3
+            "result2 = requests.get(url2)\n"  # line 3
         )
         sup = InlineSuppressor(code)
         findings = [

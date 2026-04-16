@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 
 # LSP 消息工具函数
 def _make_lsp_message(method: str, params: dict, id_: int = None) -> bytes:
@@ -87,8 +89,7 @@ def _read_lsp_response(proc: subprocess.Popen, timeout: float = 10.0) -> dict:
     return json.loads(body_data.decode("utf-8"))
 
 
-def _read_until_method(proc: subprocess.Popen, target_method: str,
-                       timeout: float = 10.0) -> dict:
+def _read_until_method(proc: subprocess.Popen, target_method: str, timeout: float = 10.0) -> dict:
     """
     持续读取 LSP 消息，直到收到指定 method 的消息。
 
@@ -106,9 +107,7 @@ def _read_until_method(proc: subprocess.Popen, target_method: str,
     while True:
         remaining = timeout - (time.time() - start)
         if remaining <= 0:
-            raise TimeoutError(
-                f"Timed out waiting for '{target_method}' message"
-            )
+            raise TimeoutError(f"Timed out waiting for '{target_method}' message")
         msg = _read_lsp_response(proc, timeout=remaining)
         if msg.get("method") == target_method:
             return msg
@@ -175,7 +174,7 @@ class TestLSPEndToEnd:
         """打开含漏洞的 JS 文件应发布 Diagnostics。"""
         self._initialize(lsp_server)
 
-        vulnerable_code = 'const userInput = req.query.name;\neval(userInput);\n'
+        vulnerable_code = "const userInput = req.query.name;\neval(userInput);\n"
         uri = "file:///tmp/test/vuln.js"
 
         did_open_msg = _make_lsp_message(
@@ -211,7 +210,7 @@ class TestLSPEndToEnd:
         """打开安全的 JS 文件应发布空 Diagnostics。"""
         self._initialize(lsp_server)
 
-        safe_code = 'const x = 1 + 2;\nconsole.log(x);\n'
+        safe_code = "const x = 1 + 2;\nconsole.log(x);\n"
         uri = "file:///tmp/test/safe.js"
 
         did_open_msg = _make_lsp_message(
@@ -257,7 +256,7 @@ class TestLSPEndToEnd:
         """打开含漏洞的 Python 文件应发布 Diagnostics。"""
         self._initialize(lsp_server)
 
-        vulnerable_code = 'import os\nuser_input = input()\nos.system(user_input)\n'
+        vulnerable_code = "import os\nuser_input = input()\nos.system(user_input)\n"
         uri = "file:///tmp/test/vuln.py"
 
         did_open_msg = _make_lsp_message(
@@ -282,7 +281,7 @@ class TestLSPEndToEnd:
         self._initialize(lsp_server)
 
         # eval(userInput) 应该产生 High/Critical severity
-        vulnerable_code = 'eval(userInput);\n'
+        vulnerable_code = "eval(userInput);\n"
         uri = "file:///tmp/test/eval.js"
 
         did_open_msg = _make_lsp_message(

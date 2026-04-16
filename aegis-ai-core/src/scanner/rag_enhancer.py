@@ -17,9 +17,13 @@ from __future__ import annotations
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import Any
+from typing import Any, Protocol, cast
 
 logger = logging.getLogger(__name__)
+
+
+class SupportsCountCollection(Protocol):
+    def count(self) -> int: ...
 
 
 # 内置修复建议（不依赖外部 RAG）
@@ -544,7 +548,8 @@ class RAGEnhancer:
 
             client = chromadb.PersistentClient(path=db_path)
             self.collection = client.get_collection(name="cve_core")
-            logger.info("RAG 知识库已连接，包含 %d 条 CVE 记录", self.collection.count())
+            collection = cast(SupportsCountCollection, self.collection)
+            logger.info("RAG 知识库已连接，包含 %d 条 CVE 记录", collection.count())
         except (RuntimeError, ValueError, KeyError, ImportError) as e:
             logger.warning("RAG 知识库连接失败: %s，将使用内置修复建议", e)
             self.collection = None

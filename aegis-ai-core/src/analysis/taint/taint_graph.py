@@ -151,8 +151,8 @@ class TaintPath:
     """
 
     # 路径信息
-    source_node: TaintNode = None  # 起始节点（Source）
-    sink_node: TaintNode = None  # 结束节点（Sink）
+    source_node: TaintNode | None = None  # 起始节点（Source）
+    sink_node: TaintNode | None = None  # 结束节点（Sink）
     path_nodes: list[TaintNode] = field(default_factory=list)  # 中间节点
     path_edges: list[TaintEdge] = field(default_factory=list)  # 边序列
 

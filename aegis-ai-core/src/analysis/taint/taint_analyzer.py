@@ -18,7 +18,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ from .taint_graph import EdgeType, NodeType, TaintGraph, TaintNode, TaintPath
 # Tree-sitter 导入
 try:
     from tree_sitter import Node, Parser
-    from tree_sitter_languages import get_language
+    from tree_sitter_languages import get_language  # type: ignore[import-untyped]
 
     TREE_SITTER_AVAILABLE = True
 except ImportError:
@@ -1840,7 +1840,7 @@ class TaintAnalyzer:
     def _get_node_text(node: Any) -> str | None:
         """提取节点的文本内容"""
         if hasattr(node, "text"):
-            return node.text.decode("utf-8")
+            return cast(bytes, node.text).decode("utf-8")
         return None
 
     def get_graph(self) -> TaintGraph:

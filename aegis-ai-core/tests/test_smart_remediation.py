@@ -7,17 +7,14 @@ test_smart_remediation.py - 智能修复建议与 framework_suggested_code 选�
 
 from pathlib import Path
 
-import pytest
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in __import__("sys").path:
     __import__("sys").path.insert(0, str(PROJECT_ROOT))
 
 from src.scanner.smart_remediation import (
-    SmartRemediation,
-    generate_smart_remediation,
-    _infer_framework_from_source,
     _apply_replacements,
+    _infer_framework_from_source,
+    generate_smart_remediation,
 )
 
 
@@ -62,7 +59,11 @@ def test_framework_suggested_code_rce_php():
     result = generate_smart_remediation(finding, source_code, "cmd.php")
     # 无 PHP 框架关键字时用通用 suggested_code；有 framework_suggested_code 时可选 escapeshellarg
     assert result.suggested_code
-    assert "exec" in result.suggested_code or "escapeshellarg" in result.suggested_code or "subprocess" in result.suggested_code
+    assert (
+        "exec" in result.suggested_code
+        or "escapeshellarg" in result.suggested_code
+        or "subprocess" in result.suggested_code
+    )
 
 
 def test_apply_replacements():

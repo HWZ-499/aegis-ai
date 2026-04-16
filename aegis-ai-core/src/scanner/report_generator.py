@@ -126,7 +126,7 @@ class ReportGenerator:
                 lines.append("")
 
                 # 按严重程度分组
-                by_severity = {}
+                by_severity: dict[str, list[dict[str, Any]]] = {}
                 for finding in findings:
                     severity = finding.get("severity", "Medium")
                     if severity not in by_severity:
@@ -377,7 +377,7 @@ class ReportGenerator:
 """
 
                 # 按严重程度分组
-                by_severity = {}
+                by_severity: dict[str, list[dict[str, Any]]] = {}
                 for finding in findings:
                     severity = finding.get("severity", "Medium")
                     if severity not in by_severity:
@@ -467,9 +467,7 @@ class ReportGenerator:
 
         return json.dumps(sarif, indent=2, ensure_ascii=False)
 
-    def _convert_to_sarif_results(
-        self, results: dict[str, list[dict]], rules_map: dict[str, dict]
-    ) -> list[dict]:
+    def _convert_to_sarif_results(self, results: dict[str, list[dict]], rules_map: dict[str, dict]) -> list[dict]:
         """
         将扫描结果转换为 SARIF 格式，同时收集 rules 定义。
 
@@ -559,9 +557,7 @@ class ReportGenerator:
                                 }
                             }
                             locations.append(loc)
-                        sarif_result["codeFlows"] = [
-                            {"threadFlows": [{"locations": locations}]}
-                        ]
+                        sarif_result["codeFlows"] = [{"threadFlows": [{"locations": locations}]}]
 
                 sarif_results.append(sarif_result)
 
@@ -795,7 +791,7 @@ class ReportGenerator:
 """
 
                 # 按严重程度分组
-                by_severity = {}
+                by_severity: dict[str, list[dict[str, Any]]] = {}
                 for finding in findings:
                     severity = finding.get("severity", "Medium")
                     if severity not in by_severity:

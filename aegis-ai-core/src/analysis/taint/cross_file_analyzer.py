@@ -21,12 +21,12 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 # Tree-sitter 导入
 try:
     from tree_sitter import Node, Parser
-    from tree_sitter_languages import get_language
+    from tree_sitter_languages import get_language  # type: ignore[import-untyped]
 
     TREE_SITTER_AVAILABLE = True
 except ImportError:
@@ -593,7 +593,7 @@ class CrossFileAnalyzer:
     def _get_node_text(node: Any) -> str:
         """获取节点文本"""
         if hasattr(node, "text"):
-            return node.text.decode("utf-8")
+            return cast(bytes, node.text).decode("utf-8")
         return ""
 
     @staticmethod

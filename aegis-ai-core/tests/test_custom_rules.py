@@ -3,8 +3,6 @@
 
 from pathlib import Path
 
-import pytest
-
 from src.analysis.dsl.dsl_adapter import load_dsl_rules_for_language
 
 

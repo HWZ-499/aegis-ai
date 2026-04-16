@@ -11,8 +11,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -107,9 +106,7 @@ class IncrementalAnalyzer:
                 return None
         return self._parsers.get(language)
 
-    def get_changed_functions(
-        self, file_path: str, code: str, language: str
-    ) -> tuple[list[str], bool]:
+    def get_changed_functions(self, file_path: str, code: str, language: str) -> tuple[list[str], bool]:
         """
         Determine which functions changed since last analysis.
 
@@ -149,6 +146,12 @@ class IncrementalAnalyzer:
         for name in old_funcs:
             if name not in new_functions:
                 changed.append(name)
+
+        # 源码变了但函数体哈希没变，通常意味着修改发生在函数外部：
+        # 例如顶部新增注释、全局常量/敏感信息位置移动、函数之间插入注释等。
+        # 这类变更会影响全局 findings 和行号，因此不能直接复用缓存结果。
+        if not changed:
+            return [], True
 
         # If more than 60% of functions changed, full rescan is more efficient
         total = max(len(new_functions), len(old_funcs), 1)
@@ -211,9 +214,7 @@ class IncrementalAnalyzer:
             all_findings.extend(func_findings)
         return all_findings
 
-    def merge_partial_findings(
-        self, file_path: str, changed_funcs: list[str], new_findings: list[dict]
-    ) -> list[dict]:
+    def merge_partial_findings(self, file_path: str, changed_funcs: list[str], new_findings: list[dict]) -> list[dict]:
         """
         Merge new partial findings (for changed functions) with cached findings
         for unchanged functions.
@@ -250,9 +251,7 @@ class IncrementalAnalyzer:
         """Clear entire cache."""
         self._cache.clear()
 
-    def _extract_functions(
-        self, code: str, language: str, parser: Any
-    ) -> dict[str, FunctionInfo] | None:
+    def _extract_functions(self, code: str, language: str, parser: Any) -> dict[str, FunctionInfo] | None:
         """Extract function info from source code using tree-sitter."""
         try:
             tree = parser.parse(code.encode())
@@ -300,7 +299,7 @@ class IncrementalAnalyzer:
         # Try 'name' child first (Python, JS function_declaration, etc.)
         for child in node.children:
             if child.type in ("identifier", "property_identifier"):
-                return child.text.decode()
+                return cast(bytes, child.text).decode()
 
         # Arrow functions assigned to variables: const foo = () => {}
         parent = node.parent
@@ -311,6 +310,6 @@ class IncrementalAnalyzer:
         ):
             for child in parent.children:
                 if child.type in ("identifier", "property_identifier"):
-                    return child.text.decode()
+                    return cast(bytes, child.text).decode()
 
         return ""

@@ -6,6 +6,7 @@
 import logging
 import threading
 from pathlib import Path
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ except ImportError:
 
 # 尝试导入 tree-sitter-languages
 try:
-    from tree_sitter_languages import get_language
+    from tree_sitter_languages import get_language  # type: ignore[import-untyped]
 
     TREE_SITTER_LANGUAGES_AVAILABLE = True
 except ImportError:
@@ -177,7 +178,12 @@ class MultiLanguageASTAnalyzer:
 
         return language
 
-    def analyze(self, code_content: str, language: str | None = None, file_path: str | None = None) -> list[dict]:
+    def analyze(
+        self,
+        code_content: str,
+        language: str | None = None,
+        file_path: str | None = None,
+    ) -> list[dict[str, Any]]:
         """
         分析代码安全问题
 
@@ -198,7 +204,7 @@ class MultiLanguageASTAnalyzer:
 
         # 根据语言选择分析器
         if language == "python":
-            return analyze_python_ast(code_content)
+            return cast(list[dict[str, Any]], analyze_python_ast(code_content))
         elif language in ["javascript", "typescript"]:
             return self._analyze_javascript(code_content, file_path=file_path)
         elif language == "java":
@@ -215,7 +221,7 @@ class MultiLanguageASTAnalyzer:
 
             regex_findings = scan_code_locally(code_content, file_path=file_path)
             # 转换为统一格式（保留严重程度）
-            findings = []
+            findings: list[dict[str, Any]] = []
             for finding in regex_findings:
                 findings.append(
                     {
@@ -235,7 +241,7 @@ class MultiLanguageASTAnalyzer:
         当前实现：使用正则规则（Tree-sitter 需要额外配置）
         未来：使用 Tree-sitter AST 分析
         """
-        findings = []
+        findings: list[dict[str, Any]] = []
 
         # 使用正则规则检测（临时方案）
         from src.analysis.rule_engine import scan_code_locally
@@ -281,7 +287,7 @@ class MultiLanguageASTAnalyzer:
         Returns:
             检测到的问题列表
         """
-        findings = []
+        findings: list[dict[str, Any]] = []
 
         # 【P0优化】跳过函数定义，只检测函数调用
         if node.type == "function_declaration":
@@ -354,7 +360,7 @@ class MultiLanguageASTAnalyzer:
         Returns:
             检测到的问题列表
         """
-        findings = []
+        findings: list[dict[str, Any]] = []
 
         if node.type != "call_expression":
             return findings
@@ -525,7 +531,7 @@ class MultiLanguageASTAnalyzer:
         当前实现：使用正则规则
         未来：使用 Tree-sitter AST 分析
         """
-        findings = []
+        findings: list[dict[str, Any]] = []
 
         # Java 特定的漏洞检测规则
         java_patterns = {
@@ -651,7 +657,7 @@ class MultiLanguageASTAnalyzer:
         Returns:
             检测到的问题列表
         """
-        findings = []
+        findings: list[dict[str, Any]] = []
 
         # 检测 SQL 字符串拼接
         if node.type == "assignment_expression" or node.type == "local_variable_declaration":
@@ -710,7 +716,7 @@ class MultiLanguageASTAnalyzer:
 
         当前实现：使用正则规则检测常见漏洞
         """
-        findings = []
+        findings: list[dict[str, Any]] = []
 
         # C/C++ 特定的漏洞检测规则
         cpp_patterns = {
@@ -761,7 +767,7 @@ class MultiLanguageASTAnalyzer:
 
         当前实现：使用正则规则检测
         """
-        findings = []
+        findings: list[dict[str, Any]] = []
 
         # 使用正则规则检测
         from src.analysis.rule_engine import scan_code_locally
@@ -788,7 +794,7 @@ class MultiLanguageASTAnalyzer:
 
         当前实现：使用正则规则
         """
-        findings = []
+        findings: list[dict[str, Any]] = []
 
         # Go 特定的漏洞检测规则
         go_patterns = {
@@ -828,7 +834,7 @@ class MultiLanguageASTAnalyzer:
         return findings
 
 
-def analyze_code_multi_language(code_content: str, file_path: str | None = None) -> list[dict]:
+def analyze_code_multi_language(code_content: str, file_path: str | None = None) -> list[dict[str, Any]]:
     """
     多语言代码分析入口函数。
     使用按线程缓存的 analyzer，避免每个文件都初始化 Tree-sitter parser，提升扫描性能。
@@ -842,7 +848,8 @@ def analyze_code_multi_language(code_content: str, file_path: str | None = None)
     """
     if not hasattr(_analyzer_local, "analyzer") or _analyzer_local.analyzer is None:
         _analyzer_local.analyzer = MultiLanguageASTAnalyzer()
-    return _analyzer_local.analyzer.analyze(code_content, file_path=file_path)
+    analyzer = cast(MultiLanguageASTAnalyzer, _analyzer_local.analyzer)
+    return analyzer.analyze(code_content, file_path=file_path)
 
 
 if __name__ == "__main__":

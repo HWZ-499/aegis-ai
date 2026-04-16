@@ -382,9 +382,7 @@ class DominatorTree:
         normal_successors = [
             s
             for s in guard_block.successors
-            if s != EXIT_ID
-            and self._cfg.get_block(s) is not None
-            and not (self._cfg.get_block(s) and self._cfg.get_block(s).is_exit)
+            if s != EXIT_ID and (succ_block := self._cfg.get_block(s)) is not None and not succ_block.is_exit
         ]
 
         protected: list[int] = []

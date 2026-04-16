@@ -83,12 +83,16 @@ class TaintEnhancer:
         if not self.is_available:
             return []
 
+        analyzer = self._analyzer
+        if analyzer is None:
+            return []
+
         try:
             # 重置分析器
-            self._analyzer.reset()
+            analyzer.reset()
 
             # 执行污点分析
-            findings = self._analyzer.analyze_file(file_path)
+            findings = analyzer.analyze_file(file_path)
 
             # 转换为标准格式
             return [self._convert_finding(f) for f in findings]
@@ -111,12 +115,16 @@ class TaintEnhancer:
         if not self.is_available:
             return []
 
+        analyzer = self._analyzer
+        if analyzer is None:
+            return []
+
         try:
             # 重置分析器
-            self._analyzer.reset()
+            analyzer.reset()
 
             # 执行污点分析
-            findings = self._analyzer.analyze_code(code, file_path)
+            findings = analyzer.analyze_code(code, file_path)
 
             # 转换为标准格式
             return [self._convert_finding(f) for f in findings]
@@ -140,13 +148,17 @@ class TaintEnhancer:
         if not self.is_available or not findings:
             return findings
 
+        analyzer = self._analyzer
+        if analyzer is None:
+            return findings
+
         try:
             # 执行污点分析
-            self._analyzer.reset()
-            self._analyzer.analyze_code(code, file_path)
+            analyzer.reset()
+            analyzer.analyze_code(code, file_path)
 
             # 获取污点图
-            graph = self._analyzer.get_graph()
+            graph = analyzer.get_graph()
 
             # 增强每个发现
             enhanced = []

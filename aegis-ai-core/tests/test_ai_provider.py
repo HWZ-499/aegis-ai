@@ -9,7 +9,6 @@ test_ai_provider.py - AIAnalyzer 多提供商支持单元测试
 - 构造函数参数覆盖
 """
 
-import os
 import pytest
 
 # 清理测试中可能影响结果的环境变量的辅助函数
@@ -140,6 +139,21 @@ class TestAnalyzerInit:
         # No key available → should be disabled
         assert analyzer.enabled is False
 
+    def test_disabled_without_key_returns_structured_config_error(self):
+        analyzer = AIAnalyzer(enabled=True)
+        result = analyzer.analyze_finding(
+            {
+                "type": "SQL_INJECTION",
+                "severity": "High",
+                "line": 12,
+                "details": "Potential SQL injection",
+                "file": "app.js",
+            }
+        )
+        assert result.error_code == "provider_not_configured"
+        assert result.error_message is not None
+        assert "provider" in result.error_message.lower()
+
     def test_enabled_with_deepseek_key(self, monkeypatch):
         monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-key")
         analyzer = AIAnalyzer(enabled=True)
@@ -149,6 +163,28 @@ class TestAnalyzerInit:
     def test_provider_logged(self, monkeypatch, caplog):
         monkeypatch.setenv("AI_PROVIDER", "ollama")
         import logging
+
         with caplog.at_level(logging.INFO, logger="src.scanner.ai_analyzer"):
             AIAnalyzer(enabled=True)
         assert "ollama" in caplog.text.lower()
+
+
+class TestAiResponseErrors:
+    def test_parse_response_without_fixed_code_marks_no_applicable_fix(self):
+        analyzer = AIAnalyzer(enabled=False)
+        result = analyzer._parse_ai_response(
+            '{"confidence": 0.88, "risk_level": "High", "explanation": "Needs review", "fix_description": "Manually parameterize the query"}',
+            {"severity": "High", "start_line": 5, "end_line": 5},
+        )
+        assert result.fixed_code is None
+        assert result.error_code == "no_applicable_fix"
+        assert result.error_message is not None
+
+    def test_parse_invalid_json_marks_provider_unavailable(self):
+        analyzer = AIAnalyzer(enabled=False)
+        result = analyzer._parse_ai_response(
+            "definitely not json",
+            {"severity": "High", "start_line": 2, "end_line": 2},
+        )
+        assert result.error_code == "provider_unavailable"
+        assert result.error_message is not None

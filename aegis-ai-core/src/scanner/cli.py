@@ -25,6 +25,25 @@ except ImportError:
     CrossFileAnalyzer = None
 
 
+def _build_ai_code_contexts(results: dict[str, list[dict]], project_path: Path) -> dict[str, str]:
+    """Build file source snippets for AI analysis, preferring absolute finding paths when available."""
+    code_contexts: dict[str, str] = {}
+    for rel_path, findings in results.items():
+        candidate_path: Path | None = None
+        for finding in findings:
+            raw_file_path = finding.get("file_path")
+            if isinstance(raw_file_path, str) and raw_file_path:
+                candidate_path = Path(raw_file_path)
+                break
+        if candidate_path is None:
+            candidate_path = project_path / rel_path
+        try:
+            code_contexts[rel_path] = candidate_path.read_text(encoding="utf-8", errors="ignore")
+        except (OSError, UnicodeDecodeError):
+            continue
+    return code_contexts
+
+
 def main():
     """命令行主函数"""
     parser = argparse.ArgumentParser(
@@ -292,23 +311,7 @@ def main():
                     all_findings.extend(findings)
 
                 # 为每个文件构建代码上下文（用于 AI 分析）
-                code_contexts: dict[str, str] = {}
-                for rel_path, findings in results.items():
-                    # 优先使用 finding 中的绝对路径，其次用相对路径拼接
-                    file_path = None
-                    for f in findings:
-                        fp = f.get("file_path")
-                        if fp:
-                            file_path = Path(fp)
-                            break
-                    if file_path is None:
-                        file_path = project_path / rel_path
-                    try:
-                        code = file_path.read_text(encoding="utf-8", errors="ignore")
-                        # 使用相对路径作为 key，与 finding['file'] 对齐
-                        code_contexts[rel_path] = code
-                    except (OSError, UnicodeDecodeError):
-                        continue
+                code_contexts = _build_ai_code_contexts(results, project_path)
 
                 # 批量分析（携带代码上下文）
                 ai_results = ai_analyzer.analyze_findings_batch(

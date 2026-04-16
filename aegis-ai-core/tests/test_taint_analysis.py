@@ -6,7 +6,7 @@ test_taint_analysis.py - 污点分析测试
 
 import pytest
 
-from src.analysis.taint import TaintAnalyzer, EdgeType, NodeType, TaintGraph, get_default_registry
+from src.analysis.taint import EdgeType, NodeType, TaintAnalyzer, TaintGraph, get_default_registry
 
 
 def test_basic_taint_path():

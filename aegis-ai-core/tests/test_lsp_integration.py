@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 
 def _make_lsp_message(method: str, params: dict, id_: int | None = None) -> bytes:
     """构造 LSP JSON-RPC 消息（含 Content-Length header）。"""
@@ -59,9 +61,7 @@ def _read_lsp_response(proc: subprocess.Popen, timeout: float = 10.0) -> dict:
     return json.loads(body_data.decode("utf-8"))
 
 
-def _read_until_method(
-    proc: subprocess.Popen, target_method: str, timeout: float = 10.0
-) -> dict:
+def _read_until_method(proc: subprocess.Popen, target_method: str, timeout: float = 10.0) -> dict:
     """持续读取直到收到指定 method 的消息。"""
     start = time.time()
     while True:
@@ -126,9 +126,7 @@ def test_lsp_integration_initialize_didopen_publish_diagnostics():
         notification = _read_until_method(proc, "textDocument/publishDiagnostics")
         params = notification["params"]
         assert params["uri"] == uri
-        assert len(params["diagnostics"]) > 0, (
-            "Expected at least one diagnostic for vulnerable code"
-        )
+        assert len(params["diagnostics"]) > 0, "Expected at least one diagnostic for vulnerable code"
     finally:
         proc.stdin.close()
         proc.terminate()

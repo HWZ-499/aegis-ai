@@ -21,7 +21,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -340,6 +340,8 @@ class AIAnalysisResult:
     fixed_code: str | None = field(default=None)  # AI 生成的完整修复代码（可直接参考）
     fix_start_line: int | None = field(default=None)  # 建议替换的起始行（基于文件行号）
     fix_end_line: int | None = field(default=None)  # 建议替换的结束行
+    error_code: str | None = field(default=None)  # 结构化错误码（用于 UI 反馈）
+    error_message: str | None = field(default=None)  # 可直接展示给用户的错误描述
 
 
 class AIAnalyzer:
@@ -396,12 +398,15 @@ class AIAnalyzer:
         5. 降级为 deepseek（即使无密钥也保持原有行为）
         """
         provider = os.getenv("AI_PROVIDER", "").lower().strip()
+        resolved_key: str | None
 
         if provider == "ollama" or (not provider and os.getenv("OLLAMA_BASE_URL")):
             resolved_provider = "ollama"
-            resolved_base = api_base or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+            resolved_base = (
+                cast(str, api_base) if api_base else os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+            )
             resolved_key = api_key or "ollama"  # Ollama 不需要真实 API Key
-            resolved_model = model or os.getenv("OLLAMA_MODEL", "llama3")
+            resolved_model = cast(str, model) if model else os.getenv("OLLAMA_MODEL", "llama3")
             return resolved_provider, resolved_key, resolved_base, resolved_model
 
         # OpenAI：显式指定，或无 DeepSeek Key 时自动降级
@@ -410,23 +415,27 @@ class AIAnalyzer:
         )
         if provider == "openai" or has_openai_only:
             resolved_provider = "openai"
-            resolved_base = api_base or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+            resolved_base = (
+                cast(str, api_base) if api_base else os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+            )
             resolved_key = api_key or os.getenv("OPENAI_API_KEY")
-            resolved_model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+            resolved_model = cast(str, model) if model else os.getenv("OPENAI_MODEL", "gpt-4o-mini")
             return resolved_provider, resolved_key, resolved_base, resolved_model
 
         if provider == "custom":
             resolved_provider = "custom"
-            resolved_base = api_base or os.getenv("AI_BASE_URL", "")
+            resolved_base = cast(str, api_base) if api_base else os.getenv("AI_BASE_URL", "")
             resolved_key = api_key or os.getenv("AI_API_KEY")
-            resolved_model = model or os.getenv("AI_MODEL", "gpt-4o-mini")
+            resolved_model = cast(str, model) if model else os.getenv("AI_MODEL", "gpt-4o-mini")
             return resolved_provider, resolved_key, resolved_base, resolved_model
 
         # 默认：DeepSeek（兼容 OpenAI SDK）
         resolved_provider = "deepseek"
-        resolved_base = api_base or os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+        resolved_base = (
+            cast(str, api_base) if api_base else os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+        )
         resolved_key = api_key or os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")
-        resolved_model = model or os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+        resolved_model = cast(str, model) if model else os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
         return resolved_provider, resolved_key, resolved_base, resolved_model
 
     def __init__(
@@ -480,8 +489,9 @@ class AIAnalyzer:
         if not self.enabled:
             return False
 
-        severity = finding.get("severity", "Low")
-        return severity in self.ANALYSIS_CONFIG["enabled_severities"]
+        severity = str(finding.get("severity", "Low"))
+        enabled_severities = cast(list[str], self.ANALYSIS_CONFIG["enabled_severities"])
+        return severity in enabled_severities
 
     def analyze_finding(
         self,
@@ -508,7 +518,11 @@ class AIAnalyzer:
             return self._cache[cache_key]
 
         if not self.enabled:
-            return self._default_analysis(finding)
+            return self._error_analysis(
+                finding,
+                "provider_not_configured",
+                "AI provider is not configured. Set AI_PROVIDER and the matching API key, or use Ollama for local fixes.",
+            )
 
         # 提取 rich context（优先使用 source_code）
         file_path = finding.get("file", "")
@@ -587,6 +601,31 @@ class AIAnalyzer:
             requires_review=True,
         )
 
+    def _error_analysis(
+        self,
+        finding: dict[str, Any],
+        error_code: str,
+        error_message: str,
+        *,
+        explanation: str | None = None,
+        fix_suggestion: str | None = None,
+        fixed_code: str | None = None,
+    ) -> AIAnalysisResult:
+        """生成带结构化错误码的结果，供 UI 给出明确反馈。"""
+        return AIAnalysisResult(
+            is_true_positive=True,
+            confidence=0.0,
+            risk_level=finding.get("severity", "Medium"),
+            explanation=explanation or error_message,
+            fix_suggestion=fix_suggestion,
+            requires_review=True,
+            fixed_code=fixed_code,
+            fix_start_line=finding.get("start_line"),
+            fix_end_line=finding.get("end_line"),
+            error_code=error_code,
+            error_message=error_message,
+        )
+
     def _call_ai_analysis(
         self,
         finding: dict[str, Any],
@@ -632,14 +671,30 @@ class AIAnalyzer:
                 timeout=30,
             )
 
-            return self._parse_ai_response(response.choices[0].message.content, finding)
+            content = response.choices[0].message.content or ""
+            return self._parse_ai_response(content, finding)
 
-        except (RuntimeError, KeyError, ValueError, ImportError, OSError) as e:
+        except ImportError as e:
+            logger.warning("AI 提供商依赖不可用: %s", e)
+            return self._error_analysis(
+                finding,
+                "provider_unavailable",
+                f"AI provider dependencies are unavailable: {e}",
+            )
+        except (RuntimeError, KeyError, ValueError, OSError) as e:
             logger.warning("AI 分析失败: %s", e)
-            return self._default_analysis(finding)
+            return self._error_analysis(
+                finding,
+                "provider_unavailable",
+                f"AI provider request failed: {e}",
+            )
         except Exception as e:
             logger.warning("AI 分析未预期异常: %s: %s", type(e).__name__, e)
-            return self._default_analysis(finding)
+            return self._error_analysis(
+                finding,
+                "provider_unavailable",
+                f"AI provider request failed: {type(e).__name__}: {e}",
+            )
 
     def _build_analysis_prompt(
         self,
@@ -769,24 +824,32 @@ class AIAnalyzer:
 
         if parsed is None:
             logger.warning("AI 响应 JSON 解析失败，降级为默认结果。响应前200字符: %s", response[:200])
-            return self._default_analysis(finding)
+            return self._error_analysis(
+                finding,
+                "provider_unavailable",
+                "AI provider returned an invalid response. Check the configured model or endpoint.",
+            )
 
         confidence = float(parsed.get("confidence", 0.7))
         fixed_code = parsed.get("fixed_code") or None
         if fixed_code is not None and not fixed_code.strip():
             fixed_code = None
 
-        return AIAnalysisResult(
+        result = AIAnalysisResult(
             is_true_positive=not bool(parsed.get("is_false_positive", False)),
             confidence=confidence,
             risk_level=parsed.get("risk_level") or finding.get("severity", "Medium"),
             explanation=parsed.get("explanation", ""),
             fix_suggestion=parsed.get("fix_description") or None,
-            requires_review=confidence < self.ANALYSIS_CONFIG["confidence_threshold"],
+            requires_review=confidence < cast(float, self.ANALYSIS_CONFIG["confidence_threshold"]),
             fixed_code=fixed_code,
             fix_start_line=finding.get("start_line"),
             fix_end_line=finding.get("end_line"),
         )
+        if result.fixed_code is None:
+            result.error_code = "no_applicable_fix"
+            result.error_message = "AI reviewed this finding but did not return a safe replacement."
+        return result
 
     def get_analysis_summary(self, results: list[tuple[dict[str, Any], AIAnalysisResult]]) -> dict[str, Any]:
         """
@@ -803,7 +866,7 @@ class AIAnalyzer:
         needs_review = sum(1 for _, r in results if r.requires_review)
 
         # 按风险等级统计
-        by_risk = {}
+        by_risk: dict[str, int] = {}
         for _, result in results:
             level = result.risk_level
             by_risk[level] = by_risk.get(level, 0) + 1

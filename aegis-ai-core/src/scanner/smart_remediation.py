@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from .rag_enhancer import BUILTIN_REMEDIATION
 
@@ -170,9 +170,13 @@ def generate_smart_remediation(
     rule_id = finding.get("rule_id") or vuln_type
     line_no = int(finding.get("line") or finding.get("start_line") or 1)
 
-    builtin = BUILTIN_REMEDIATION.get(vuln_type) or BUILTIN_REMEDIATION.get(rule_id) or {}
-    description = builtin.get("description", "")
-    remediation_list = builtin.get("remediation") or []
+    builtin = cast(
+        dict[str, Any],
+        BUILTIN_REMEDIATION.get(vuln_type) or BUILTIN_REMEDIATION.get(rule_id) or {},
+    )
+    description = str(builtin.get("description", "") or "")
+    raw_remediation_list = builtin.get("remediation") or []
+    remediation_list = [str(item) for item in raw_remediation_list] if isinstance(raw_remediation_list, list) else []
     first_tip = remediation_list[0] if remediation_list else description
 
     context = _extract_line_context(source_code, line_no)
@@ -184,11 +188,12 @@ def generate_smart_remediation(
             replacements[_PLACEHOLDERS[i]] = c
 
     framework = _infer_framework_from_source(source_code, file_path)
-    framework_code_map = builtin.get("framework_suggested_code") or {}
-    suggested_code = builtin.get("suggested_code") or ""
+    raw_framework_code_map = builtin.get("framework_suggested_code") or {}
+    framework_code_map = raw_framework_code_map if isinstance(raw_framework_code_map, dict) else {}
+    suggested_code = str(builtin.get("suggested_code") or "")
 
     if framework and framework in framework_code_map:
-        suggested_code = framework_code_map[framework]
+        suggested_code = str(framework_code_map[framework])
     suggested_code = _apply_replacements(suggested_code, replacements)
 
     message = first_tip if first_tip else f"请根据 {vuln_type} 修复指南处理。"

@@ -148,8 +148,7 @@ class TestMarkdownReport:
                 }
             ]
         }
-        stats = {"total_files": 1, "scanned_files": 1, "files_with_issues": 1,
-                 "total_issues": 1, "scan_time": 0.1}
+        stats = {"total_files": 1, "scanned_files": 1, "files_with_issues": 1, "total_issues": 1, "scan_time": 0.1}
         md = generator.generate_markdown(results, stats)
         assert "安全扫描报告" in md
         assert "app.js" in md
@@ -162,6 +161,7 @@ class TestJSONReport:
     def test_json_valid(self, generator) -> None:
         """JSON 报告应是合法 JSON。"""
         import json
+
         results = {"test.py": [{"line": 1, "type": "TEST", "severity": "Low", "details": "test"}]}
         stats = {"total_files": 1, "scanned_files": 1}
         output = generator.generate_json(results, stats)

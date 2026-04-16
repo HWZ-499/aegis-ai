@@ -11,17 +11,12 @@ import hashlib
 import logging
 import re
 from pathlib import Path
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # Import patterns by language
-_JS_IMPORT_RE = re.compile(
-    r"""(?:import\s+.*?\s+from\s+['"](.+?)['"]|require\s*\(\s*['"](.+?)['"]\s*\))"""
-)
-_PY_IMPORT_RE = re.compile(
-    r"""(?:from\s+(\S+)\s+import|import\s+(\S+))"""
-)
+_JS_IMPORT_RE = re.compile(r"""(?:import\s+.*?\s+from\s+['"](.+?)['"]|require\s*\(\s*['"](.+?)['"]\s*\))""")
+_PY_IMPORT_RE = re.compile(r"""(?:from\s+(\S+)\s+import|import\s+(\S+))""")
 
 
 class DependencyTracker:
@@ -36,9 +31,7 @@ class DependencyTracker:
         # file_path → hash of exported function signatures
         self._export_hashes: dict[str, str] = {}
 
-    def update_imports(
-        self, file_path: str, code: str, language: str, project_root: str
-    ) -> None:
+    def update_imports(self, file_path: str, code: str, language: str, project_root: str) -> None:
         """
         Parse and record the import relationships for a file.
 
@@ -118,9 +111,7 @@ class DependencyTracker:
     # ── Private resolution helpers ────────────────────────────────────────
 
     @staticmethod
-    def _resolve_js_import(
-        raw_path: str, importer: str, project_root: str
-    ) -> str | None:
+    def _resolve_js_import(raw_path: str, importer: str, project_root: str) -> str | None:
         """Resolve a JS/TS import specifier to an absolute path (best-effort)."""
         if not raw_path.startswith("."):
             return None  # Skip bare specifiers (npm packages)
@@ -136,9 +127,7 @@ class DependencyTracker:
         return None
 
     @staticmethod
-    def _resolve_py_import(
-        raw_module: str, importer: str, project_root: str
-    ) -> str | None:
+    def _resolve_py_import(raw_module: str, importer: str, project_root: str) -> str | None:
         """Resolve a Python import to an absolute file path (best-effort)."""
         parts = raw_module.split(".")
         base = Path(project_root)

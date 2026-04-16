@@ -11,7 +11,7 @@ import json
 import re
 from pathlib import Path
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 class BaselineFinding(BaseModel):
@@ -22,8 +22,7 @@ class BaselineFinding(BaseModel):
     line: int = Field(alias="line")
     fingerprint: str = Field(default="", alias="fingerprint")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 def _fingerprint(finding: dict, project_root: Path | None = None) -> str:
@@ -133,6 +132,20 @@ class Baseline:
                 if fp not in self._by_fingerprint:
                     self._by_fingerprint[fp] = BaselineFinding.model_validate(entry)
 
+    def list_entries(self) -> list[BaselineFinding]:
+        """返回按文件、行号、规则排序的 baseline 条目，供 UI 展示。"""
+        return sorted(
+            self._by_fingerprint.values(),
+            key=lambda item: (item.file_path, item.line, item.rule_id, item.fingerprint),
+        )
+
+    def remove_fingerprint(self, fingerprint: str) -> bool:
+        """移除指定 fingerprint 的 baseline 条目。"""
+        if fingerprint not in self._by_fingerprint:
+            return False
+        self._by_fingerprint.pop(fingerprint, None)
+        return True
+
 
 # ---------------------------------------------------------------------------
 # 行级抑制：aegis-ignore / # aegis-ignore / aegis-ignore: RULE_ID
@@ -171,7 +184,11 @@ def filter_suppressed_findings(findings: list[dict], source: str) -> list[dict]:
             continue
         line_text = lines[line_no - 1]
         rule_id = f.get("type") or f.get("rule_id")
-        if _line_has_suppress(line_text, rule_id):
+        # 支持两种抑制方式：
+        # 1. 行内：bad()  # aegis-ignore
+        # 2. 行上方：# aegis-ignore  后跟一行漏洞代码
+        prev_line_text = lines[line_no - 2] if line_no >= 2 else ""
+        if _line_has_suppress(line_text, rule_id) or _line_has_suppress(prev_line_text, rule_id):
             continue
         out.append(f)
     return out

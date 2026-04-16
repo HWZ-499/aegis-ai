@@ -8,19 +8,25 @@
 
 import logging
 import re
+from typing import Any, Protocol, cast
 
 logger = logging.getLogger(__name__)
 
 # tree-sitter 懒加载（PHP AST 分析用）
 try:
     from tree_sitter import Parser as _TsParser
-    from tree_sitter_languages import get_language as _ts_get_language
+    from tree_sitter_languages import get_language as _ts_get_language  # type: ignore[import-untyped]
 
     _TS_AVAILABLE = True
 except ImportError:
     _TsParser = None
     _ts_get_language = None
     _TS_AVAILABLE = False
+
+
+class _ParserProtocol(Protocol):
+    def parse(self, source: bytes) -> Any: ...
+
 
 # 漏洞特征库 - 通用正则规则
 # 格式：漏洞名: [正则表达式列表]
@@ -725,11 +731,12 @@ class PhpTaintGraph:
             parser: tree-sitter PHP Parser 实例
         """
         code = "\n".join(self._lines)
-        tree = parser.parse(code.encode("utf-8", errors="replace"))
+        ts_parser = cast(_ParserProtocol, parser)
+        tree = ts_parser.parse(code.encode("utf-8", errors="replace"))
 
         # 收集守护块：{(start_line, end_line): is_safe}
         # is_safe=True 表示该行范围内的 $var 应被降级为 sanitized
-        safe_line_ranges: list[tuple[int, int]] = []
+        safe_line_ranges: list[tuple[int, int, set[str]]] = []
 
         def _find_if_guards(node: object) -> None:
             """递归遍历 AST，找到所有 if_statement 节点并分析守护分支。"""

@@ -24,6 +24,7 @@ def test_php_taint_analyzer_builds_graph():
     """PHP 源码经 TaintAnalyzer(language='php') 分析后能构建污点图并识别 Source。"""
     try:
         from tree_sitter_languages import get_language
+
         get_language("php")
     except Exception:
         pytest.skip("tree-sitter PHP 不可用")

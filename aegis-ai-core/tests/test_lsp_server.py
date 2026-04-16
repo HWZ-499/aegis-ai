@@ -13,13 +13,15 @@ import pytest
 from lsprotocol import types as lsp
 
 from src.lsp.server import (
+    SEVERITY_MAP,
+    _find_aegis_comment_block,
+    _get_remediation_for_rule,
+    _is_path_excluded,
+    _remediation_to_comment_text,
     detect_language,
     finding_to_diagnostic,
     scan_document,
     uri_to_filepath,
-    SEVERITY_MAP,
-    _get_remediation_for_rule,
-    _remediation_to_comment_text,
 )
 
 # 单元测试用文档 URI（finding_to_diagnostic 需要 document_uri 以映射 related_locations）
@@ -55,6 +57,42 @@ class TestFindingToDiagnostic:
         assert "建议修复代码" in diag.message
         assert diag.code == "SQL_INJECTION"
         assert diag.source == "Aegis AI"
+
+    def test_message_includes_action_guidance(self):
+        """诊断悬停文案应明确区分真实修复、注释建议和 baseline 抑制。"""
+        finding = {
+            "type": "SQL_INJECTION",
+            "severity": "High",
+            "line": 3,
+            "details": "Potential SQL injection via string concatenation",
+            "file": "app.js",
+        }
+
+        diag = finding_to_diagnostic(
+            finding,
+            DUMMY_URI,
+            source_code='const query = "SELECT * FROM users WHERE id = " + userId;',
+            file_path="app.js",
+        )
+
+        assert "Aegis 可用操作" in diag.message
+        assert "应用 AI 精准修复: 会替换代码并触发复扫" in diag.message
+        assert "插入修复建议注释: 只会插入建议，不会修复代码" in diag.message
+        assert "Ignore / Add to baseline: 接受并隐藏当前问题，不是修复代码" in diag.message
+
+    def test_unknown_rule_explains_when_example_fix_is_unavailable(self):
+        """没有安全替换模板时，hover 应解释为什么没有示例修复动作。"""
+        finding = {
+            "type": "UNKNOWN_RULE",
+            "severity": "High",
+            "line": 8,
+            "details": "Unknown issue",
+            "file": "mystery.py",
+        }
+
+        diag = finding_to_diagnostic(finding, DUMMY_URI)
+
+        assert "应用示例修复代码: 当前规则没有安全替换模板" in diag.message
 
     def test_critical_severity(self):
         """Critical 严重等级映射为 Error。"""
@@ -102,13 +140,13 @@ class TestFindingToDiagnostic:
         """没有 details 时回退到 message 字段。"""
         finding = {"severity": "High", "line": 1, "message": "fallback msg"}
         diag = finding_to_diagnostic(finding, DUMMY_URI)
-        assert diag.message == "fallback msg"
+        assert diag.message.startswith("fallback msg")
 
     def test_default_message(self):
         """既没有 details 也没有 message 时使用默认消息。"""
         finding = {"severity": "High", "line": 1}
         diag = finding_to_diagnostic(finding, DUMMY_URI)
-        assert diag.message == "Security issue detected"
+        assert diag.message.startswith("Security issue detected")
 
     def test_missing_type_defaults_to_unknown(self):
         """缺少 type 字段时 code 为 UNKNOWN。"""
@@ -279,8 +317,7 @@ class TestSeverityMap:
 
     def test_all_expected_severities_present(self):
         """所有预期的严重等级都有映射。"""
-        expected = ["Critical", "critical", "High", "high", "Medium", "medium",
-                    "Low", "low", "Info", "info"]
+        expected = ["Critical", "critical", "High", "high", "Medium", "medium", "Low", "low", "Info", "info"]
         for sev in expected:
             assert sev in SEVERITY_MAP, f"Missing severity mapping: {sev}"
 
@@ -329,6 +366,11 @@ class TestCodeActionRemediation:
         assert "NOSQL_INJECTION" in text
         assert "修复" in text or "建议" in text
 
+    def test_remediation_to_comment_uses_python_comment_prefix(self):
+        """Python 文件中的修复建议注释必须使用 #。"""
+        text = _remediation_to_comment_text("NOSQL_INJECTION", language="python")
+        assert text.splitlines()[0].startswith("# ")
+
     def test_rce_has_suggested_code_for_apply_example(self):
         """RCE_COMMAND_EXEC 有 suggested_code，供「应用示例代码」Code Action 使用。"""
         data = _get_remediation_for_rule("RCE_COMMAND_EXEC")
@@ -337,3 +379,90 @@ class TestCodeActionRemediation:
         assert isinstance(data["suggested_code"], str)
         assert "require(" in data["suggested_code"]
         assert "crypto" in data["suggested_code"]
+
+
+class TestPathExcludeMatching:
+    """LSP 侧也应遵守排除模式，避免手动扫描与项目扫描语义分叉。"""
+
+    def test_relative_glob_match(self):
+        assert (
+            _is_path_excluded(
+                "C:/repo/public/app.js",
+                "C:/repo",
+                ["**/public/**"],
+            )
+            is True
+        )
+
+    def test_dependency_directory_match(self):
+        assert (
+            _is_path_excluded(
+                "C:/repo/node_modules/pkg/index.js",
+                "C:/repo",
+                ["**/node_modules/**"],
+            )
+            is True
+        )
+
+    def test_business_directory_not_excluded_by_default_like_pattern_gap(self):
+        assert (
+            _is_path_excluded(
+                "C:/repo/lib/service.py",
+                "C:/repo",
+                ["**/node_modules/**", "**/dist/**"],
+            )
+            is False
+        )
+
+
+class TestInsertedCommentRemoval:
+    """Aegis 生成的注释块需要可识别并支持撤回。"""
+
+    def test_find_python_comment_block(self):
+        lines = [
+            "# Aegis 修复建议 (SQL_INJECTION):",
+            "# 使用参数化查询",
+            "# 参考: https://example.com",
+            "cursor.execute(query)",
+        ]
+
+        block = _find_aegis_comment_block(lines, 1)
+
+        assert block == (0, 3)
+
+    def test_find_ai_comment_block(self):
+        lines = [
+            "const query = userInput;",
+            "// Aegis AI 修复建议 (XSS_RISK) 置信度 50%",
+            "// 需人工复核",
+            "// 建议修改为:",
+            "// res.send(escapeHtml(name));",
+            "res.send(name);",
+        ]
+
+        block = _find_aegis_comment_block(lines, 3)
+
+        assert block == (1, 5)
+
+    def test_non_aegis_comments_are_not_removed(self):
+        lines = [
+            "# normal comment",
+            "# another comment",
+            "print('safe')",
+        ]
+
+        block = _find_aegis_comment_block(lines, 0)
+
+        assert block is None
+
+    def test_adjacent_user_comments_are_not_included_in_removal_block(self):
+        lines = [
+            "# user comment",
+            "# Aegis 修复建议 (SQL_INJECTION):",
+            "# 使用参数化查询",
+            "cursor.execute(query)",
+        ]
+
+        block = _find_aegis_comment_block(lines, 2)
+
+        assert block == (1, 3)

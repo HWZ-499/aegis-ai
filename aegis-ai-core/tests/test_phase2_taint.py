@@ -22,13 +22,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.analysis.base.dataflow_tracker import DataFlowTracker, TaintLevel
 from src.analysis.base.analysis_context import AnalysisContext
+from src.analysis.base.dataflow_tracker import DataFlowTracker
 
 # SourceSinkRegistry
 from src.analysis.taint.source_sink_registry import (
     SourceSinkRegistry,
-    get_default_registry,
 )
 
 # ── Tree-sitter 可选 ──
@@ -48,6 +47,7 @@ except Exception:
 # =====================================================================
 # 辅助函数
 # =====================================================================
+
 
 def _parse_js(code: str):
     """用 Tree-sitter 解析 JavaScript 代码，返回 root_node。"""
@@ -110,6 +110,7 @@ def _scan_js_full(code: str, rule_cls):
 # 1. DataFlowTracker 单元测试
 # =====================================================================
 
+
 class TestDataFlowTrackerDestructuring:
     """解构赋值追踪测试。"""
 
@@ -159,7 +160,7 @@ class TestDataFlowTrackerSanitizer:
         assert not tracker.is_tainted("safe")
         assert tracker.is_sanitized("safe")
 
-    def test_sanitizer_escapeHtml(self):
+    def test_sanitizer_escape_html(self):
         """const clean = escapeHtml(dirty) → clean 应该是 sanitized。"""
         tracker = DataFlowTracker(language="javascript")
         tracker.track_assignment("dirty", "req.body.html", line=1)
@@ -260,6 +261,7 @@ class TestDataFlowTrackerConcatPropagation:
 # 2. AnalysisContext 便捷方法测试
 # =====================================================================
 
+
 class TestAnalysisContextSanitizer:
     """AnalysisContext Sanitizer 便捷方法测试。"""
 
@@ -277,6 +279,7 @@ class TestAnalysisContextSanitizer:
 # 3. SourceSinkRegistry 精确 Sanitizer 匹配测试
 # =====================================================================
 
+
 class TestRegistrySanitizers:
     """SourceSinkRegistry Sanitizer 匹配精度测试。"""
 
@@ -284,17 +287,17 @@ class TestRegistrySanitizers:
         self.registry = SourceSinkRegistry()
         self.registry.load_defaults()
 
-    def test_escapeHtml_matches(self):
+    def test_escape_html_matches(self):
         """escapeHtml( 应该匹配 XSS Sanitizer。"""
         s = self.registry.find_sanitizer("escapeHtml(data)", "javascript")
         assert s is not None
 
-    def test_DOMPurify_matches(self):
+    def test_dom_purify_matches(self):
         """DOMPurify.sanitize( 应该匹配。"""
         s = self.registry.find_sanitizer("DOMPurify.sanitize(html)", "javascript")
         assert s is not None
 
-    def test_parseInt_matches(self):
+    def test_parse_int_matches(self):
         """parseInt( 应该匹配 SQLi/NoSQLi Sanitizer。"""
         s = self.registry.find_sanitizer("parseInt(x)", "javascript")
         assert s is not None
@@ -304,7 +307,7 @@ class TestRegistrySanitizers:
         s = self.registry.find_sanitizer("escape_velocity", "javascript")
         assert s is None
 
-    def test_encodeURIComponent_no_match(self):
+    def test_encode_uri_component_no_match(self):
         """encodeURIComponent 不应该被当作 XSS Sanitizer。"""
         s = self.registry.find_sanitizer("encodeURIComponent(x)", "javascript")
         # 不应该匹配任何 Sanitizer（它不在列表中）
@@ -324,6 +327,7 @@ class TestRegistrySanitizers:
 # =====================================================================
 # 4. JavaScriptDataFlowCollector 集成测试
 # =====================================================================
+
 
 @pytest.mark.skipif(not TREE_SITTER_AVAILABLE, reason="tree-sitter 不可用")
 class TestCollectorExpressRoute:
@@ -399,6 +403,7 @@ const { host, port } = config;
 # 5. 端到端：规则层 Sanitizer 感知
 # =====================================================================
 
+
 @pytest.mark.skipif(not TREE_SITTER_AVAILABLE, reason="tree-sitter 不可用")
 class TestNoSQLRuleSanitizerAware:
     """NoSQL 注入规则应该尊重 Sanitizer 标记。"""
@@ -458,6 +463,7 @@ db.users.findOne(userId);
 # =====================================================================
 # 6. DataFlowTracker reset 测试
 # =====================================================================
+
 
 class TestDataFlowTrackerReset:
     """重置后状态应该干净。"""

@@ -16,7 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.analysis.analyzers.python_analyzer import PythonAnalyzer
-from src.analysis.rules import SQLInjectionRegexRule, PythonRCEAstRule
+from src.analysis.rules import PythonRCEAstRule, SQLInjectionRegexRule
 
 
 def main() -> None:
@@ -48,12 +48,8 @@ def dangerous_sql(user_input, conn):
 
     print("=== 新规则引擎示例输出 ===")
     for f in findings:
-        print(
-            f"[{f.get('severity')}] {f.get('type')} "
-            f"(line {f.get('line')}): {f.get('details')}"
-        )
+        print(f"[{f.get('severity')}] {f.get('type')} (line {f.get('line')}): {f.get('details')}")
 
 
 if __name__ == "__main__":
     main()
-

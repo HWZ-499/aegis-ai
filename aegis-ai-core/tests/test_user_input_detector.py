@@ -9,74 +9,83 @@ test_user_input_detector.py - 用户输入检测器的正向 / 反向测试
 import pytest
 
 from src.analysis.base.user_input_detector import (
+    _extract_member_chain,
     is_user_input_expr,
     is_user_input_node,
-    _extract_member_chain,
 )
-
 
 # ═══════════════════════════════════════════════════════════
 # 1. is_user_input_expr — 纯文本前缀精确匹配
 # ═══════════════════════════════════════════════════════════
 
+
 class TestIsUserInputExpr:
     """测试基于字符串的用户输入判断。"""
 
     # ── 正向用例（必须返回 True）──
-    @pytest.mark.parametrize("expr", [
-        "req.body",
-        "req.body.userId",
-        "req.body.password",
-        "req.query.id",
-        "req.params.slug",
-        "req.cookies.session",
-        "req.headers.authorization",
-        "request.body",
-        "request.query.search",
-        "request.params.id",
-        "request.cookies.token",
-    ])
+    @pytest.mark.parametrize(
+        "expr",
+        [
+            "req.body",
+            "req.body.userId",
+            "req.body.password",
+            "req.query.id",
+            "req.params.slug",
+            "req.cookies.session",
+            "req.headers.authorization",
+            "request.body",
+            "request.query.search",
+            "request.params.id",
+            "request.cookies.token",
+        ],
+    )
     def test_positive_js(self, expr: str) -> None:
         """JavaScript 真实用户输入表达式必须命中。"""
         assert is_user_input_expr(expr, language="javascript") is True
 
-    @pytest.mark.parametrize("expr", [
-        "request.form.username",
-        "request.args.page",
-        "request.json",
-        "request.data",
-        "request.cookies.session_id",
-        "request.GET.q",
-        "request.POST.token",
-    ])
+    @pytest.mark.parametrize(
+        "expr",
+        [
+            "request.form.username",
+            "request.args.page",
+            "request.json",
+            "request.data",
+            "request.cookies.session_id",
+            "request.GET.q",
+            "request.POST.token",
+        ],
+    )
     def test_positive_python(self, expr: str) -> None:
         """Python 真实用户输入表达式必须命中。"""
         assert is_user_input_expr(expr, language="python") is True
 
     # ── 反向用例（必须返回 False）──
-    @pytest.mark.parametrize("expr", [
-        # 变量名恰好包含 "user" / "body" / "query" / "param" 等关键词
-        "userProfile",
-        "getUserName",
-        "formatQuery",
-        "bodyParser",
-        "bodyContent",
-        "queryString",
-        "paramCount",
-        "arguments",
-        "requestId",           # 不是 request.xxx 模式
-        "formValidator",
-        "inputElement",
-        "require",             # Node.js require() 绝不是用户输入
-        "requiredFields",
-        # 空或无意义值
-        "",
-        "undefined",
-        "null",
-        # 常见安全工具名
-        "sanitizeInput",
-        "validateParams",
-    ])
+    @pytest.mark.parametrize(
+        "expr",
+        [
+            # 变量名恰好包含 "user" / "body" / "query" / "param" 等关键词
+            "userProfile",
+            "getUserName",
+            "formatQuery",
+            "bodyParser",
+            "bodyContent",
+            "queryString",
+            "paramCount",
+            "arguments",
+            "requestId",  # 不是 request.xxx 模式
+            "formValidator",
+            "inputElement",
+            "require",  # Node.js require() 绝不是用户输入
+            "requiredFields",
+            # 空或无意义值
+            "",
+            "undefined",
+            "null",
+            # 常见安全工具名
+            "sanitizeInput",
+            "validateParams",
+        ],
+    )
     def test_negative_should_not_match(self, expr: str) -> None:
         """这些表达式绝不能被判定为用户输入。"""
         assert is_user_input_expr(expr, language="javascript") is False
@@ -85,6 +94,7 @@ class TestIsUserInputExpr:
 # ═══════════════════════════════════════════════════════════
 # 2. is_user_input_node — 基于 AST 结构
 # ═══════════════════════════════════════════════════════════
+
 
 class TestIsUserInputNode:
     """
@@ -121,37 +131,43 @@ class TestIsUserInputNode:
         current = self._make_node("identifier", parts[0])
         for part in parts[1:]:
             prop = self._make_node("property_identifier", part)
-            current = self._make_node("member_expression", ".".join(parts[:parts.index(part) + 1]), [current, prop])
+            current = self._make_node("member_expression", ".".join(parts[: parts.index(part) + 1]), [current, prop])
         # 由于 _extract_member_chain 递归解析，实际文本并不重要，
         # 它靠 children 的 type 和 text 来分解。
         # 但节点顶层 type 必须是 member_expression
         return current
 
     # ── 正向 ──
-    @pytest.mark.parametrize("parts", [
-        ["req", "body"],
-        ["req", "body", "userId"],
-        ["req", "query", "search"],
-        ["req", "params", "id"],
-        ["req", "cookies", "session"],
-        ["request", "body"],
-        ["request", "query", "page"],
-    ])
+    @pytest.mark.parametrize(
+        "parts",
+        [
+            ["req", "body"],
+            ["req", "body", "userId"],
+            ["req", "query", "search"],
+            ["req", "params", "id"],
+            ["req", "cookies", "session"],
+            ["request", "body"],
+            ["request", "query", "page"],
+        ],
+    )
     def test_member_expression_positive(self, parts: list[str]) -> None:
         """member_expression 形式的用户输入必须被识别。"""
         node = self._make_member_expr(parts)
         assert is_user_input_node(node, language="javascript") is True
 
     # ── 反向 ──
-    @pytest.mark.parametrize("parts", [
-        ["db", "users"],
-        ["User", "findOne"],
-        ["config", "body"],          # config.body 不是用户输入
-        ["console", "query"],        # console.query 不是
-        ["document", "body"],        # DOM body 不是
-        ["response", "body"],        # response.body 不是
-        ["Math", "random"],
-    ])
+    @pytest.mark.parametrize(
+        "parts",
+        [
+            ["db", "users"],
+            ["User", "findOne"],
+            ["config", "body"],  # config.body 不是用户输入
+            ["console", "query"],  # console.query 不是
+            ["document", "body"],  # DOM body 不是
+            ["response", "body"],  # response.body 不是
+            ["Math", "random"],
+        ],
+    )
     def test_member_expression_negative(self, parts: list[str]) -> None:
         """这些 member_expression 绝不能误报为用户输入。"""
         node = self._make_member_expr(parts)
@@ -163,18 +179,21 @@ class TestIsUserInputNode:
         node = self._make_node("identifier", "req")
         assert is_user_input_node(node, language="javascript") is True
 
-    @pytest.mark.parametrize("name", [
-        "userProfile",
-        "formatQuery",
-        "bodyParser",
-        "arguments",
-        "paramCount",
-        "requestId",
-        "inputElement",
-        "require",
-        "db",
-        "config",
-    ])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "userProfile",
+            "formatQuery",
+            "bodyParser",
+            "arguments",
+            "paramCount",
+            "requestId",
+            "inputElement",
+            "require",
+            "db",
+            "config",
+        ],
+    )
     def test_identifier_negative(self, name: str) -> None:
         """普通标识符绝不能误报为用户输入。"""
         node = self._make_node("identifier", name)
@@ -184,6 +203,7 @@ class TestIsUserInputNode:
 # ═══════════════════════════════════════════════════════════
 # 3. _extract_member_chain 内部函数
 # ═══════════════════════════════════════════════════════════
+
 
 class TestExtractMemberChain:
     """测试 AST 属性链提取。"""
@@ -195,6 +215,7 @@ class TestExtractMemberChain:
                 self.type = t
                 self.text = tx.encode("utf-8") if isinstance(tx, str) else tx
                 self.children = c or []
+
         return MockNode(ntype, ntext, children)
 
     def test_simple_identifier(self) -> None:

@@ -1,8 +1,6 @@
 # test_worker_daemon.py - Worker Daemon 单元测试
 """P5-7: run_scan / current_memory_mb 等可测逻辑。"""
 
-import pytest
-
 from src.worker_daemon import current_memory_mb, run_scan
 
 
