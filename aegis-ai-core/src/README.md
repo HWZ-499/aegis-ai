@@ -2,10 +2,11 @@
 
 ## 目录结构
 
-- `server/` - API 服务器和命令行工具
-- `analysis/` - 代码安全分析（AST、规则）
-- `rag/` - RAG 检索和向量化
-- `crawler/` - CVE 数据爬虫
+- `analysis/` - 代码安全分析引擎、规则、污点与 DSL
+- `core/` - 配置、数据模型与共享核心组件
+- `lsp/` - LSP Server 入口与编辑器协议适配
+- `scanner/` - 项目扫描、CLI、报告生成、AI / baseline / 增量能力
+- `reports/` - 扫描报告模板与相关输出逻辑
 
 ## 使用说明
 

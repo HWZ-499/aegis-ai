@@ -3,7 +3,7 @@
 **文档类型**：产品级技术设计文档（Technical Design Document）  
 **版本**：v1.4  
 **状态**：正式  
-**最后更新**：2026-02-14  
+**最后更新**：2026-04-16
 
 ---
 
@@ -52,7 +52,7 @@
 | 维度 | 目标描述 |
 |------|----------|
 | **核心能力** | 对项目/单文件进行 SAST 扫描，输出漏洞列表及严重等级。 |
-| **使用形态** | ① 独立漏扫（CLI/API）；② IDE 内实时检测（插件）。 |
+| **使用形态** | ① 独立漏扫（CLI/CI）；② IDE 内实时检测（插件）。 |
 | **体验要求** | 编辑时即可看到行内诊断、等级与说明。 |
 | **智能化** | 修复建议由 AI 生成，结合代码上下文与知识库。 |
 
@@ -68,17 +68,25 @@
 | 安全检测 | AST + 正则双引擎，Source-Sink-Sanitizer 模型，污点分析（TaintAnalyzer + TaintGraph） | ✅ 已实现 |
 | 危险等级 | Critical / High / Medium / Low，在报告与 LSP Diagnostic 中体现 | ✅ 已实现 |
 | IDE 插件 | VS Code/Cursor 扩展 + LSP Server（pygls），打开/保存时扫描并发布 Diagnostic | ✅ 已实现 |
-| 多语言 | Python、JavaScript/TypeScript 有完整 AST+规则；其他语言为正则兜底 | ⚠️ 部分 |
-| AI 修复建议 | RAG 增强（知识库 + 内置建议）、AI 分析器（DeepSeek 等）可选；**IDE 内一键修复/Code Action 未打通** | ⚠️ 部分 |
+| 多语言 | JavaScript/TypeScript、Python、PHP、Java、Go 已接入 AST/规则分析；跨文件能力仍为实验性 | ✅ 已实现 / ⚠️ 部分 |
+| AI 修复建议 | RAG 增强（知识库 + 内置建议）、AI 分析器（DeepSeek/OpenAI/Ollama/custom）可选；IDE 内已具备精准修复、示例修复与注释建议 | ✅ 已实现 |
+
+### 3.1.1 当前能力分级
+
+| 状态 | 能力 |
+|------|------|
+| **已支持** | CLI / LSP / VS Code 扩展、单文件实时扫描、Problems / 树视图、baseline 抑制、AI 精准修复、示例修复、注释建议 |
+| **实验性** | 跨文件依赖图、跨文件结果合并、suppressed findings 侧栏展示、custom / Ollama provider 工作流 |
+| **规划中** | 默认启用的跨文件污点传播、更稳的多 IDE 打包与 smoke E2E、发布一致性自动审计扩展到更多元数据 |
 
 ### 3.2 与愿景的差距
 
-1. **IDE 内「AI 修改建议」未闭环**  
-   - 当前：LSP 只发布 Diagnostic（类型、等级、说明），无 Code Action。  
-   - 期望：在问题行提供「应用 AI 建议」等操作，将建议写回编辑器或弹窗展示。  
+1. **跨文件能力尚未达到默认可承诺级别**
+   - 当前：工作区依赖图已构建，单文件诊断链路稳定；跨文件结果仍保留实验性入口。
+   - 期望：补齐默认关闭 / 能力边界 / 回归基准三件事后，再提升为正式能力。
 
 2. **实时性**  
-   - 当前：didOpen / didSave 触发扫描，无输入时实时（如 debounce 的 didChange）。  
+   - 当前：didOpen / didSave / didChange 防抖扫描、增量缓存、复扫确认均已接入。
    - 可选增强：输入防抖后增量分析，平衡体验与性能。  
 
 3. **检测深度与误报**  
@@ -87,7 +95,7 @@
 ### 3.3 评估结论
 
 - **漏扫 + IDE 插件 + 危险等级** 已形成闭环，与「做漏扫 + IDE 内实时标注与等级」的目标**基本对齐**。  
-- **AI 修改建议** 在服务端（RAG + AI）已有能力，与 IDE 的**集成（Code Action / 一键修复）**是下一阶段要补齐的关键能力。  
+- **AI 修改建议** 已完成 IDE 集成，但用户信任仍取决于：安装链路统一、扫描状态可解释、baseline/注释/修复动作的边界明确。
 
 ---
 
@@ -104,7 +112,7 @@
 
 - **在范围内**：  
   - 静态分析（AST + 规则 + 污点）；  
-  - 漏扫 CLI/API、报告生成；  
+  - 漏扫 CLI/CI、报告生成；
   - LSP Server + VS Code/Cursor 扩展；  
   - RAG 知识库与 AI 增强（修复建议、验证）；  
   - 漏洞类型：SQL/NoSQL 注入、XSS、RCE、路径穿越、硬编码凭证、反序列化等。  
@@ -119,7 +127,7 @@
 | 角色 | 主要场景 |
 |------|----------|
 | 开发者 | 在 IDE 中写代码时查看实时诊断、等级与修复建议。 |
-| 安全/DevOps | 使用 CLI 或 API 做全量/增量扫描，查看 HTML/JSON/SARIF 报告。 |
+| 安全/DevOps | 使用 CLI 或 GitHub Actions 做全量/增量扫描，查看 HTML/JSON/SARIF 报告。 |
 |  CI/CD | 流水线中集成扫描，卡点或报告上传（如 SARIF）。 |
 
 ### 4.4 已知局限与演进方向
@@ -143,14 +151,14 @@
                     ┌─────────────────────────────────────────────────────────┐
                     │                    使用形态 / 入口                         │
                     ├──────────────────────────┬────────────────────────────────┤
-                    │   IDE 插件（实时检测）    │     漏扫（CLI / API）            │
-                    │  VSCode / Cursor Extension│  CLI / FastAPI / CI 脚本        │
+                    │   IDE 插件（实时检测）    │     漏扫（CLI / CI）             │
+                    │  VSCode / Cursor Extension│  CLI / GitHub Actions 脚本      │
                     └────────────┬─────────────┴──────────────┬─────────────────┘
-                                 │ LSP (stdio)                │ HTTP / 本地调用
+                                 │ LSP (stdio)                │ 本地调用
                                  ▼                            ▼
                     ┌─────────────────────────┐    ┌─────────────────────────┐
-                    │   Aegis LSP Server      │    │   Aegis API Server      │
-                    │   (pygls, Python)      │    │   (FastAPI)              │
+                    │   Aegis LSP Server      │    │   Aegis CLI Scanner     │
+                    │   (pygls, Python)      │    │   (scanner.cli)          │
                     └────────────┬────────────┘    └────────────┬────────────┘
                                  │                             │
                                  └──────────────┬──────────────┘
@@ -173,14 +181,14 @@
 | 层 | 组件 | 职责 |
 |----|------|------|
 | **入口层** | IDE 扩展、CLI、API | 接收用户/流水线请求，选择 LSP 或 HTTP 与核心通信。 |
-| **服务层** | LSP Server、FastAPI Server | 协议适配、会话管理、限流与错误处理。 |
+| **服务层** | LSP Server、CLI Scanner | 协议适配、扫描入口、报告输出与错误处理。 |
 | **核心层** | 规则引擎、污点分析、跨文件、RAG、AI | 执行扫描、污点追踪、知识检索与 AI 建议。 |
 | **数据层** | 规则配置、ChromaDB、.env | 规则与知识库持久化、API Key 等配置。 |
 
 ### 5.3 部署拓扑（概念）
 
 - **IDE 场景**：每台开发机本地运行 LSP Server（与扩展同机），无强制后端。  
-- **漏扫/CI 场景**：CLI 或 API 部署在构建节点或独立服务器；API 可集中部署供多团队使用。  
+- **漏扫/CI 场景**：CLI 在构建节点或本地开发机运行；GitHub Actions 可生成 SARIF/HTML 报告。
 - **可选**：同一套 aegis-ai-core 既被 LSP 调用（单文件/工作区），也被 API 调用（项目级扫描）。  
 
 ---
@@ -424,11 +432,11 @@ Finding 既用于**报告展示**，也用于**程序消费**（如 LSP Diagnost
   - 这样在「用户只做了小幅编辑、锚点仍在」的场景下可成功应用，且实现简单、可验证；**不承诺**变量重命名、跨文件移动等复杂场景。  
 - **小结**：TDD 约定初期采用**上下文锚点匹配**，全量 OT / 语义级 Fuzzy Patching 列为后续演进，避免首版陷入算法黑洞。
 
-### 7.4 API（FastAPI）要点
+### 7.4 CLI / 本地接口要点
 
-- 扫描接口：接收路径或源码，返回 Finding 列表及统计。  
-- 可选：上传文件/项目压缩包，异步任务 + 轮询或 WebSocket 推送结果。  
-- 统一错误格式与 HTTP 状态码，敏感信息不落日志。  
+- 当前版本没有可运行的 FastAPI HTTP Server；对外扫描入口以 CLI、LSP stdio 和 GitHub Actions 集成为准。
+- CLI 接收项目路径或增量扫描参数，返回 JSON/HTML/Markdown/SARIF 报告。
+- 若后续恢复 HTTP API，必须先补齐源码实现、认证/限流、错误格式、敏感信息处理和 CI smoke test 后再写入“已支持”能力。
 
 ---
 
@@ -443,7 +451,7 @@ Finding 既用于**报告展示**，也用于**程序消费**（如 LSP Diagnost
 | LSP | pygls, lsprotocol | 服务端实现；vscode-languageclient 连接。 |
 | AST | Python ast, Tree-sitter | Python 用 ast；JS/TS 用 Tree-sitter。 |
 | 向量/知识库 | ChromaDB, sentence-transformers | RAG 检索与本地向量化。 |
-| API | FastAPI | 漏扫与后续 Code Action 可复用。 |
+| HTTP API | 未实现 | 仅作为后续可选方向；当前不作为发布能力承诺。 |
 | 配置 | .env, 规则 YAML/JSON | 环境变量与规则开关。 |
 
 ### 8.2 约束与假设
@@ -576,10 +584,10 @@ Finding 既用于**报告展示**，也用于**程序消费**（如 LSP Diagnost
 - 在具备 Python 环境的节点执行 `python -m src.scanner.cli <path> [options]`。  
 - CI 中推荐使用 `--incremental`、`--format sarif` 等，便于与流水线集成。  
 
-### 11.3 API 服务
+### 11.3 HTTP API 服务（未实现）
 
-- 使用 FastAPI 提供扫描、健康检查等接口；生产建议配反向代理、HTTPS 与限流。  
-- 可选：容器化（Docker）与编排（K8s）用于集中式漏扫服务。  
+- 当前仓库不包含 `src.server.aegis_server` 或等价 FastAPI 服务实现。
+- Docker 与 compose 只保留 CLI/LSP 相关目标；HTTP API 在补齐实现和 smoke test 前不得作为当前能力对外宣传。
 
 ---
 

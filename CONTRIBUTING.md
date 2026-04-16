@@ -48,12 +48,12 @@ cp .env.example .env
 # DEEPSEEK_API_KEY=your_key_here
 ```
 
-### 4. 编译 VSCode 扩展（修改扩展代码时需要）
+### 4. 校验 VSCode 扩展（修改扩展代码时需要）
 
 ```bash
 cd aegis-vscode
 npm install
-npm run compile
+npm run check
 ```
 
 ### 5. 验证安装
@@ -61,7 +61,12 @@ npm run compile
 ```bash
 cd aegis-ai-core
 # 运行核心测试套件
-python -m pytest tests/ -v --tb=short
+python -m pytest tests/
+
+# 运行质量门
+ruff check src tests
+ruff format --check src tests
+python scripts/typecheck_gate.py --group ci
 
 # 扫描一个测试文件
 python -m src.scanner.cli scripts/test_cases/js_express.js --format json
@@ -174,8 +179,8 @@ python -m src.scanner.cli scripts/test_cases/ssti_true_vulnerable.js --format js
 # 验证负样本没有误报
 python -m src.scanner.cli scripts/test_cases/ssti_false_safe.js --format json
 
-# 运行完整测试套件确保没有回归
-python -m pytest tests/ -v
+# 运行默认回归确保没有核心回归
+python -m pytest tests/
 ```
 
 ---
@@ -269,17 +274,24 @@ def analyze_node(self, node: Any, context: AnalysisContext) -> list[Finding]:
 ```bash
 cd aegis-ai-core
 
-# 运行全部测试
-python -m pytest tests/ -v
+# 运行默认快速回归（默认跳过 acceptance / benchmark / integration）
+python -m pytest tests/
 
 # 只运行特定模块测试
 python -m pytest tests/test_taint_analysis.py -v
 
+# 运行重验收 / benchmark / integration
+python -m pytest -m acceptance tests/test_acceptance_benchmark.py -v
+python -m pytest -m integration tests/ -v
+python -m pytest -m benchmark tests/test_performance_benchmark.py -v --benchmark-only
+
 # 运行测试并输出覆盖率
 python -m pytest tests/ --cov=src --cov-report=term-missing
 
-# 运行守卫子句专项测试
-python -m pytest scripts/test_cases/guard_clause_test.py -v
+# 运行 Python 质量门
+ruff check src tests
+ruff format --check src tests
+python scripts/typecheck_gate.py --group ci
 ```
 
 ---
@@ -289,7 +301,7 @@ python -m pytest scripts/test_cases/guard_clause_test.py -v
 1. Fork 本仓库
 2. 创建功能分支：`git checkout -b feat/ssti-rule`
 3. 实现代码 + 测试用例
-4. 确认测试通过：`python -m pytest tests/ -v`
+4. 确认默认回归和质量门通过：`python -m pytest tests/`、`ruff check src tests`、`python scripts/typecheck_gate.py --group ci`
 5. 提交代码（遵循提交规范）
 6. 提交 Pull Request，填写 PR 模板中的检查清单
 
@@ -306,7 +318,7 @@ python -m pytest scripts/test_cases/guard_clause_test.py -v
 - 有现成参考（如类似规则的实现）
 
 **浏览 Good First Issues**：  
-[Issues with good-first-issue label](https://github.com/aegis-ai/aegis-ai/issues?q=label%3A%22good+first+issue%22)
+[Issues with good-first-issue label](https://github.com/HWZ-499/aegis-ai/issues?q=label%3A%22good+first+issue%22)
 
 若你发现适合新贡献者的任务，可使用 [建议 Good First Issue](.github/ISSUE_TEMPLATE/good_first_issue.md) 模板提交，维护者审核后会添加标签。
 

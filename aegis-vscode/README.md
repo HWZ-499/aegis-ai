@@ -6,9 +6,17 @@ Real-time SAST scanning for VS Code / Cursor using Tree-sitter AST + taint analy
 
 Supports: **JavaScript / TypeScript / Python / PHP / Java / Go**
 
-> **v0.3.2** — Now with full English UI, Python validation, and TreeView empty state. [See what changed →](CHANGELOG.md)
+> **v0.5.1** — Latest packaged build. [See what changed →](CHANGELOG.md)
 
 ---
+
+## 能力矩阵
+
+| 状态 | 当前能力 |
+|------|----------|
+| **已支持** | 实时单文件诊断、Problems / 树视图、baseline 视图、AI 精准修复、示例修复、注释建议 |
+| **实验性** | 跨文件依赖图、suppressed findings 侧栏展示、custom / Ollama provider 工作流 |
+| **规划中** | 默认启用的跨文件污点传播、更完整的多 IDE 打包与 smoke E2E |
 
 ## Installation
 
@@ -21,8 +29,10 @@ The extension needs the Python core to run:
 ```bash
 git clone https://github.com/HWZ-499/aegis-ai.git
 cd aegis-ai/aegis-ai-core
-pip install -r requirements.txt
+pip install -e .
 ```
+
+Requires Python `>=3.10`, matching `aegis-ai-core/pyproject.toml`.
 
 **Done.** Extension auto-detects the Python engine. If not, set path in VS Code settings:
 ```json
@@ -30,12 +40,47 @@ pip install -r requirements.txt
 ```
 
 ### Step 3: Enable AI Fixes (Optional)
-For one-click auto-fix, set an API key:
-- **DeepSeek** (cheap): `export DEEPSEEK_API_KEY=your_key`
-- **OpenAI**: `export OPENAI_API_KEY=your_key`
-- **Ollama** (free, local): `export AI_PROVIDER=ollama` (after `ollama pull llama3`)
+AI fixes are powered by the Python engine process. Configure env vars, then reload VS Code/Cursor.
+
+PowerShell examples:
+
+```powershell
+$env:AI_PROVIDER = "deepseek"
+$env:DEEPSEEK_API_KEY = "your_key"
+
+# or OpenAI
+$env:AI_PROVIDER = "openai"
+$env:OPENAI_API_KEY = "your_key"
+
+# or local Ollama
+$env:AI_PROVIDER = "ollama"
+$env:OLLAMA_BASE_URL = "http://localhost:11434/v1"
+$env:OLLAMA_MODEL = "llama3"
+
+# or custom endpoint
+$env:AI_PROVIDER = "custom"
+$env:AI_BASE_URL = "https://your-gateway.example.com/v1"
+$env:AI_API_KEY = "your_key"
+```
+
+If you prefer settings UI, set `Aegis › Ai: Provider`; API keys still come from env vars.
 
 **That's it.** Open any `.js`, `.ts`, `.py`, `.php`, `.java`, or `.go` file → save → diagnostics appear.
+
+### Where The Fix Features Are
+
+Place the cursor on an Aegis diagnostic line, then use `Ctrl+.` or the lightbulb.
+
+- `Aegis: ✓ 应用 AI 精准修复`: replaces the vulnerable code when AI confidence is high.
+- `Aegis: 应用示例修复代码`: replaces the vulnerable code with a framework-aware safe example.
+- `Aegis: 插入 AI 修复建议`: inserts comments only. It does **not** change runtime code.
+- `Aegis: 插入修复建议注释`: inserts a non-AI guidance block only. It does **not** fix code.
+- `Aegis: Add to baseline`: writes the current finding to `.aegis-baseline.json` and hides it for this workspace. 它**不是修复代码**。
+- `Aegis: Ignore this finding`: inserts `aegis-ignore` suppression comments.
+
+To revert inserted comments, use `Ctrl+Z` immediately after the action or run `Aegis: Remove Inserted Remediation Comments`.
+
+Suppressed findings can be inspected in the **Suppressed Findings** view after enabling `aegisAI.showSuppressedFindings`.
 
 ---
 
@@ -73,6 +118,9 @@ For one-click auto-fix, set an API key:
 | `aegisAI.pythonPath` | `python` | Path to the Python interpreter |
 | `aegisAI.serverCwd` | `` | Force LSP server working directory (leave blank for auto-detect) |
 | `aegisAI.serverModule` | `src.lsp` | Python module path for the LSP server |
+| `aegisAI.scan.exclude` | `["**/node_modules/**", ...]` | Glob patterns excluded from scanning |
+| `aegisAI.experimental.crossFileAnalysis` | `false` | Enable experimental cross-file dependency graph analysis |
+| `aegisAI.showSuppressedFindings` | `false` | Show `.aegis-baseline.json` entries in the sidebar |
 
 ---
 

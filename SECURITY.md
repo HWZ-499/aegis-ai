@@ -4,10 +4,10 @@
 
 We release security updates for the following versions:
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 0.2.x   | :white_check_mark: |
-| < 0.2   | :x:                |
+| Component | Supported versions |
+| --------- | ------------------ |
+| aegis-ai-core | 1.4.x |
+| aegis-vscode | 0.5.x |
 
 - **aegis-ai-core**: Python package (LSP server, scanner, analysis engine)
 - **aegis-vscode**: VS Code / Cursor extension (LSP client)
@@ -18,7 +18,7 @@ Both components are in scope for vulnerability reports.
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-- **Preferred**: Use [GitHub Private Vulnerability Reporting](https://github.com/aegis-ai/aegis-ai/security/advisories/new) for this repository.
+- **Preferred**: Use [GitHub Private Vulnerability Reporting](https://github.com/HWZ-499/aegis-ai/security/advisories/new) for this repository.
 - **Alternative**: Email the maintainers with a clear description, steps to reproduce, and impact. Include "Aegis-AI Security" in the subject.
 
 We will respond as follows:

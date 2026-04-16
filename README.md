@@ -1,13 +1,13 @@
 # Aegis AI — Real-time SAST Scanner + AI Auto-Fix
 
-[![Security Scan](https://github.com/aegis-ai/aegis-ai/actions/workflows/security-scan.yml/badge.svg)](https://github.com/aegis-ai/aegis-ai/actions/workflows/security-scan.yml)
+[![Security Scan](https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml/badge.svg)](https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml)
 [![License: MIT](https://opensource.org/licenses/MIT)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-v0.3.2-brightgreen.svg)](https://marketplace.visualstudio.com/items?itemName=wen-zai.aegis-ai-security)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-v0.5.1-brightgreen.svg)](https://marketplace.visualstudio.com/items?itemName=wen-zai.aegis-ai-security)
 
-**Find and fix SQL injection, XSS, RCE, and 7+ more vulnerability types as you code.** Real-time SAST scanning for VS Code / Cursor using Tree-sitter AST + taint analysis + AI-driven patches.
+**Find and review SQL injection, XSS, RCE, and 7+ more vulnerability types as you code.** Aegis is a local-first SAST stack for VS Code / Cursor with Tree-sitter AST analysis, taint tracking, AI-assisted fixes, and baseline/suppression workflows.
 
-✓ **1-second feedback** | ✓ **100% F1 on NodeGoat** | ✓ **One-click AI fix** | ✓ **6 languages**
+✓ **单文件实时诊断** | ✓ **AI 辅助修复** | ✓ **Baseline / Suppression** | ✓ **6 种主语言**
 
 ---
 
@@ -17,39 +17,45 @@
 |---------|----------|
 | **Tree-sitter AST + TaintGraph** | No regex guessing — real data-flow analysis |
 | **1-second diagnostics** | Feedback within 1 sec of save, no CI needed |
-| **DeepSeek/OpenAI AI code gen** | Framework-aware patches (mysql2, Sequelize, SQLAlchemy, etc.) |
+| **DeepSeek/OpenAI/Ollama/custom AI code gen** | Framework-aware patches (mysql2, Sequelize, SQLAlchemy, etc.) |
 | **10+ vulnerability types** | SQL/NoSQL injection, XSS, RCE, path traversal, deserialization, SSRF, open redirect, hardcoded credentials |
-| **6 languages in 1 tool** | JS/TS, Python, PHP, Java, Go — same-depth analysis |
+| **6 languages in 1 tool** | JS/TS, Python, PHP, Java, Go — see capability matrix below |
 | **Real-world validated** | 100% F1 on OWASP NodeGoat, 92% F1 on Django 3.2 core |
 | **GitHub Actions ready** | SARIF report, automated PR comments, CI/CD integration |
 
 ---
 
+## 能力矩阵
+
+| 状态 | 当前能力 |
+|------|----------|
+| **已支持** | CLI / VS Code / Cursor 实时扫描；单文件 AST + 规则分析；baseline 抑制；`aegis-ignore`；AI 精准修复 / 示例修复 / 注释建议 |
+| **实验性** | 跨文件依赖图、跨文件结果合并、Ollama / custom provider 私有化接入 |
+| **规划中** | 默认启用的跨文件污点传播、更稳的多 IDE 支持、发布后一致性自动审计扩展到更多元数据 |
+
 ## Quick Start
 
-### Install VS Code Extension
-
-1. Open VS Code → Extensions → Search "Aegis AI Security Scanner"
-2. Click **Install** (ID: `wen-zai.aegis-ai-security`)
-3. Clone the repo so extension finds Python engine:
+### 1. 安装 Python 核心
 
 ```bash
 git clone https://github.com/HWZ-499/aegis-ai.git
 cd aegis-ai/aegis-ai-core
-pip install -r requirements.txt
+pip install -e .
 ```
 
-4. Open any `.js`, `.ts`, `.py`, `.php`, `.java`, or `.go` file → **save** → diagnostics appear
-5. Click **lightbulb** → **Apply AI Fix**
+开发环境使用：
 
-> **Optional**: Set API key for AI fixes:
-> - **DeepSeek** (low cost): `export DEEPSEEK_API_KEY=your_key`
-> - **OpenAI**: `export OPENAI_API_KEY=your_key`
-> - **Ollama** (free, local): `ollama pull llama3 && export AI_PROVIDER=ollama`
+```bash
+pip install -e .[dev]
+```
 
-### Configure Manually (if LSP doesn't auto-detect)
+> Python 版本要求与 `aegis-ai-core/pyproject.toml` 一致：`>=3.10`
 
-Add to `.vscode/settings.json`:
+### 2. 安装 VS Code / Cursor 扩展
+
+1. 打开 VS Code → Extensions → 搜索 `Aegis AI Security Scanner`
+2. 点击 **Install**（扩展 ID：`wen-zai.aegis-ai-security`）
+3. 若自动探测失败，在 `.vscode/settings.json` 中设置：
 
 ```json
 {
@@ -57,6 +63,47 @@ Add to `.vscode/settings.json`:
   "aegisAI.serverCwd": "/absolute/path/to/aegis-ai-core"
 }
 ```
+
+### 3. 配置 AI Provider（可选）
+
+PowerShell 最小配置示例：
+
+```powershell
+$env:AI_PROVIDER = "deepseek"
+$env:DEEPSEEK_API_KEY = "your_key"
+
+# or OpenAI
+$env:AI_PROVIDER = "openai"
+$env:OPENAI_API_KEY = "your_key"
+
+# or local Ollama
+$env:AI_PROVIDER = "ollama"
+$env:OLLAMA_BASE_URL = "http://localhost:11434/v1"
+$env:OLLAMA_MODEL = "llama3"
+
+# or custom endpoint
+$env:AI_PROVIDER = "custom"
+$env:AI_BASE_URL = "https://your-gateway.example.com/v1"
+$env:AI_API_KEY = "your_key"
+```
+
+### 4. 修复动作说明
+
+把光标放在 Aegis 诊断行，按 `Ctrl+.` 或点灯泡：
+
+| 动作 | 真实行为 |
+|------|----------|
+| `Aegis: 应用 AI 精准修复` | 直接替换漏洞代码，并触发复扫 |
+| `Aegis: 应用示例修复代码` | 用内置安全示例替换漏洞代码，并触发复扫 |
+| `Aegis: 插入修复建议注释` | 只插入说明注释，不会修复代码 |
+| `Aegis: 插入 AI 修复建议` | 只插入 AI 注释，不会修复代码 |
+| `Aegis: Add to baseline` | 把当前 finding 写入 `.aegis-baseline.json`，隐藏问题；**不是修复代码** |
+| `Aegis: Ignore this finding` | 插入 `aegis-ignore` 注释；这是 suppression，不是 fix |
+
+撤回 Aegis 生成的注释：
+
+- 立即用 `Ctrl+Z`
+- 或使用命令 `Aegis: Remove Inserted Remediation Comments`
 
 ---
 
@@ -107,32 +154,34 @@ graph TD
 
     subgraph engine [核心引擎层 - Python]
         D["LSP Server\nserver.py / pygls"]
-        E["Rule Engine\nrule_engine.py"]
-        F["TaintAnalyzer\n污点分析 + Dominator Tree"]
-        G["AST Rules\nSQL/XSS/RCE/NoSQL/PHP 等"]
-        H["AI Analyzer\nai_analyzer.py"]
+        E["CLI Scanner\nscanner/cli.py"]
+        F["Rule Engine\nrule_engine.py"]
+        G["TaintAnalyzer\n污点分析 + Dominator Tree"]
+        H["AST Rules\nSQL/XSS/RCE/NoSQL/PHP 等"]
+        I["AI Analyzer\nai_analyzer.py"]
     end
 
     subgraph ai [AI 修复层]
-        I["rich context 提取\n函数签名 + import + 框架 + 变量"]
-        J["框架感知 Prompt\nmysql2 / mongoose / sqlalchemy 等"]
-        K["DeepSeek API"]
+        J["rich context 提取\n函数签名 + import + 框架 + 变量"]
+        K["框架感知 Prompt\nmysql2 / mongoose / sqlalchemy 等"]
+        L["DeepSeek / OpenAI / Ollama / custom"]
     end
 
     A -- "LSP stdio" --> D
-    D --> E
     E --> F
-    E --> G
+    D --> F
     F --> G
-    G -- "Diagnostics" --> D
+    F --> H
+    G --> H
+    H -- "Diagnostics" --> D
     D -- "波浪线诊断" --> A
     D --> B
     C -- "codeAction 请求" --> D
-    D --> H
-    H --> I
+    D --> I
     I --> J
     J --> K
-    K -- "fixed_code + confidence" --> D
+    K --> L
+    L -- "fixed_code + confidence" --> D
 ```
 
 ## 扫描工作流
@@ -254,24 +303,19 @@ aegis-ai/
 | AI 修复 | DeepSeek API（兼容 OpenAI SDK）|
 | RAG 知识库 | ChromaDB + sentence-transformers（实验性，可选，已从核心依赖移除）|
 | 配置管理 | pydantic-settings + .env |
-| CI/CD | GitHub Actions, GitLab CI, SARIF |
-| 代码质量 | ruff（lint + format）, mypy, pytest |
+| CI/CD | GitHub Actions, SARIF |
+| 代码质量 | ruff（lint + format）, 分层 mypy 门禁（release gate + legacy report）, pytest |
 
 ---
 
 ## 代码质量
 
-v1.2.0 进行了一轮全面的代码质量优化：
+当前质量门按“默认快速回归 + 显式重测试”分层：
 
-- **异常处理收紧**：120+ 处 `except Exception` 宽泛捕获收紧为具体异常类型（`OSError`、`ImportError`、`ValueError` 等），仅保留 7 处有意的顶层防御性捕获
-- **Bug 修复**：修复 `false_positive_manager` 的 `created_at` 时间戳 bug（此前存储的是工作目录路径）
-- **安全加固**：CORS 默认值从 `*` 收紧为 localhost、VSCode Webview 注入 CSP 防止 XSS
-- **模块卫生**：`aegis_server.py` ChromaDB 延迟初始化（避免 import 副作用）、`rag_system.py` 加入 `__main__` 保护
-- **导入迁移**：废弃模块 `ast_analyzer` / `security_rules` 的导入统一迁移至 `rule_engine`
-- **测试规范化**：10 个测试文件从脚本式 / 混合式风格统一为标准 pytest
-- **依赖声明**：`openai` 可选依赖在 `requirements.txt` 中明确标注
-
-详细优化记录见 [docs/technical/OPTIMIZATION_PLAN.md](docs/technical/OPTIMIZATION_PLAN.md)。
+- **默认回归**：`python -m pytest tests/` 跳过 `acceptance` / `benchmark` / `integration` 标记的重测试。
+- **Lint / Format**：`ruff check src tests` 与 `ruff format --check src tests` 覆盖正式源码和正式测试；故意脆弱样本、debug 脚本和靶场代码显式排除。
+- **类型检查**：`python scripts/typecheck_gate.py --group ci` 覆盖 LSP、扫描器、baseline、AI、CLI、报告、增量分析等发布主路径；legacy 模块保留报告型检查。
+- **扩展校验**：开发态使用 `npm run check` 做 TypeScript no-emit 校验；`out/` 和 `.vsix` 只作为构建/打包产物。
 
 ---
 
@@ -330,8 +374,9 @@ v1.2.0 进行了一轮全面的代码质量优化：
 
 ### 规划中
 
-- VS Code Marketplace 上架
-- DVWA 精度优化
+- 安装链路继续收口，减少 clone + pip install 的分发摩擦
+- DVWA / Flask 等真实靶场精度优化
+- 跨文件污点传播从实验性能力逐步升级为默认可信能力
 
 ---
 
@@ -340,10 +385,10 @@ v1.2.0 进行了一轮全面的代码质量优化：
 欢迎提交 Issue 和 Pull Request。参与本项目即表示同意遵守我们的 [行为准则（Code of Conduct）](CODE_OF_CONDUCT.md)。安全相关问题请参见 [SECURITY.md](SECURITY.md)。
 
 在提交 PR 之前，请确保：
-1. 运行测试套件：`cd aegis-ai-core && python -m pytest tests/ -v`
-2. 通过 lint 检查：`cd aegis-ai-core && ruff check src/ tests/`
+1. 运行默认回归：`cd aegis-ai-core && python -m pytest tests/`
+2. 通过 Python 质量门：`cd aegis-ai-core && ruff check src tests && ruff format --check src tests && python scripts/typecheck_gate.py --group ci`
 3. 新规则需提供正样本（应报告）和负样本（不应报告）测试用例
-4. TypeScript 扩展修改后需重新编译：`cd aegis-vscode && npm run compile`
+4. TypeScript 扩展修改后运行：`cd aegis-vscode && npm run check`
 
 ---
 
@@ -353,4 +398,4 @@ MIT License
 
 ---
 
-*最后更新: 2026-03-13 — v1.3.0 PHP 升级为完整 AST 分析，NodeGoat F1 达到 1.00，430 测试全通过*
+*最后更新: 2026-04-16 — v1.4.0 工程可信度收口，默认测试分层、ruff/mypy 门禁、文档/发布口径对齐*

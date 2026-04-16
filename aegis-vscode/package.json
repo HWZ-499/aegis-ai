@@ -226,6 +226,7 @@
   "scripts": {
     "vscode:prepublish": "npm run bundle",
     "bundle": "node esbuild.js --production",
+    "check": "tsc --noEmit -p ./",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "watch:esbuild": "node esbuild.js --watch",
