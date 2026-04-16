@@ -43,6 +43,16 @@ interface FindingNode {
 
 type TreeNode = GroupNode | FileNode | FindingNode;
 
+export function summarizeFindingMessage(message: string): string {
+  for (const rawLine of message.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line) {
+      return line;
+    }
+  }
+  return message.trim();
+}
+
 function isGroupNode(n: TreeNode): n is GroupNode {
   return n.kind === "group";
 }
@@ -80,7 +90,10 @@ export class FindingsTreeProvider implements TreeDataProvider<TreeNode> {
       return item;
     }
     const finding = element as FindingNode;
-    const item = new TreeItem(`L${finding.line}: ${finding.message}`, TreeItemCollapsibleState.None);
+    const item = new TreeItem(
+      `L${finding.line}: ${summarizeFindingMessage(finding.message)}`,
+      TreeItemCollapsibleState.None,
+    );
     item.resourceUri = finding.uri;
     item.command = {
       command: "vscode.open",

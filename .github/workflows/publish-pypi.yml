@@ -19,6 +19,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Release consistency check
+        run: python aegis-ai-core/scripts/check_release_consistency.py
+
       - name: Install build tools
         run: pip install build twine
 

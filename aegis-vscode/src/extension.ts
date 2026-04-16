@@ -10,7 +10,6 @@
 
 import * as path from "path";
 import * as fs from "fs";
-import { execFileSync } from "child_process";
 import {
   workspace,
   ExtensionContext,
@@ -25,8 +24,18 @@ import {
   ProgressLocation,
   WorkspaceEdit,
   Range,
+  ConfigurationTarget,
 } from "vscode";
 import { FindingsTreeProvider } from "./findingsTreeProvider";
+import { getAiConfigurationError } from "./aiPreflight";
+import { probePythonVersion } from "./pythonProbe";
+import { GenerateFixResponse, getGenerateFixFailure, isGenerateFixSuccess } from "./aiFixResult";
+import {
+  BaselineEntryNode,
+  BaselineTreeProvider,
+  removeBaselineEntryFromDisk,
+} from "./baselineTreeProvider";
+import { findAegisCommentBlock } from "./commentCommands";
 import { showReport } from "./reportWebview";
 import { FixPreviewProvider } from "./fixPreviewProvider";
 import { showTaintPathPanel, disposeTaintPathPanel, TaintPathData } from "./taintPathWebview";
@@ -177,6 +186,22 @@ export function activate(context: ExtensionContext): void {
   });
   context.subscriptions.push(treeView);
 
+  const workspaceRoot = workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const baselineProvider = new BaselineTreeProvider(workspaceRoot);
+  const baselineTreeView = window.createTreeView("aegisBaseline", {
+    treeDataProvider: baselineProvider,
+    showCollapseAll: true,
+  });
+  context.subscriptions.push(baselineTreeView);
+
+  const updateBaselineViewMessage = (): void => {
+    const showSuppressed = workspace.getConfiguration("aegisAI").get<boolean>("showSuppressedFindings", false);
+    baselineTreeView.message = showSuppressed
+      ? "Suppressed findings from .aegis-baseline.json"
+      : "Suppressed findings are hidden. Run \"Aegis: Toggle Suppressed Findings\" to inspect them.";
+  };
+  updateBaselineViewMessage();
+
   // ── O2: Fix Preview Provider (aegis-fix: URI scheme for diff preview) ──
   const fixPreviewProvider = new FixPreviewProvider();
   context.subscriptions.push(
@@ -190,6 +215,75 @@ export function activate(context: ExtensionContext): void {
     }),
     commands.registerCommand("aegisAI.showReport", () => {
       showReport();
+    }),
+    commands.registerCommand("aegisAI.refreshBaseline", () => {
+      baselineProvider.refresh();
+    }),
+    commands.registerCommand("aegisAI.toggleSuppressedFindings", async () => {
+      const current = workspace.getConfiguration("aegisAI").get<boolean>("showSuppressedFindings", false);
+      await workspace.getConfiguration("aegisAI").update(
+        "showSuppressedFindings",
+        !current,
+        ConfigurationTarget.Workspace
+      );
+      updateBaselineViewMessage();
+      baselineProvider.refresh();
+    }),
+    commands.registerCommand("aegisAI.removeBaselineEntry", async (node?: BaselineEntryNode) => {
+      const activeRoot = workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!node?.entry || !activeRoot) {
+        window.showWarningMessage("Aegis: No baseline entry selected.");
+        return;
+      }
+
+      const removed = removeBaselineEntryFromDisk(activeRoot, node.entry.fingerprint);
+      if (!removed) {
+        window.showWarningMessage("Aegis: Could not remove the selected baseline entry.");
+        return;
+      }
+
+      baselineProvider.refresh();
+      outputChannel.appendLine(
+        `[Aegis] Removed baseline entry ${node.entry.rule_id} ${node.entry.file_path}:${node.entry.line}`
+      );
+      window.showInformationMessage(
+        `Aegis: Removed baseline entry for ${node.entry.rule_id} at ${node.entry.file_path}:${node.entry.line}`
+      );
+      await commands.executeCommand(
+        "aegisAI.scanCurrentFile",
+        Uri.file(path.join(activeRoot, ...node.entry.file_path.split("/")))
+      );
+    }),
+    commands.registerCommand("aegisAI.removeRemediationComments", async () => {
+      const editor = window.activeTextEditor;
+      if (!editor) {
+        window.showInformationMessage("Aegis: No active editor.");
+        return;
+      }
+
+      const source = editor.document.getText();
+      const block = findAegisCommentBlock(source, editor.selection.active.line);
+      if (!block) {
+        window.showInformationMessage("Aegis: No inserted remediation comment block at the cursor.");
+        return;
+      }
+
+      const lineCount = editor.document.lineCount;
+      const deleteRange = block.endLineExclusive < lineCount
+        ? new Range(block.startLine, 0, block.endLineExclusive, 0)
+        : new Range(
+            block.startLine,
+            0,
+            Math.max(0, lineCount - 1),
+            editor.document.lineAt(Math.max(0, lineCount - 1)).text.length
+          );
+
+      const edit = new WorkspaceEdit();
+      edit.delete(editor.document.uri, deleteRange);
+      await workspace.applyEdit(edit);
+      outputChannel.appendLine(
+        `[Aegis] Removed remediation comments at L${block.startLine + 1}-${block.endLineExclusive}`
+      );
     })
   );
   context.subscriptions.push(
@@ -232,12 +326,26 @@ export function activate(context: ExtensionContext): void {
     })
   );
 
+  const baselineWatcher = workspace.createFileSystemWatcher("**/.aegis-baseline.json");
+  baselineWatcher.onDidCreate(() => baselineProvider.refresh());
+  baselineWatcher.onDidChange(() => baselineProvider.refresh());
+  baselineWatcher.onDidDelete(() => baselineProvider.refresh());
+  context.subscriptions.push(baselineWatcher);
+
   // ── O2: Preview AI Fix — Diff Editor command ──────────────────────────
   context.subscriptions.push(
     commands.registerCommand("aegisAI.previewFix", async () => {
       const editor = window.activeTextEditor;
       if (!editor || !client) {
         window.showWarningMessage("Aegis: No active editor or LSP not connected.");
+        return;
+      }
+
+      const aiProvider = config.get<string>("ai.provider", "deepseek");
+      const aiEnabled = config.get<boolean>("ai.enabled", true);
+      const aiConfigError = getAiConfigurationError(aiProvider, process.env, aiEnabled);
+      if (aiConfigError) {
+        window.showWarningMessage(`Aegis: ${aiConfigError}`);
         return;
       }
 
@@ -264,16 +372,7 @@ export function activate(context: ExtensionContext): void {
         { location: ProgressLocation.Notification, title: "Aegis: Generating AI fix…" },
         async () => {
           try {
-            return await client!.sendRequest<{
-              uri: string;
-              rule_id: string;
-              fixed_code: string;
-              confidence: number;
-              fix_suggestion: string;
-              start_line: number;
-              end_line: number;
-              requires_review: boolean;
-            } | null>("aegis/generateFix", {
+            return await client!.sendRequest<GenerateFixResponse>("aegis/generateFix", {
               uri: editor.document.uri.toString(),
               rule_id: ruleId,
               start_line: aegisDiag.range.start.line + 1,
@@ -287,10 +386,19 @@ export function activate(context: ExtensionContext): void {
         }
       );
 
-      if (!result || !result.fixed_code) {
-        window.showInformationMessage(
-          "Aegis: AI could not generate a fix for this finding. (Check AI provider config)"
-        );
+      const fixFailure = getGenerateFixFailure(result);
+      if (fixFailure) {
+        if (fixFailure.level === "error") {
+          window.showErrorMessage(fixFailure.message);
+        } else if (fixFailure.level === "warning") {
+          window.showWarningMessage(fixFailure.message);
+        } else {
+          window.showInformationMessage(fixFailure.message);
+        }
+        return;
+      }
+      if (!isGenerateFixSuccess(result)) {
+        window.showInformationMessage("Aegis: AI reviewed this finding but did not return a safe replacement.");
         return;
       }
 
@@ -472,37 +580,19 @@ export function activate(context: ExtensionContext): void {
   // Dispose taint path panel on deactivation
   context.subscriptions.push({ dispose: () => disposeTaintPathPanel() });
 
-  // ── Validate Python interpreter ────────────────────────────────────────
-  try {
-    const pyVersion = execFileSync(pythonPath, ["--version"], {
-      encoding: "utf-8",
-      timeout: 5000,
-    }).trim();
-    outputChannel.appendLine(`[Aegis] ${pyVersion} found`);
-  } catch {
-    updateStatusBar("disconnected");
-    outputChannel.appendLine(
-      `[Aegis] Python not found at "${pythonPath}". Please install Python 3.9+ and set aegisAI.pythonPath in settings.`
-    );
-    outputChannel.show();
-    window
-      .showErrorMessage(
-        `Aegis AI: Python not found at "${pythonPath}". Install Python 3.9+ or configure the path.`,
-        "Configure Python Path",
-        "View Logs"
-      )
-      .then((action) => {
-        if (action === "Configure Python Path") {
-          commands.executeCommand(
-            "workbench.action.openSettings",
-            "aegisAI.pythonPath"
-          );
-        } else if (action === "View Logs") {
-          outputChannel.show();
-        }
-      });
-    return;
-  }
+  // ── Validate Python interpreter asynchronously (do not block activation) ─────────
+  void probePythonVersion(pythonPath)
+    .then((pyVersion) => {
+      if (pyVersion) {
+        outputChannel.appendLine(`[Aegis] ${pyVersion} found`);
+      }
+    })
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      outputChannel.appendLine(
+        `[Aegis] Python probe failed at "${pythonPath}". Install Python 3.10+ or configure aegisAI.pythonPath. (${message})`
+      );
+    });
 
   // aegis-ai-core directory: LSP Server needs to run in aegis-ai-core
   let cwd: string | undefined;
@@ -576,6 +666,10 @@ export function activate(context: ExtensionContext): void {
     args: ["-m", serverModule],
     options: {
       cwd: cwd,
+      env: {
+        ...process.env,
+        AI_PROVIDER: config.get<string>("ai.provider", "deepseek"),
+      },
     },
   };
 
@@ -598,12 +692,15 @@ export function activate(context: ExtensionContext): void {
     revealOutputChannelOn: RevealOutputChannelOn.Error,
     initializationOptions: {
       severity_minimum: config.get<string>("severity.minimum", "Low"),
-      exclude_patterns: config.get<string[]>("excludePatterns", []),
+      exclude_patterns:
+        config.get<string[]>("scan.exclude")
+        ?? config.get<string[]>("excludePatterns", []),
       disabled_rules: config.get<string[]>("disabledRules", []),
       ai_enabled: config.get<boolean>("ai.enabled", true),
       ai_provider: config.get<string>("ai.provider", "deepseek"),
       scan_on_save: config.get<boolean>("scanOnSave", true),
       scan_on_change: config.get<boolean>("scanOnChange", true),
+      experimental_cross_file: config.get<boolean>("experimental.crossFileAnalysis", false),
     },
     synchronize: {
       fileEvents: workspace.createFileSystemWatcher(
@@ -700,6 +797,15 @@ export function activate(context: ExtensionContext): void {
         }
       );
       context.subscriptions.push(diagnosticsListener);
+
+      context.subscriptions.push(
+        workspace.onDidChangeConfiguration((event) => {
+          if (event.affectsConfiguration("aegisAI.showSuppressedFindings")) {
+            updateBaselineViewMessage();
+            baselineProvider.refresh();
+          }
+        })
+      );
     },
     (error: unknown) => {
       const msg = error instanceof Error ? error.message : String(error);

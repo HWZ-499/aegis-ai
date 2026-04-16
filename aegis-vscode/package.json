@@ -1,7 +1,7 @@
 {
   "name": "aegis-ai-security",
   "displayName": "Aegis AI Security Scanner",
-  "description": "Find and fix SQL injection, XSS, RCE, and 7+ vulnerability types in real-time. One-click AI patches. 100% F1 on OWASP NodeGoat. JS/TS/Python/PHP/Java/Go.",
+  "description": "Real-time SAST for JS/TS/Python/PHP/Java/Go with AST analysis, taint tracking, baseline suppression, and AI-assisted fixes.",
   "version": "0.5.1",
   "publisher": "wen-zai",
   "license": "MIT",
@@ -64,7 +64,11 @@
     "onCommand:aegisAI.scanCurrentFile",
     "onCommand:aegisAI.scanWorkspace",
     "onCommand:aegisAI.showOutput",
-    "onCommand:aegisAI.showReport"
+    "onCommand:aegisAI.showReport",
+    "onCommand:aegisAI.removeRemediationComments",
+    "onCommand:aegisAI.refreshBaseline",
+    "onCommand:aegisAI.removeBaselineEntry",
+    "onCommand:aegisAI.toggleSuppressedFindings"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -98,6 +102,26 @@
         "command": "aegisAI.showTaintPath",
         "title": "Aegis: Show Taint Path",
         "category": "Aegis AI"
+      },
+      {
+        "command": "aegisAI.removeRemediationComments",
+        "title": "Aegis: Remove Inserted Remediation Comments",
+        "category": "Aegis AI"
+      },
+      {
+        "command": "aegisAI.refreshBaseline",
+        "title": "Aegis: Refresh Baseline View",
+        "category": "Aegis AI"
+      },
+      {
+        "command": "aegisAI.removeBaselineEntry",
+        "title": "Aegis: Remove from Baseline",
+        "category": "Aegis AI"
+      },
+      {
+        "command": "aegisAI.toggleSuppressedFindings",
+        "title": "Aegis: Toggle Suppressed Findings",
+        "category": "Aegis AI"
       }
     ],
     "keybindings": [
@@ -126,15 +150,24 @@
         {
           "id": "aegisFindings",
           "name": "Findings"
+        },
+        {
+          "id": "aegisBaseline",
+          "name": "Suppressed Findings"
         }
       ]
     },
     "menus": {
-      "editor/context": [
+        "editor/context": [
         {
           "command": "aegisAI.scanCurrentFile",
           "when": "editorTextFocus",
           "group": "aegis@1"
+        },
+        {
+          "command": "aegisAI.previewFix",
+          "when": "editorTextFocus",
+          "group": "aegis@2"
         }
       ],
       "explorer/context": [
@@ -149,6 +182,23 @@
           "command": "aegisAI.showTaintPath",
           "when": "viewItem == aegisFindingWithTaintPath",
           "group": "inline"
+        },
+        {
+          "command": "aegisAI.removeBaselineEntry",
+          "when": "view == aegisBaseline && viewItem == aegisBaselineEntry",
+          "group": "inline"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "aegisAI.toggleSuppressedFindings",
+          "when": "view == aegisBaseline",
+          "group": "navigation"
+        },
+        {
+          "command": "aegisAI.refreshBaseline",
+          "when": "view == aegisBaseline",
+          "group": "navigation"
         }
       ]
     },
@@ -191,6 +241,12 @@
           "type": "array",
           "default": ["**/node_modules/**", "**/dist/**", "**/.git/**", "**/vendor/**"],
           "items": { "type": "string" },
+          "description": "Legacy exclude patterns. Prefer aegisAI.scan.exclude."
+        },
+        "aegisAI.scan.exclude": {
+          "type": "array",
+          "default": ["**/node_modules/**", "**/dist/**", "**/.git/**", "**/vendor/**"],
+          "items": { "type": "string" },
           "description": "Glob patterns for files/directories to exclude from scanning."
         },
         "aegisAI.disabledRules": {
@@ -202,13 +258,23 @@
         "aegisAI.ai.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable AI-powered fix suggestions (requires DEEPSEEK_API_KEY or OPENAI_API_KEY)."
+          "description": "Enable AI-powered fix suggestions. Requires AI env vars and a VS Code reload after changes."
         },
         "aegisAI.ai.provider": {
           "type": "string",
           "default": "deepseek",
-          "enum": ["deepseek", "openai"],
-          "description": "AI provider for fix suggestions."
+          "enum": ["deepseek", "openai", "ollama", "custom"],
+          "description": "AI provider for fix suggestions. The extension passes this value to the Python server as AI_PROVIDER."
+        },
+        "aegisAI.experimental.crossFileAnalysis": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable experimental cross-file dependency graph analysis."
+        },
+        "aegisAI.showSuppressedFindings": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show suppressed baseline findings in the Aegis sidebar."
         },
         "aegisAI.scanOnSave": {
           "type": "boolean",
