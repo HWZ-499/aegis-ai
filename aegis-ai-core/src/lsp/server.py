@@ -1251,7 +1251,7 @@ def create_server() -> LanguageServer:
 
     # ── O1: aegis.addToBaseline 命令处理（Code Action command 触发）──
     @server.command("aegis.addToBaseline")
-    def on_add_to_baseline(args: list[Any]) -> None:
+    def on_add_to_baseline(*args: Any) -> None:
         """将 finding 加入 .aegis-baseline.json（工作区根目录）。"""
         if not args:
             return

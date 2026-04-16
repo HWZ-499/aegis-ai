@@ -9,9 +9,13 @@ test_lsp_server.py - Aegis AI LSP Server 单元测试
 5. 含漏洞文件正确产生 Diagnostic
 """
 
+from pathlib import Path
+
 import pytest
 from lsprotocol import types as lsp
+from pygls.protocol.language_server import _prepare_command_arguments
 
+from src.lsp import server as lsp_server
 from src.lsp.server import (
     SEVERITY_MAP,
     _find_aegis_comment_block,
@@ -23,6 +27,7 @@ from src.lsp.server import (
     scan_document,
     uri_to_filepath,
 )
+from src.scanner.baseline import Baseline
 
 # 单元测试用文档 URI（finding_to_diagnostic 需要 document_uri 以映射 related_locations）
 DUMMY_URI = "file:///dummy"
@@ -466,3 +471,41 @@ class TestInsertedCommentRemoval:
         block = _find_aegis_comment_block(lines, 2)
 
         assert block == (1, 3)
+
+
+class TestBaselineCommand:
+    """VS Code Code Action 触发的 baseline 命令应按 LSP 参数语义执行。"""
+
+    def test_add_to_baseline_accepts_single_lsp_payload(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        project_root = tmp_path
+        target = project_root / "app.js"
+        target.write_text('const apiKey = "sk-test";\n', encoding="utf-8")
+        monkeypatch.setattr(lsp_server._workspace_ctx, "_project_path", str(project_root))
+
+        server = lsp_server.create_server()
+        handler = server.protocol.fm.commands["aegis.addToBaseline"]
+        params = lsp.ExecuteCommandParams(
+            command="aegis.addToBaseline",
+            arguments=[
+                {
+                    "uri": target.as_uri(),
+                    "rule_id": "HARDCODED_CREDENTIALS",
+                    "line": 1,
+                    "message": "hardcoded credential",
+                }
+            ],
+        )
+
+        args, kwargs = _prepare_command_arguments(handler, params, server.protocol._converter)
+        handler(*args, **kwargs)
+
+        baseline = Baseline.load(project_root / ".aegis-baseline.json")
+        entries = baseline.list_entries()
+        assert len(entries) == 1
+        assert entries[0].rule_id == "HARDCODED_CREDENTIALS"
+        assert entries[0].file_path == "app.js"
+        assert entries[0].line == 1
