@@ -6,9 +6,10 @@
 import logging
 import os
 import sys
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,52 @@ from src.analysis.rule_engine import (
 )
 from src.scanner.false_positive_manager import InlineSuppressor
 from src.scanner.performance_optimizer import PerformanceOptimizer
+
+Finding = dict[str, Any]
+ScanResults = dict[str, list[Finding]]
+SkippedFileEntry = tuple[str, str]
+
+
+@dataclass
+class ScanDiscoverySummary:
+    total_files: int = 0
+    discovered_files: list[str] = field(default_factory=list)
+    skipped_files: list[SkippedFileEntry] = field(default_factory=list)
+
+
+@dataclass
+class ScanExecutionSummary:
+    scanned_files: int = 0
+    files_with_issues: int = 0
+    total_issues: int = 0
+    scan_time: float | None = None
+
+    def note_scanned_file(self, findings: list[Finding]) -> None:
+        self.scanned_files += 1
+        if findings:
+            self.files_with_issues += 1
+            self.total_issues += len(findings)
+
+    def note_cross_file_finding(self) -> None:
+        self.total_issues += 1
+
+
+@dataclass
+class ScanStats:
+    discovery: ScanDiscoverySummary = field(default_factory=ScanDiscoverySummary)
+    execution: ScanExecutionSummary = field(default_factory=ScanExecutionSummary)
+
+    def to_dict(self, severity_stats: dict[str, int]) -> dict[str, Any]:
+        return {
+            "total_files": self.discovery.total_files,
+            "discovered_files": list(self.discovery.discovered_files),
+            "skipped_files": list(self.discovery.skipped_files),
+            "scanned_files": self.execution.scanned_files,
+            "files_with_issues": self.execution.files_with_issues,
+            "total_issues": self.execution.total_issues,
+            "scan_time": self.execution.scan_time,
+            "severity_stats": severity_stats,
+        }
 
 
 class ProjectScanner:
@@ -96,6 +143,8 @@ class ProjectScanner:
         self.use_cache = use_cache
         self.use_parallel = use_parallel
         self.max_workers = max_workers
+        self.scan_results: ScanResults = {}
+        self.scan_stats: ScanStats = ScanStats()
 
         # 初始化性能优化器
         self.optimizer: PerformanceOptimizer | None
@@ -140,6 +189,11 @@ class ProjectScanner:
         self.supported_extensions = {**self._full_support, **self._partial_support}
         self._init_ignore_and_excluded(ignore_patterns)
 
+    def _reset_scan_state(self) -> None:
+        """重置单次扫描的结果与统计，避免重复调用时状态泄漏。"""
+        self.scan_results = {}
+        self.scan_stats = ScanStats()
+
     def get_support_level(self, ext: str) -> str | None:
         """
         返回扩展名的支持级别，用于诚实标注与文档。
@@ -174,26 +228,8 @@ class ProjectScanner:
             "*.pyc",
             "*.pyo",
             "*.pyd",
-            # 测试目录（商业扫描器不会扫描这些）
-            "test",
-            "tests",
-            "__tests__",
-            "spec",
-            "specs",
-            "__spec__",
-            "test_*",
-            "*_test",
-            "*_spec",
-            "*.test.*",
-            "*.spec.*",
-            # 其他测试相关目录
             "coverage",
             ".nyc_output",
-            "jest",
-            "mocha",
-            "cypress",
-            "e2e",
-            # 第三方库目录（'lib' 不在此处，因为 lib/ 是很多项目的核心源码目录）
             "vendor",
             "bower_components",
             # 压缩文件扩展名（会在_should_ignore中检查）
@@ -234,50 +270,29 @@ class ProjectScanner:
         ]
 
         # 目录黑名单：路径中精确匹配则排除整个子树
-        # 不排除 'data'/'assets'/'config'，这些目录可能含业务逻辑（DAO、前端代码、配置）
+        # 默认仅排除依赖、缓存、构建目录；其余目录交由用户显式配置
         self.excluded_dirs = [
+            ".git",
+            "__pycache__",
             "node_modules",
             "vendor",
-            "lib",
-            "assets/lib",
-            "assets/private",
             "bower_components",
             "dist",
             "build",
-            "test",
-            "tests",
-            "spec",
-            "specs",
-            "mock",
-            "mocks",
-            "fixtures",
-            "fixture",
-            "static",
-            "public",
-            "resources",
-            "datafiles",
-            "samples",
-            "docs",
-            "examples",
-            "tutorials",
-            "guides",
-            "testdata",
-            "mockdata",
-            "seed",
-            "codefixes",
-            "code-fixes",
-            "code_fixes",
+            ".venv",
+            "venv",
+            ".pytest_cache",
+            ".mypy_cache",
+            "coverage",
+            ".nyc_output",
+            ".idea",
+            ".vscode",
+            ".vs",
         ]
 
         # 扫描结果
-        self.scan_results: dict[str, list[dict]] = {}
-        self.scan_stats: dict[str, Any] = {
-            "total_files": 0,
-            "scanned_files": 0,
-            "files_with_issues": 0,
-            "total_issues": 0,
-            "scan_time": None,
-        }
+        self.scan_results = {}
+        self.scan_stats = ScanStats()
 
     def _should_ignore(self, path: Path) -> bool:
         """
@@ -334,18 +349,8 @@ class ProjectScanner:
                 return True
 
         test_dirs = {
-            "test",
-            "tests",
-            "__tests__",
-            "spec",
-            "specs",
-            "__spec__",
             "coverage",
             ".nyc_output",
-            "jest",
-            "mocha",
-            "cypress",
-            "e2e",
         }
         for part in path_parts:
             if part.lower() in test_dirs:
@@ -429,7 +434,7 @@ class ProjectScanner:
         code_files, _ = self._get_discovery()
         return code_files
 
-    def scan_file(self, file_path: Path) -> list[dict]:
+    def scan_file(self, file_path: Path) -> list[Finding]:
         """
         扫描单个文件（支持多语言）
 
@@ -506,13 +511,13 @@ class ProjectScanner:
                 suppressor = InlineSuppressor(code)
                 merged_findings = suppressor.filter_findings(merged_findings)
 
-            return merged_findings
+            return cast(list[Finding], merged_findings)
 
         except (OSError, UnicodeDecodeError, RuntimeError) as e:
             logger.warning("扫描文件失败 %s: %s", file_path, e)
             return []
 
-    def scan_project(self, verbose: bool = False) -> dict[str, list[dict]]:
+    def scan_project(self, verbose: bool = False) -> ScanResults:
         """
         扫描整个项目
 
@@ -522,6 +527,7 @@ class ProjectScanner:
         Returns:
             扫描结果字典，key 为文件路径，value 为问题列表
         """
+        self._reset_scan_state()
         start_time = datetime.now()
 
         if verbose:
@@ -531,11 +537,11 @@ class ProjectScanner:
 
         # 获取代码文件及未扫描文件列表（用于发现摘要）
         code_files, skipped_list = self._get_discovery()
-        self.scan_stats["total_files"] = len(code_files)
-        self.scan_stats["discovered_files"] = [
+        self.scan_stats.discovery.total_files = len(code_files)
+        self.scan_stats.discovery.discovered_files = [
             str(p.relative_to(self.project_path)) if p.is_relative_to(self.project_path) else str(p) for p in code_files
         ]
-        self.scan_stats["skipped_files"] = [(str(p), reason) for p, reason in skipped_list]
+        self.scan_stats.discovery.skipped_files = [(str(p), reason) for p, reason in skipped_list]
 
         if verbose:
             logger.info("发现 %d 个代码文件（已纳入扫描）", len(code_files))
@@ -567,13 +573,10 @@ class ProjectScanner:
 
             # 处理优化后的结果
             for file_path, findings in optimized_results.items():
-                self.scan_stats["scanned_files"] += 1
-
+                self.scan_stats.execution.note_scanned_file(findings)
                 if findings:
                     relative_path = str(file_path.relative_to(self.project_path))
                     self.scan_results[relative_path] = findings
-                    self.scan_stats["files_with_issues"] += 1
-                    self.scan_stats["total_issues"] += len(findings)
         else:
             # 顺序扫描（不使用优化）
             for i, file_path in enumerate(code_files, 1):
@@ -581,38 +584,37 @@ class ProjectScanner:
                     logger.info("扫描进度: %d/%d", i, len(code_files))
 
                 findings = self.scan_file(file_path)
-                self.scan_stats["scanned_files"] += 1
-
+                self.scan_stats.execution.note_scanned_file(findings)
                 if findings:
                     relative_path = str(file_path.relative_to(self.project_path))
                     self.scan_results[relative_path] = findings
-                    self.scan_stats["files_with_issues"] += 1
-                    self.scan_stats["total_issues"] += len(findings)
 
         # ── 跨文件污点传播分析（仅新引擎 + JS/TS/Python 项目） ──
         if self.engine == "new":
             cross_file_findings = self._run_cross_file_analysis(verbose=verbose)
             for finding in cross_file_findings:
-                target_file = finding.get("file", "")
+                target_file = finding.get("file")
+                if not isinstance(target_file, str) or not target_file:
+                    continue
                 if target_file not in self.scan_results:
                     self.scan_results[target_file] = []
                 self.scan_results[target_file].append(finding)
-                self.scan_stats["total_issues"] += 1
+                self.scan_stats.execution.note_cross_file_finding()
             if cross_file_findings and verbose:
                 logger.info("跨文件分析发现 %d 个额外污点路径", len(cross_file_findings))
 
         # 计算扫描时间
         end_time = datetime.now()
-        self.scan_stats["scan_time"] = (end_time - start_time).total_seconds()
+        self.scan_stats.execution.scan_time = (end_time - start_time).total_seconds()
 
         if verbose:
             logger.info(
                 "扫描完成！总文件: %d | 已扫描: %d | 有问题: %d | 总问题数: %d | 耗时: %.2fs",
-                self.scan_stats["total_files"],
-                self.scan_stats["scanned_files"],
-                self.scan_stats["files_with_issues"],
-                self.scan_stats["total_issues"],
-                self.scan_stats["scan_time"],
+                self.scan_stats.discovery.total_files,
+                self.scan_stats.execution.scanned_files,
+                self.scan_stats.execution.files_with_issues,
+                self.scan_stats.execution.total_issues,
+                self.scan_stats.execution.scan_time or 0.0,
             )
 
         return self.scan_results
@@ -665,7 +667,7 @@ class ProjectScanner:
         except ValueError:
             return file_path
 
-    def get_stats(self) -> dict:
+    def get_stats(self) -> dict[str, Any]:
         """
         获取扫描统计信息
 
@@ -680,7 +682,7 @@ class ProjectScanner:
                 severity = finding.get("severity", "Medium")
                 severity_stats[severity] = severity_stats.get(severity, 0) + 1
 
-        return {**self.scan_stats, "severity_stats": severity_stats}
+        return self.scan_stats.to_dict(severity_stats)
 
 
 if __name__ == "__main__":
