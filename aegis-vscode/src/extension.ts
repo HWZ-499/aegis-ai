@@ -39,6 +39,7 @@ import { findAegisCommentBlock } from "./commentCommands";
 import { showReport } from "./reportWebview";
 import { FixPreviewProvider } from "./fixPreviewProvider";
 import { showTaintPathPanel, disposeTaintPathPanel, TaintPathData } from "./taintPathWebview";
+import { resolveServerCwd } from "./serverCwd";
 import {
   LanguageClient,
   LanguageClientOptions,
@@ -594,57 +595,16 @@ export function activate(context: ExtensionContext): void {
       );
     });
 
-  // aegis-ai-core directory: LSP Server needs to run in aegis-ai-core
-  let cwd: string | undefined;
-  if (explicitCwd) {
-    cwd = path.isAbsolute(explicitCwd)
-      ? explicitCwd
-      : path.resolve(
-          workspace.workspaceFolders?.[0]?.uri.fsPath ?? "",
-          explicitCwd
-        );
-    if (!fs.existsSync(cwd)) {
-      outputChannel.appendLine(
-        `[Aegis] serverCwd does not exist, falling back to auto-detect: ${cwd}`
-      );
-      cwd = undefined;
-    } else {
-      outputChannel.appendLine(`[Aegis] Using configured serverCwd: ${cwd}`);
-    }
+  // aegis-ai-core directory: LSP Server needs to run in aegis-ai-core.
+  const cwdResolution = resolveServerCwd({
+    explicitCwd,
+    workspaceFolders: workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [],
+    extensionPath: context.extensionPath,
+  });
+  for (const message of cwdResolution.logMessages) {
+    outputChannel.appendLine(message);
   }
-  if (
-    cwd === undefined &&
-    workspace.workspaceFolders &&
-    workspace.workspaceFolders.length > 0
-  ) {
-    const rootPath = workspace.workspaceFolders[0].uri.fsPath;
-    const rootName = path.basename(rootPath);
-    if (rootName === "aegis-ai-core") {
-      cwd = rootPath;
-    } else {
-      cwd = path.join(rootPath, "aegis-ai-core");
-    }
-    if (!fs.existsSync(cwd)) {
-      outputChannel.appendLine(
-        `[Aegis] Auto-detected directory does not exist, LSP may not start: ${cwd}`
-      );
-    } else {
-      outputChannel.appendLine(`[Aegis] Using working directory: ${cwd}`);
-    }
-  }
-  // Fallback: try sibling aegis-ai-core of the extension directory
-  if (cwd === undefined || !fs.existsSync(cwd)) {
-    const extDir = context.extensionPath;
-    const siblingCwd = path.join(path.dirname(extDir), "aegis-ai-core");
-    if (fs.existsSync(siblingCwd)) {
-      cwd = siblingCwd;
-      outputChannel.appendLine(`[Aegis] Using sibling directory: ${cwd}`);
-    } else if (cwd === undefined) {
-      outputChannel.appendLine(
-        "[Aegis] No workspace open and aegis-ai-core not found. Please open a folder containing aegis-ai-core."
-      );
-    }
-  }
+  const cwd = cwdResolution.cwd;
 
   outputChannel.appendLine(`[Aegis] Python: ${pythonPath}, Module: ${serverModule}`);
 
