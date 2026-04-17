@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0] - 2026-04-17
+
+### Added
+- **Marketplace bundled backend** — packaged builds now include the Aegis Python core under extension resources.
+- **Managed backend environment** — production installs create a VS Code-managed Python virtual environment and install the bundled backend on first run.
+- **Python 3.10+ validation** — startup now fails with a clear message when Python is missing or too old.
+
+### Changed
+- Normal Marketplace users no longer need to clone the GitHub repository or configure `aegisAI.serverCwd`.
+- `aegisAI.serverCwd` is now documented as an advanced/development override.
+
 ## [0.5.0] - 2026-03-18
 
 ### Added

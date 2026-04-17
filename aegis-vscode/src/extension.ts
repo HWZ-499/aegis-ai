@@ -9,10 +9,10 @@
  */
 
 import * as path from "path";
-import * as fs from "fs";
 import {
   workspace,
   ExtensionContext,
+  ExtensionMode,
   window,
   commands,
   StatusBarItem,
@@ -28,7 +28,6 @@ import {
 } from "vscode";
 import { FindingsTreeProvider } from "./findingsTreeProvider";
 import { getAiConfigurationError } from "./aiPreflight";
-import { probePythonVersion } from "./pythonProbe";
 import { GenerateFixResponse, getGenerateFixFailure, isGenerateFixSuccess } from "./aiFixResult";
 import {
   BaselineEntryNode,
@@ -39,7 +38,7 @@ import { findAegisCommentBlock } from "./commentCommands";
 import { showReport } from "./reportWebview";
 import { FixPreviewProvider } from "./fixPreviewProvider";
 import { showTaintPathPanel, disposeTaintPathPanel, TaintPathData } from "./taintPathWebview";
-import { resolveServerCwd } from "./serverCwd";
+import { ensureBackendLaunch } from "./backendBootstrap";
 import {
   LanguageClient,
   LanguageClientOptions,
@@ -157,7 +156,7 @@ function refreshStatusBarFromDiagnostics(): void {
  *
  * @param {ExtensionContext} context - VS Code extension context
  */
-export function activate(context: ExtensionContext): void {
+export async function activate(context: ExtensionContext): Promise<void> {
   const config = workspace.getConfiguration("aegisAI");
 
   // Check if extension is enabled
@@ -581,36 +580,46 @@ export function activate(context: ExtensionContext): void {
   // Dispose taint path panel on deactivation
   context.subscriptions.push({ dispose: () => disposeTaintPathPanel() });
 
-  // ── Validate Python interpreter asynchronously (do not block activation) ─────────
-  void probePythonVersion(pythonPath)
-    .then((pyVersion) => {
-      if (pyVersion) {
-        outputChannel.appendLine(`[Aegis] ${pyVersion} found`);
-      }
-    })
-    .catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      outputChannel.appendLine(
-        `[Aegis] Python probe failed at "${pythonPath}". Install Python 3.10+ or configure aegisAI.pythonPath. (${message})`
-      );
-    });
-
   // aegis-ai-core directory: LSP Server needs to run in aegis-ai-core.
-  const cwdResolution = resolveServerCwd({
-    explicitCwd,
-    workspaceFolders: workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [],
-    extensionPath: context.extensionPath,
-  });
-  for (const message of cwdResolution.logMessages) {
+  let backendLaunch;
+  try {
+    backendLaunch = await window.withProgress(
+      {
+        location: ProgressLocation.Notification,
+        title: "Aegis: Preparing Python backend",
+        cancellable: false,
+      },
+      async () =>
+        ensureBackendLaunch({
+          explicitCwd,
+          extensionPath: context.extensionPath,
+          globalStoragePath: context.globalStorageUri.fsPath,
+          preferBundledBackend: context.extensionMode === ExtensionMode.Production,
+          pythonPath,
+          serverModule,
+          workspaceFolders: workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [],
+        }),
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    outputChannel.appendLine(`[Aegis] Backend startup failed: ${message}`);
+    outputChannel.show();
+    window.showErrorMessage(`Aegis: ${message}`);
+    updateStatusBar("disconnected");
+    return;
+  }
+
+  for (const message of backendLaunch.logMessages) {
     outputChannel.appendLine(message);
   }
-  const cwd = cwdResolution.cwd;
+  const cwd = backendLaunch.cwd;
 
-  outputChannel.appendLine(`[Aegis] Python: ${pythonPath}, Module: ${serverModule}`);
+  outputChannel.appendLine(`[Aegis] Backend source: ${backendLaunch.source}`);
+  outputChannel.appendLine(`[Aegis] Python: ${backendLaunch.pythonPath}, Module: ${serverModule}`);
 
-  if (!cwd || !fs.existsSync(cwd)) {
+  if (!cwd) {
     outputChannel.appendLine(
-      "[Aegis] Cannot start: aegis-ai-core directory not found. Please open aegis-ai or aegis-ai-core folder (File → Open Folder), or set aegisAI.serverCwd in settings."
+      "[Aegis] Cannot start: backend directory not found. Reinstall Aegis, or set aegisAI.serverCwd in settings."
     );
     outputChannel.show();
     updateStatusBar("disconnected");
@@ -622,8 +631,8 @@ export function activate(context: ExtensionContext): void {
    * Command: python -m src.lsp
    */
   const serverOptions: ServerOptions = {
-    command: pythonPath,
-    args: ["-m", serverModule],
+    command: backendLaunch.pythonPath,
+    args: backendLaunch.args,
     options: {
       cwd: cwd,
       env: {

@@ -1,8 +1,8 @@
 {
   "name": "aegis-ai-security",
   "displayName": "Aegis AI Security Scanner",
-  "description": "Real-time SAST for JS/TS/Python/PHP/Java/Go with AST analysis, taint tracking, baseline suppression, and AI-assisted fixes.",
-  "version": "0.5.1",
+  "description": "Real-time SAST for JS/TS/Python/PHP/Java/Go with a bundled Aegis backend, AST analysis, taint tracking, baseline suppression, and AI-assisted fixes.",
+  "version": "0.6.0",
   "publisher": "wen-zai",
   "license": "MIT",
   "preview": true,
@@ -214,7 +214,7 @@
         "aegisAI.pythonPath": {
           "type": "string",
           "default": "python",
-          "description": "Path to the Python interpreter used to run the Aegis AI LSP Server. Examples: python, python3, /usr/bin/python3, C:\\\\Python311\\\\python.exe"
+          "description": "Path to Python 3.10+ used to create and run the Aegis backend environment. Examples: python, python3, /usr/bin/python3, C:\\\\Python311\\\\python.exe"
         },
         "aegisAI.serverModule": {
           "type": "string",
@@ -229,7 +229,7 @@
         "aegisAI.serverCwd": {
           "type": "string",
           "default": "",
-          "description": "Force LSP Server working directory (absolute path to aegis-ai-core). Leave blank for auto-detect."
+          "description": "Advanced/development override: force an aegis-ai-core working directory. Leave blank to use the bundled backend."
         },
         "aegisAI.severity.minimum": {
           "type": "string",
@@ -290,7 +290,8 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run bundle",
+    "vscode:prepublish": "npm run prepare-backend && npm run bundle",
+    "prepare-backend": "node scripts/prepare-bundled-backend.js",
     "bundle": "node esbuild.js --production",
     "check": "tsc --noEmit -p ./",
     "compile": "tsc -p ./",

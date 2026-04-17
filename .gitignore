@@ -72,6 +72,7 @@ aegis-vscode/*.vsix
 
 # VSCode 扩展编译输出（构建/测试时生成，不作为源码）
 aegis-vscode/out/
+aegis-vscode/resources/aegis-ai-core/
 
 # VSCode 测试下载的 VS Code 实例
 .vscode-test/

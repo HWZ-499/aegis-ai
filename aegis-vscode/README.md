@@ -6,7 +6,7 @@ Real-time SAST scanning for VS Code / Cursor using Tree-sitter AST + taint analy
 
 Supports: **JavaScript / TypeScript / Python / PHP / Java / Go**
 
-> **v0.5.1** — Latest packaged build. [See what changed →](CHANGELOG.md)
+> **v0.6.0** — Latest packaged build. [See what changed →](CHANGELOG.md)
 
 ---
 
@@ -23,18 +23,37 @@ Supports: **JavaScript / TypeScript / Python / PHP / Java / Go**
 ### Step 1: Install Extension
 VS Code Marketplace: search **"Aegis AI Security Scanner"** or ID `wen-zai.aegis-ai-security`
 
-### Step 2: Clone Python Engine
-The extension needs the Python core to run:
+### Step 2: Install Python 3.10+
+Aegis includes its Python backend in the VS Code extension package, but it still needs a local Python interpreter to run that backend.
 
-```bash
-git clone https://github.com/HWZ-499/aegis-ai.git
-cd aegis-ai/aegis-ai-core
-pip install -e .
+Requirements:
+
+- Python **3.10 or newer**
+- `python --version` or `python3 --version` works in your terminal
+- Internet access on first run so Aegis can install its backend dependencies into a VS Code-managed virtual environment
+
+PowerShell check:
+
+```powershell
+python --version
 ```
 
-Requires Python `>=3.10`, matching `aegis-ai-core/pyproject.toml`.
+Expected:
 
-**Done.** Extension auto-detects the Python engine. If not, set path in VS Code settings:
+```text
+Python 3.10.x or newer
+```
+
+On first activation, Aegis automatically:
+
+- creates a private Python environment under VS Code extension storage
+- installs the bundled `aegis-ai-core` backend into that environment
+- starts the local LSP scanner from that managed environment
+
+You do **not** need to clone the GitHub repository for normal Marketplace usage.
+
+Advanced/development override only:
+
 ```json
 { "aegisAI.serverCwd": "/path/to/aegis-ai-core" }
 ```
@@ -115,8 +134,8 @@ Suppressed findings can be inspected in the **Suppressed Findings** view after e
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `aegisAI.enabled` | `true` | Enable/disable the scanner |
-| `aegisAI.pythonPath` | `python` | Path to the Python interpreter |
-| `aegisAI.serverCwd` | `` | Force LSP server working directory (leave blank for auto-detect) |
+| `aegisAI.pythonPath` | `python` | Path to Python 3.10+ used for the managed backend environment |
+| `aegisAI.serverCwd` | `` | Advanced/development override for local `aegis-ai-core`; leave blank for bundled backend |
 | `aegisAI.serverModule` | `src.lsp` | Python module path for the LSP server |
 | `aegisAI.scan.exclude` | `["**/node_modules/**", ...]` | Glob patterns excluded from scanning |
 | `aegisAI.experimental.crossFileAnalysis` | `false` | Enable experimental cross-file dependency graph analysis |
@@ -126,7 +145,8 @@ Suppressed findings can be inspected in the **Suppressed Findings** view after e
 
 ## Known Issues
 
-- `tree-sitter==0.21.3` may print a FutureWarning on startup (no functional impact)
+- First run may take longer while the managed Python backend environment is created
+- Python 3.10+ must be installed separately and available through `aegisAI.pythonPath`
 - PHP analysis uses Tree-sitter AST for core rules; some niche patterns may still fall back to line-level matching
 - Cross-file taint propagation requires `module.exports` patterns (CommonJS)
 

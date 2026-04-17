@@ -1,5 +1,12 @@
 import { execFile } from "child_process";
 
+export interface PythonVersion {
+  major: number;
+  minor: number;
+  patch: number;
+  raw: string;
+}
+
 export type ExecFileCallback = (error: Error | null, stdout: string, stderr: string) => void;
 
 export type ExecFileLike = (
@@ -41,4 +48,30 @@ export function probePythonVersion(
       },
     );
   });
+}
+
+export function parsePythonVersion(output: string): PythonVersion | undefined {
+  const raw = output.trim();
+  const match = raw.match(/Python\s+(\d+)\.(\d+)(?:\.(\d+))?/i);
+  if (!match) {
+    return undefined;
+  }
+
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3] ?? "0"),
+    raw,
+  };
+}
+
+export function isPythonVersionSupported(output: string, minMajor = 3, minMinor = 10): boolean {
+  const version = parsePythonVersion(output);
+  if (!version) {
+    return false;
+  }
+  if (version.major !== minMajor) {
+    return version.major > minMajor;
+  }
+  return version.minor >= minMinor;
 }

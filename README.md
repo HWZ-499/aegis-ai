@@ -3,7 +3,7 @@
 [![Security Scan](https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml/badge.svg)](https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml)
 [![License: MIT](https://opensource.org/licenses/MIT)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-v0.5.1-brightgreen.svg)](https://marketplace.visualstudio.com/items?itemName=wen-zai.aegis-ai-security)
+[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-v0.6.0-brightgreen.svg)](https://marketplace.visualstudio.com/items?itemName=wen-zai.aegis-ai-security)
 
 **Find and review SQL injection, XSS, RCE, and 7+ more vulnerability types as you code.** Aegis is a local-first SAST stack for VS Code / Cursor with Tree-sitter AST analysis, taint tracking, AI-assisted fixes, and baseline/suppression workflows.
 
@@ -35,7 +35,15 @@
 
 ## Quick Start
 
-### 1. 安装 Python 核心
+### 1. 安装 VS Code / Cursor 扩展
+
+1. 打开 VS Code → Extensions → 搜索 `Aegis AI Security Scanner`
+2. 点击 **Install**（扩展 ID：`wen-zai.aegis-ai-security`）
+3. 确保本机安装 Python `>=3.10`，并且 `python --version` 或 `python3 --version` 可用
+
+商店版扩展会自动携带 Aegis Python 后端，并在首次启动时创建 VS Code 管理的独立虚拟环境；普通用户不需要 clone 本仓库，也不需要配置 `aegisAI.serverCwd`。
+
+### 2. Python 核心开发 / CLI 使用
 
 ```bash
 git clone https://github.com/HWZ-499/aegis-ai.git
@@ -51,11 +59,7 @@ pip install -e .[dev]
 
 > Python 版本要求与 `aegis-ai-core/pyproject.toml` 一致：`>=3.10`
 
-### 2. 安装 VS Code / Cursor 扩展
-
-1. 打开 VS Code → Extensions → 搜索 `Aegis AI Security Scanner`
-2. 点击 **Install**（扩展 ID：`wen-zai.aegis-ai-security`）
-3. 若自动探测失败，在 `.vscode/settings.json` 中设置：
+高级/开发场景可以强制使用本地 core：
 
 ```json
 {
