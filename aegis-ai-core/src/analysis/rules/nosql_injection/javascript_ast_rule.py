@@ -1,4 +1,4 @@
-"""
+﻿"""
 nosql_injection.javascript_ast_rule
 
 JavaScript/TypeScript NoSQL 注入 AST 规则（优化版 + 数据流分析）。
@@ -44,7 +44,7 @@ try:
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
-    Node = Any
+    Node = Any  # type: ignore[misc,assignment]
 
 
 class JavaScriptNoSQLInjectionAstRule(SecurityRule):
@@ -439,15 +439,15 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                             return
                         # update 类方法：跳过情况 B，直接到情况 D 检查第二个参数
                     elif self._has_dangerous_key_or_value(first_arg, context):
-                        finding: dict[str, Any] = {
+                        object_danger_finding: dict[str, Any] = {
                             "type": "NOSQL_INJECTION",
                             "rule_id": self.rule_id,
                             "severity": "High",  # High 级别
                             "line": line_no,
                             "details": f"检测到 {caller_name or ''}.{method_name}() 调用，参数是对象字面量且包含危险键或用户输入，存在 NoSQL 注入风险。",
                         }
-                        finding.update(tree_sitter_node_to_range(node))
-                        context.add_finding(finding)
+                        object_danger_finding.update(tree_sitter_node_to_range(node))
+                        context.add_finding(object_danger_finding)
                         return
                     elif self._contains_identifier_in_object(
                         first_arg,
@@ -455,15 +455,15 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                         caller_is_db=self._is_db_related(caller_name, likely_db_objects) if caller_name else False,
                     ):
                         # 对象中包含污染标识符（污点感知）
-                        finding: dict[str, Any] = {
+                        identifier_object_finding: dict[str, Any] = {
                             "type": "NOSQL_INJECTION",
                             "rule_id": self.rule_id,
                             "severity": "High",  # High 级别（因为对象字面量）
                             "line": line_no,
                             "details": f"检测到 {caller_name or ''}.{method_name}() 调用，参数是对象字面量且包含标识符（可能是用户输入），存在潜在的 NoSQL 注入风险。建议使用参数化查询。",
                         }
-                        finding.update(tree_sitter_node_to_range(node))
-                        context.add_finding(finding)
+                        identifier_object_finding.update(tree_sitter_node_to_range(node))
+                        context.add_finding(identifier_object_finding)
                         return
 
                 # 情况 C: 参数是变量 - 使用数据流分析检测是否被污染
@@ -519,26 +519,26 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                             severity = "Medium"
                             details = f"检测到 {caller_name or ''}.{method_name}() 调用，参数是变量 '{var_name}'，可能存在 NoSQL 注入风险（建议检查变量来源）。建议使用参数化查询。"
 
-                        finding: dict[str, Any] = {
+                        variable_arg_finding: dict[str, Any] = {
                             "type": "NOSQL_INJECTION",
                             "rule_id": self.rule_id,
                             "severity": severity,
                             "line": line_no,
                             "details": details,
                         }
-                        finding.update(tree_sitter_node_to_range(node))
+                        variable_arg_finding.update(tree_sitter_node_to_range(node))
                         # TDD 7.1/7.2：污点来源作为 related_locations，LSP 映射为 relatedInformation
                         if taint_source and getattr(taint_source, "line", None) is not None:
                             src_line = getattr(taint_source, "line", 0)
                             src_expr = getattr(taint_source, "source_expr", "")
-                            finding["related_locations"] = [
+                            variable_arg_finding["related_locations"] = [
                                 make_related_location(
                                     str(context.file_path),
                                     src_line,
                                     message=f"SOURCE: {src_expr}",
                                 )
                             ]
-                        context.add_finding(finding)
+                        context.add_finding(variable_arg_finding)
                         return
 
                 # 情况 D: update/updateOne/findOneAndUpdate 多参数检查
@@ -547,15 +547,15 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                     update_doc = all_args[1]
                     if update_doc.type == "object":
                         if self._has_tainted_update_operator(update_doc, context):
-                            finding: dict[str, Any] = {
+                            update_doc_finding: dict[str, Any] = {
                                 "type": "NOSQL_INJECTION",
                                 "rule_id": self.rule_id,
                                 "severity": "High",
                                 "line": line_no,
                                 "details": f"检测到 {caller_name or ''}.{method_name}() 调用，更新文档（第二个参数）中 $set/$push 等操作符的值来自用户输入或污染变量，存在 NoSQL 注入风险。",
                             }
-                            finding.update(tree_sitter_node_to_range(node))
-                            context.add_finding(finding)
+                            update_doc_finding.update(tree_sitter_node_to_range(node))
+                            context.add_finding(update_doc_finding)
                             return
 
     def _is_crypto_like_update(self, caller_name: str | None) -> bool:
@@ -833,8 +833,8 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                     continue
 
                 # context 不可用时退化：仅靠名称关键词判断
-                user_kws = ("req", "body", "query", "param", "input", "payload")
-                if any(kw in vl for kw in user_kws):
+                fallback_user_kws = ("req", "body", "query", "param", "input", "payload")
+                if any(kw in vl for kw in fallback_user_kws):
                     return True
 
         return False

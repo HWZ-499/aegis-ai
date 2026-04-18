@@ -1,4 +1,4 @@
-"""
+﻿"""
 xss.javascript_ast_rule
 
 JavaScript/TypeScript XSS 风险 AST 规则（新规则架构）。
@@ -32,7 +32,7 @@ try:
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
-    Node = Any
+    Node = Any  # type: ignore[misc,assignment]
 
 
 class JavaScriptXSSAstRule(SecurityRule):

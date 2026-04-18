@@ -1,4 +1,4 @@
-"""PHP Hardcoded Credentials AST rule — Tree-sitter based."""
+﻿"""PHP Hardcoded Credentials AST rule — Tree-sitter based."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ try:
     _TS = True
 except ImportError:
     _TS = False
-    Node = Any
+    Node = Any  # type: ignore[misc,assignment]
 
 _CREDENTIAL_RE = re.compile(
     r"(password|passwd|pwd|secret|api_?key|token|auth|credential|private_?key)",

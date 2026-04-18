@@ -1,4 +1,4 @@
-"""
+﻿"""
 javascript_analyzer.py - JavaScript/TypeScript 分析器（新规则架构）
 
 说明：
@@ -25,8 +25,8 @@ try:
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
-    Parser = None
-    Node = None
+    Parser = None  # type: ignore[misc,assignment]
+    Node = None  # type: ignore[misc,assignment]
     get_language = None
 
 

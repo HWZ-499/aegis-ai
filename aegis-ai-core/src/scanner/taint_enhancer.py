@@ -1,4 +1,4 @@
-"""
+﻿"""
 taint_enhancer.py - 污点分析增强器
 
 将完整的 Source → Sink 污点分析集成到扫描流程中。
@@ -28,9 +28,9 @@ try:
     TAINT_ANALYSIS_AVAILABLE = True
 except ImportError:
     TAINT_ANALYSIS_AVAILABLE = False
-    TaintAnalyzer = None
-    TaintGraph = None
-    TaintPath = None
+    TaintAnalyzer = None  # type: ignore[misc,assignment]
+    TaintGraph = None  # type: ignore[misc,assignment]
+    TaintPath = None  # type: ignore[misc,assignment]
 
 logger = logging.getLogger(__name__)
 

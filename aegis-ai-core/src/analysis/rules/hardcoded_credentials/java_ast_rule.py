@@ -1,4 +1,4 @@
-"""
+﻿"""
 hardcoded_credentials.java_ast_rule
 
 Java 硬编码凭证 AST 规则。
@@ -22,7 +22,7 @@ try:
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
-    Node = Any  # type: ignore[assignment]
+    Node = Any  # type: ignore[misc,assignment]
 
 
 class JavaHardcodedCredentialsAstRule(SecurityRule):
@@ -313,3 +313,4 @@ class JavaHardcodedCredentialsAstRule(SecurityRule):
 
 
 __all__ = ["JavaHardcodedCredentialsAstRule"]
+

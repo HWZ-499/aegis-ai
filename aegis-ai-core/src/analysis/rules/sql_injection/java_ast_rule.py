@@ -236,7 +236,7 @@ class JavaSQLInjectionAstRule(SecurityRule):
         for m in pattern.finditer(source_code):
             line_no = source_code[: m.start()].count("\n") + 1
             sink_expr = m.group(0).strip()
-            finding: dict[str, Any] = {
+            fallback_finding: dict[str, Any] = {
                 "type": "SQL_INJECTION",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
@@ -245,7 +245,7 @@ class JavaSQLInjectionAstRule(SecurityRule):
                 "source_expr": "request.getParameter(...)",
                 "sink_expr": sink_expr,
             }
-            context.add_finding(finding)
+            context.add_finding(fallback_finding)
 
     # ------------------------------------------------------------------
     # 辅助方法

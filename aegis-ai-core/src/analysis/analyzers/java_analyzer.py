@@ -1,4 +1,4 @@
-"""
+﻿"""
 java_analyzer.py - Java 专用分析器（统一污点系统版）
 
 说明：
@@ -23,9 +23,9 @@ try:
 
     _TREE_SITTER_AVAILABLE = True
 except ImportError:
-    Parser = None  # type: ignore[assignment]
-    Node = None  # type: ignore[assignment]
-    get_language = None  # type: ignore[assignment]
+    Parser = None  # type: ignore[misc,assignment]
+    Node = None  # type: ignore[misc,assignment]
+    get_language = None  # type: ignore[misc,assignment]
     _TREE_SITTER_AVAILABLE = False
 
 
@@ -120,3 +120,4 @@ class JavaAnalyzer:
 
 
 __all__ = ["JavaAnalyzer"]
+

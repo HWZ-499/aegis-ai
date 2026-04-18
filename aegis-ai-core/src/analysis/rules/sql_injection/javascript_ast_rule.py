@@ -1,4 +1,4 @@
-"""
+﻿"""
 sql_injection.javascript_ast_rule
 
 JavaScript/TypeScript SQL 注入 AST 规则（新规则架构）。
@@ -33,7 +33,7 @@ try:
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
-    Node = Any
+    Node = Any  # type: ignore[misc,assignment]
 
 
 class JavaScriptSQLInjectionAstRule(SecurityRule):
@@ -182,15 +182,15 @@ class JavaScriptSQLInjectionAstRule(SecurityRule):
                 return
         # 无 tracker、无法解析出标识符、或存在未追踪变量时保留原逻辑（保守报出）
         line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-        finding: dict[str, Any] = {
+        fallback_finding: dict[str, Any] = {
             "type": "SQL_INJECTION",
             "rule_id": self.rule_id,
             "severity": self.severity,
             "line": line_no,
             "details": "检测到模板字符串形式的 SQL 且包含变量插值，存在 SQL 注入风险，建议使用参数化查询。",
         }
-        finding.update(tree_sitter_node_to_range(node))
-        context.add_finding(finding)
+        fallback_finding.update(tree_sitter_node_to_range(node))
+        context.add_finding(fallback_finding)
 
     def _check_sql_method_call(self, node: Node, context: AnalysisContext) -> None:
         """检测 .query() / .find() 等方法调用中的 SQL 拼接。"""
