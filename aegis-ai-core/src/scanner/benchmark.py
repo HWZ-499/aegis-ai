@@ -350,7 +350,8 @@ def evaluate_project_against_ground_truth(
     """
     from .project_scanner import ProjectScanner
 
-    scanner = ProjectScanner(str(project_dir), engine=engine)
+    # 评估阶段需要反映当前规则代码，禁用缓存避免复用过期扫描结果。
+    scanner = ProjectScanner(str(project_dir), engine=engine, use_cache=False)
     results = scanner.scan_project(verbose=False)
     all_findings: list[dict] = []
     for file_path, findings in results.items():

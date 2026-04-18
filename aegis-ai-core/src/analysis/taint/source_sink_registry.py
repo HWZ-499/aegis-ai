@@ -838,7 +838,11 @@ class SourceSinkRegistry:
             # SSRF
             SinkPattern(
                 name="http_request",
-                pattern=r"(fetch|axios|request|http\.get|https\.get)\(",
+                pattern=(
+                    r"(?<![\w$])(?:fetch|request|"
+                    r"axios(?:\.(?:request|get|post|put|delete|head|options|patch))?|"
+                    r"https?\.(?:get|request))\s*\("
+                ),
                 is_regex=True,
                 category=VulnCategory.SSRF,
                 languages=["javascript", "typescript"],
