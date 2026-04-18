@@ -29,6 +29,7 @@ if str(PROJECT_ROOT) not in sys.path:
 # 阶段四：用例与 benchmark 模块共用，单一数据源
 from src.analysis.base.analysis_context import AnalysisContext
 from src.analysis.base.js_dataflow_collector import JavaScriptDataFlowCollector
+from src.analysis.rule_engine import analyze_python
 from src.scanner.benchmark_cases import BENCH_CASES_TN as TN_CASES
 from src.scanner.benchmark_cases import BENCH_CASES_TP as TP_CASES
 from src.scanner.benchmark_cases import BenchCase
@@ -109,6 +110,16 @@ def _full_scan(code: str) -> list[dict]:
     return ctx.findings
 
 
+def _scan_case(case: BenchCase) -> list[dict]:
+    """按用例语言选择分析器。"""
+    language = (case.language or "javascript").lower()
+    if language in {"javascript", "js", "typescript", "ts"}:
+        return _full_scan(case.code)
+    if language == "python":
+        return analyze_python(case.code, "benchmark_case.py")
+    return []
+
+
 # =====================================================================
 # 量化统计（用例见 src.scanner.benchmark_cases）
 # =====================================================================
@@ -146,7 +157,7 @@ def _run_benchmark(cases: list[BenchCase]) -> BenchmarkResult:
     result = BenchmarkResult()
 
     for case in cases:
-        findings = _full_scan(case.code)
+        findings = _scan_case(case)
         # 只看对应类型的 findings
         relevant = [f for f in findings if f.get("type", "") == case.category]
         detected = len(relevant) > 0
@@ -291,10 +302,8 @@ class TestAcceptanceBenchmark:
         ids=[c.id for c in TP_CASES],
     )
     def test_true_positive(self, case: BenchCase):
-        """验证每个 TP 用例都能被检测到。_full_scan 仅跑 JS，Python/Flask 用例跳过。"""
-        if case.id in ("TP-DESER-01", "TP-REDIR-01"):
-            pytest.skip("Python/Flask snippet; _full_scan is JavaScript-only")
-        findings = _full_scan(case.code)
+        """验证每个 TP 用例都能被检测到。"""
+        findings = _scan_case(case)
         relevant = [f for f in findings if f.get("type", "") == case.category]
         assert len(relevant) >= 1, (
             f"[{case.id}] 应该检测到 {case.category}，但没有。"
@@ -309,7 +318,7 @@ class TestAcceptanceBenchmark:
     )
     def test_true_negative(self, case: BenchCase):
         """验证每个 TN 用例都不会被误报。"""
-        findings = _full_scan(case.code)
+        findings = _scan_case(case)
         relevant = [f for f in findings if f.get("type", "") == case.category]
         assert len(relevant) == 0, (
             f"[{case.id}] 不应该检测到 {case.category}，但误报了 {len(relevant)} 个。"

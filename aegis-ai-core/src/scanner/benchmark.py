@@ -82,7 +82,7 @@ class BenchmarkResult:
 
 def run_benchmark(cases: list[BenchCase] | None = None) -> BenchmarkResult:
     """
-    运行基准用例，使用 rule_engine.analyze_javascript 与生产一致。
+    运行基准用例，按用例语言分发到对应 rule_engine 分析器。
 
     Args:
         cases: 用例列表；为 None 时使用默认 TP + TN 全集。
@@ -90,14 +90,12 @@ def run_benchmark(cases: list[BenchCase] | None = None) -> BenchmarkResult:
     Returns:
         BenchmarkResult 汇总结果。
     """
-    from ..analysis.rule_engine import analyze_javascript
-
     if cases is None:
         cases = BENCH_CASES_TP + BENCH_CASES_TN
 
     result = BenchmarkResult()
     for case in cases:
-        findings = analyze_javascript(case.code, "benchmark.js")
+        findings = _analyze_case(case)
         relevant = [f for f in findings if f.get("type", "") == case.category]
         detected = len(relevant) > 0
 
@@ -120,6 +118,7 @@ def run_benchmark(cases: list[BenchCase] | None = None) -> BenchmarkResult:
             {
                 "id": case.id,
                 "category": case.category,
+                "language": case.language,
                 "pattern": case.pattern,
                 "description": case.description,
                 "expect": "VULN" if case.expect_finding else "SAFE",
@@ -136,6 +135,32 @@ def run_benchmark(cases: list[BenchCase] | None = None) -> BenchmarkResult:
         result.by_category[cat][verdict.lower()] += 1
 
     return result
+
+
+def _analyze_case(case: BenchCase) -> list[dict]:
+    """按语言路由到对应分析器，避免跨语言用例被误记为 FN。"""
+    from ..analysis.rule_engine import (
+        analyze_go,
+        analyze_java,
+        analyze_javascript,
+        analyze_php,
+        analyze_python,
+    )
+
+    language = (case.language or "javascript").lower()
+    if language in {"javascript", "js", "typescript", "ts"}:
+        return analyze_javascript(case.code, "benchmark.js")
+    if language == "python":
+        return analyze_python(case.code, "benchmark.py")
+    if language == "php":
+        return analyze_php(case.code, "benchmark.php")
+    if language == "java":
+        return analyze_java(case.code, "Benchmark.java")
+    if language == "go":
+        return analyze_go(case.code, "benchmark.go")
+
+    logger.warning("Unknown benchmark case language '%s' in case %s, fallback to JavaScript analyzer", language, case.id)
+    return analyze_javascript(case.code, "benchmark.js")
 
 
 def format_report_md(

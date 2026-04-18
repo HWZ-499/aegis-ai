@@ -10,7 +10,6 @@ Python 反序列化风险 AST 规则（污点感知版）。
 - ``shelve.open(user_input)``                     → High
 - ``yaml.load(user_input)``                       → High（unsafe Loader）
 - ``yaml.safe_load(user_input)``                  → Low（提示仍然检查数据来源）
-- ``json.loads(user_input)``                      → Low（JSON 本身安全，但保留低优先级提示）
 - ``jsonpickle.decode(user_input)``               → Critical
 - ``dill.loads(user_input)``                      → Critical
 - 直接 ``eval(user_input)`` / ``exec(user_input)`` → Critical（反序列化场景常见）
@@ -74,9 +73,6 @@ _SINKS: list[_SinkDef] = [
         "CWE-502",
     ),
     _SinkDef("yaml", "safe_load", "Low", "yaml.safe_load() 参数来自用户输入，建议验证数据来源。", "CWE-20"),
-    _SinkDef(
-        "json", "loads", "Low", "json.loads() 参数来自用户输入（风险较低，但可能导致大 JSON 拒绝服务）。", "CWE-20"
-    ),
     _SinkDef(None, "eval", "Critical", "eval() 执行用户输入内容，等同于任意代码执行。", "CWE-95"),
     _SinkDef(None, "exec", "Critical", "exec() 执行用户输入内容，等同于任意代码执行。", "CWE-95"),
 ]
