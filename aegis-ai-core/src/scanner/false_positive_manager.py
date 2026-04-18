@@ -20,6 +20,7 @@ import logging
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -46,20 +47,40 @@ class FalsePositiveManager:
 
         self.false_positives = self._load_config()
 
-    def _load_config(self) -> dict:
+    @staticmethod
+    def _normalize_fp_entries(entries: object) -> list[dict[str, Any]]:
+        if not isinstance(entries, list):
+            return []
+        normalized: list[dict[str, Any]] = []
+        for item in entries:
+            if isinstance(item, dict):
+                normalized.append(item)
+        return normalized
+
+    def _load_config(self) -> dict[str, Any]:
         """
         加载误报配置
 
         Returns:
             误报配置字典
         """
-        default_config = {"version": "1.0", "false_positives": []}
+        default_config: dict[str, Any] = {"version": "1.0", "false_positives": []}
 
         if self.config_path.exists():
             try:
                 with open(self.config_path, encoding="utf-8") as f:
                     config = json.load(f)
-                    return config
+
+                if not isinstance(config, dict):
+                    logger.warning("误报配置格式无效（顶层不是对象），使用默认配置")
+                    return default_config
+
+                version = config.get("version")
+                if not isinstance(version, str):
+                    version = default_config["version"]
+                false_positives = self._normalize_fp_entries(config.get("false_positives"))
+
+                return {"version": version, "false_positives": false_positives}
             except (OSError, json.JSONDecodeError) as e:
                 logger.warning("加载误报配置文件失败: %s，使用默认配置", e)
                 return default_config
@@ -194,14 +215,14 @@ class FalsePositiveManager:
 
         return filtered
 
-    def list_false_positives(self) -> list[dict]:
+    def list_false_positives(self) -> list[dict[str, Any]]:
         """
         列出所有误报标记
 
         Returns:
             误报标记列表
         """
-        return self.false_positives.get("false_positives", [])
+        return self._normalize_fp_entries(self.false_positives.get("false_positives"))
 
 
 class InlineSuppressor:

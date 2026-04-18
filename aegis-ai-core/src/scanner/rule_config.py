@@ -6,6 +6,7 @@
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -29,14 +30,26 @@ class RuleConfig:
         self.config_path = Path(config_path) if config_path else None
         self.config = self._load_config()
 
-    def _load_config(self) -> dict:
+    @staticmethod
+    def _normalize_rule_bucket(value: object) -> dict[str, list[str]]:
+        if not isinstance(value, dict):
+            return {}
+        normalized: dict[str, list[str]] = {}
+        for vuln_type, patterns in value.items():
+            if not isinstance(vuln_type, str) or not isinstance(patterns, list):
+                continue
+            normalized_patterns = [pattern for pattern in patterns if isinstance(pattern, str)]
+            normalized[vuln_type] = normalized_patterns
+        return normalized
+
+    def _load_config(self) -> dict[str, Any]:
         """
         加载配置文件
 
         Returns:
             配置字典
         """
-        default_config = {
+        default_config: dict[str, Any] = {
             "enabled_rules": {},  # 空字典表示启用所有规则
             "disabled_rules": {},  # 空字典表示不禁用任何规则
             "custom_rules": {},  # 自定义规则
@@ -46,9 +59,16 @@ class RuleConfig:
             try:
                 with open(self.config_path, encoding="utf-8") as f:
                     config = json.load(f)
-                    # 合并默认配置
-                    default_config.update(config)
+
+                if not isinstance(config, dict):
+                    logger.warning("规则配置格式无效（顶层不是对象），使用默认配置")
                     return default_config
+
+                return {
+                    "enabled_rules": self._normalize_rule_bucket(config.get("enabled_rules")),
+                    "disabled_rules": self._normalize_rule_bucket(config.get("disabled_rules")),
+                    "custom_rules": self._normalize_rule_bucket(config.get("custom_rules")),
+                }
             except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
                 logger.warning("加载配置文件失败: %s，使用默认配置", e)
                 return default_config

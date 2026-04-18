@@ -111,9 +111,15 @@ class ScanCache:
             with open(cache_file, encoding="utf-8") as f:
                 cache_data = json.load(f)
 
+                if not isinstance(cache_data, dict):
+                    return None
+
                 # 验证文件路径是否匹配
                 if cache_data.get("file_path") == str(file_path):
-                    return cache_data.get("findings", [])
+                    findings = cache_data.get("findings", [])
+                    if not isinstance(findings, list):
+                        return None
+                    return [finding for finding in findings if isinstance(finding, dict)]
 
         except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
             logger.warning("读取缓存失败 %s: %s", cache_file, e)

@@ -1,4 +1,4 @@
-"""
+﻿"""
 taint_analyzer.py - 污点分析器
 
 实现完整的 Source → Sink 污点分析：
@@ -36,8 +36,8 @@ try:
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
-    Parser = None
-    Node = None
+    Parser = None  # type: ignore[misc,assignment]
+    Node = None  # type: ignore[misc,assignment]
     get_language = None
 
 
@@ -913,16 +913,15 @@ class TaintAnalyzer:
     def _process_js_destructuring(self, properties: list[str], source_expr: str, line: int) -> None:
         """解构赋值：若 source_expr 为 Source 或已污染变量，则解构出的属性继承污点。"""
         src_node = self.graph.get_node_by_name(source_expr, self._current_file) or self._variables.get(source_expr)
-        source_tainted = self.registry.find_source(source_expr, self.language) is not None or (
-            src_node is not None and src_node.is_tainted
-        )
-        if source_tainted and src_node is None and self.registry.find_source(source_expr, self.language):
+        source_pattern = self.registry.find_source(source_expr, self.language)
+        source_tainted = source_pattern is not None or (src_node is not None and src_node.is_tainted)
+        if source_tainted and src_node is None and source_pattern is not None:
             src_node = self.graph.add_node(
                 name=source_expr,
                 node_type=NodeType.SOURCE,
                 file_path=self._current_file,
                 line=line,
-                source_pattern=self.registry.find_source(source_expr, self.language).name,
+                source_pattern=source_pattern.name,
                 code_snippet=source_expr,
             )
             self._variables[source_expr] = src_node
@@ -1716,7 +1715,7 @@ class TaintAnalyzer:
             return
 
         try:
-            from ..cfg import DominatorTree, build_cfg_from_ast_if_statements
+            from ..cfg.dominator_tree import DominatorTree, build_cfg_from_ast_if_statements
 
             # 用收集到的 Guard if 节点构建简化 CFG
             cfg = build_cfg_from_ast_if_statements(self._guard_if_nodes)
