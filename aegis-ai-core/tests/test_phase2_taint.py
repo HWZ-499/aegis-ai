@@ -288,6 +288,20 @@ class TestDataFlowTrackerGoJavaSources:
 
         assert not tracker.is_tainted("cfg")
 
+    def test_go_non_request_receiver_not_tainted(self):
+        """Go: logger.FormValue(...) 不应被误判为用户输入。"""
+        tracker = DataFlowTracker(language="go")
+        tracker.track_assignment("id", 'logger.FormValue("id")', line=1)
+
+        assert not tracker.is_tainted("id")
+
+    def test_java_non_request_prefix_not_tainted(self):
+        """Java: safeRequest.getParameter(...) 不应被误判为用户输入。"""
+        tracker = DataFlowTracker(language="java")
+        tracker.track_assignment("id", 'safeRequest.getParameter("id")', line=1)
+
+        assert not tracker.is_tainted("id")
+
 
 # =====================================================================
 # 2. AnalysisContext 便捷方法测试
