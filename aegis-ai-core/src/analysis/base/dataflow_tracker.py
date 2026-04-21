@@ -104,6 +104,43 @@ class DataFlowTracker:
         "request.FILES",  # Django
     ]
 
+    USER_INPUT_PATTERNS_JAVA = [
+        "request.getParameter(",
+        "request.getParameterValues(",
+        "request.getHeader(",
+        "request.getCookies(",
+        "request.getInputStream(",
+        "request.getReader(",
+        "request.getQueryString(",
+        "request.getRequestURI(",
+        "request.getPathInfo(",
+        "request.getBody(",
+        "req.getParameter(",
+        "req.getParameterValues(",
+        "req.getHeader(",
+    ]
+
+    USER_INPUT_PATTERNS_GO = [
+        "r.FormValue(",
+        "r.PostFormValue(",
+        "r.URL.Query()",
+        "req.FormValue(",
+        "req.PostFormValue(",
+        "req.URL.Query()",
+        "request.FormValue(",
+        "request.PostFormValue(",
+        "request.URL.Query()",
+        "c.Query(",
+        "c.Param(",
+        "c.PostForm(",
+        "c.DefaultQuery(",
+        "ctx.Query(",
+        "ctx.Param(",
+        "ctx.PostForm(",
+        "ctx.DefaultQuery(",
+        "ctx.BindJSON(",
+    ]
+
     # ──────────────────────────────────────────────
     # 已知 Sanitizer 函数（精确匹配，不再子串）
     # ──────────────────────────────────────────────
@@ -163,8 +200,19 @@ class DataFlowTracker:
         elif language == "python":
             self._user_input_patterns = self.USER_INPUT_PATTERNS_PY
             self._sanitizer_functions = self.SANITIZER_FUNCTIONS_PY
+        elif language == "java":
+            self._user_input_patterns = self.USER_INPUT_PATTERNS_JAVA
+            self._sanitizer_functions = self.SANITIZER_FUNCTIONS_JS | self.SANITIZER_FUNCTIONS_PY
+        elif language == "go":
+            self._user_input_patterns = self.USER_INPUT_PATTERNS_GO
+            self._sanitizer_functions = self.SANITIZER_FUNCTIONS_JS | self.SANITIZER_FUNCTIONS_PY
         else:
-            self._user_input_patterns = self.USER_INPUT_PATTERNS_JS + self.USER_INPUT_PATTERNS_PY
+            self._user_input_patterns = (
+                self.USER_INPUT_PATTERNS_JS
+                + self.USER_INPUT_PATTERNS_PY
+                + self.USER_INPUT_PATTERNS_JAVA
+                + self.USER_INPUT_PATTERNS_GO
+            )
             self._sanitizer_functions = self.SANITIZER_FUNCTIONS_JS | self.SANITIZER_FUNCTIONS_PY
 
     def reset(self) -> None:
