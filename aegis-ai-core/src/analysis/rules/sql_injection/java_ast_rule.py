@@ -80,9 +80,11 @@ class JavaSQLInjectionAstRule(SecurityRule):
             languages=["java"],
         )
         self._reported_lines: set[int] = set()
+        self._var_assignments: dict[str, Any] = {}
 
     def before_file(self, context: AnalysisContext) -> None:
         self._reported_lines = set()
+        self._var_assignments = {}
 
     def visit(self, node: Any, context: AnalysisContext) -> None:
         """
@@ -90,6 +92,12 @@ class JavaSQLInjectionAstRule(SecurityRule):
         """
         if not TREE_SITTER_AVAILABLE or not isinstance(node, Node):
             return
+
+        # 0. 跟踪局部变量赋值（用于 identifier 参数回溯）
+        if node.type == "local_variable_declaration":
+            self._track_local_variable_declaration(node)
+        elif node.type == "assignment_expression":
+            self._track_assignment_expression(node)
 
         # 1. 检测方法调用中的 SQL 拼接
         if node.type == "method_invocation":
@@ -130,10 +138,63 @@ class JavaSQLInjectionAstRule(SecurityRule):
         if first_arg.type == "binary_expression":
             if self._has_sql_concat_with_input(first_arg, context):
                 self._report(node, context, method_name)
+        elif first_arg.type == "method_invocation":
+            if self._is_string_format_sql_with_input(first_arg, context):
+                self._report(node, context, method_name)
         elif first_arg.type == "identifier":
+            assigned_expr = self._resolve_identifier_expr(first_arg)
+
+            # 优先识别参数化查询，避免 taint graph 过度标记导致的误报
+            if assigned_expr is not None and self._is_parameterized_query(assigned_expr):
+                return
+
             # 变量传入 — 检查是否被污点标记
             if is_user_input_node(first_arg, context, language="java"):
                 self._report(node, context, method_name)
+                return
+
+            if assigned_expr is None:
+                return
+
+            if assigned_expr.type == "binary_expression":
+                if self._has_sql_concat_with_input(assigned_expr, context):
+                    self._report(node, context, method_name)
+                return
+
+            if assigned_expr.type == "method_invocation":
+                if self._is_string_format_sql_with_input(assigned_expr, context):
+                    self._report(node, context, method_name)
+                return
+
+            text = (self._get_node_text(assigned_expr) or "").lower()
+            if any(kw in text for kw in _SQL_KEYWORDS) and self._subtree_has_user_input(assigned_expr, context):
+                self._report(node, context, method_name)
+
+    def _is_string_format_sql_with_input(self, node: Any, context: AnalysisContext) -> bool:
+        """检测 String.format(\"SELECT ... %s\", request.getParameter(...)) 模式。"""
+        if getattr(node, "type", "") != "method_invocation":
+            return False
+
+        method_name = self._get_method_name(node)
+        if method_name != "format":
+            return False
+
+        args = self._get_arguments(node)
+        if len(args) < 2:
+            return False
+
+        format_arg_text = self._get_node_text(args[0]) or ""
+        format_lower = format_arg_text.lower()
+        if not any(kw in format_lower for kw in _SQL_KEYWORDS):
+            return False
+
+        if "%" not in format_arg_text:
+            return False
+
+        for arg in args[1:]:
+            if self._subtree_has_user_input(arg, context):
+                return True
+        return False
 
     def _check_string_concatenation(self, node: Any, context: AnalysisContext) -> None:
         """检测独立的 SQL 字符串拼接（不在方法调用内时作为补充检测）。"""
@@ -269,18 +330,11 @@ class JavaSQLInjectionAstRule(SecurityRule):
     @staticmethod
     def _get_method_name(node: Any) -> str | None:
         """从 method_invocation 节点提取方法名。"""
-        for child in node.children:
-            if child.type == "identifier":
-                text = child.text
-                return text.decode("utf-8") if isinstance(text, bytes) else str(text)
-        # 可能是 obj.method 形式
-        for child in node.children:
-            if child.type == "member_expression" or child.type == ".":
-                continue
-            if child.type == "identifier":
-                text = child.text
-                return text.decode("utf-8") if isinstance(text, bytes) else str(text)
-        return None
+        identifiers = [child for child in node.children if getattr(child, "type", "") == "identifier"]
+        if not identifiers:
+            return None
+        text = identifiers[-1].text
+        return text.decode("utf-8") if isinstance(text, bytes) else str(text)
 
     @staticmethod
     def _get_receiver_name(node: Any) -> str | None:
@@ -319,12 +373,115 @@ class JavaSQLInjectionAstRule(SecurityRule):
 
     def _subtree_has_user_input(self, node: Any, context: AnalysisContext) -> bool:
         """递归检查子树中是否包含用户输入节点。"""
+        if getattr(node, "type", "") == "method_invocation":
+            if self._is_java_user_input_call(node):
+                return True
+            # method_invocation 下避免把 receiver 标识符（如 request）直接当作用户输入；
+            # 只递归参数列表，减少 getAttribute 等场景误报。
+            for arg in self._get_arguments(node):
+                if self._subtree_has_user_input(arg, context):
+                    return True
+            return False
+
         if is_user_input_node(node, context, language="java"):
             return True
         for child in getattr(node, "children", []) or []:
             if self._subtree_has_user_input(child, context):
                 return True
         return False
+
+    def _is_java_user_input_call(self, node: Any) -> bool:
+        receiver = self._get_receiver_name(node)
+        method_name = self._get_method_name(node)
+        if receiver not in ("request", "req") or method_name is None:
+            return False
+        return method_name in {
+            "getParameter",
+            "getParameterValues",
+            "getHeader",
+            "getCookies",
+            "getInputStream",
+            "getReader",
+            "getQueryString",
+            "getRequestURI",
+            "getPathInfo",
+            "getBody",
+        }
+
+    def _resolve_identifier_expr(self, node: Any) -> Any | None:
+        if getattr(node, "type", "") != "identifier":
+            return None
+        var_name = self._get_node_text(node) or ""
+        if not var_name:
+            return None
+        return self._resolve_var_expr(var_name, set())
+
+    def _resolve_var_expr(self, var_name: str, seen_vars: set[str]) -> Any | None:
+        if var_name in seen_vars:
+            return None
+        seen_vars.add(var_name)
+
+        expr = self._var_assignments.get(var_name)
+        if expr is None:
+            return None
+
+        if getattr(expr, "type", "") == "identifier":
+            nested_name = self._get_node_text(expr) or ""
+            if nested_name:
+                nested = self._resolve_var_expr(nested_name, seen_vars)
+                if nested is not None:
+                    return nested
+
+        return expr
+
+    def _track_local_variable_declaration(self, node: Any) -> None:
+        for declarator in getattr(node, "children", []) or []:
+            if getattr(declarator, "type", "") != "variable_declarator":
+                continue
+
+            var_name: str | None = None
+            expr_node: Any | None = None
+            seen_equal = False
+
+            for child in getattr(declarator, "children", []) or []:
+                ctype = getattr(child, "type", "")
+                if ctype == "identifier" and var_name is None:
+                    var_name = self._get_node_text(child) or None
+                    continue
+                if ctype == "=":
+                    seen_equal = True
+                    continue
+                if seen_equal:
+                    expr_node = child
+                    break
+
+            if var_name and expr_node is not None:
+                self._var_assignments[var_name] = expr_node
+
+    def _track_assignment_expression(self, node: Any) -> None:
+        left_node: Any | None = None
+        right_node: Any | None = None
+        seen_equal = False
+
+        for child in getattr(node, "children", []) or []:
+            ctype = getattr(child, "type", "")
+            if ctype == "=":
+                seen_equal = True
+                continue
+            if not seen_equal and ctype == "identifier":
+                left_node = child
+                continue
+            if seen_equal:
+                right_node = child
+                break
+
+        if left_node is None or right_node is None:
+            return
+
+        name = self._get_node_text(left_node) or ""
+        if not name:
+            return
+        self._var_assignments[name] = right_node
 
     def _collect_identifiers(self, node: Any) -> list[str]:
         """收集子树中所有 identifier 文本。"""
