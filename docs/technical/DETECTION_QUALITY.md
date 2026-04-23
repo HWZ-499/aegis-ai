@@ -133,3 +133,23 @@ Ground-truth 格式：每项 `{"file": str, "line": int, "type": str}`，`file` 
 - 验收测试与阈值：`tests/test_acceptance_benchmark.py`  
 - 产品验证总览：`docs/VERIFICATION_GUIDE.md`  
 - TDD 12.2 里程碑 M3：`docs/technical/TECHNICAL_DESIGN_DOCUMENT.md`  
+
+---
+
+## 8. 最新阶段收口快照（2026-04-23）
+
+本轮多阶段收口报告已落盘：
+
+- `aegis-ai-core/reports/phase_summary_2026-04-23.md`
+
+本次统一质量门结果：
+
+- `aegis-ai-core`:
+  - `python -m ruff check src tests` 通过
+  - `python -m mypy src --hide-error-context --no-color-output` 通过
+  - `python -m pytest -q` 通过（`469 passed, 47 deselected, 1 xfailed`）
+- `aegis-vscode`:
+  - `npm run check` 通过
+  - `npm test` 通过（`27 passing`）
+
+建议后续继续按“规则样例 + 真实项目 ground-truth”双轨维护，避免仅在样例集上指标乐观。
