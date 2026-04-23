@@ -60,6 +60,12 @@ _GO_USER_INPUT_CALL_RE = re.compile(
     r"|\b(?:r|req|request)\.URL\.Query\s*\("
 )
 
+_GO_PARAMETERIZED_CALL_RE = re.compile(
+    r"\.(?:Query|QueryContext|QueryRow|QueryRowContext|Exec|ExecContext)\s*"
+    r"\(\s*[`\"](?:[^`\"\\]|\\.)*(?:\?|\$\d+)(?:[^`\"\\]|\\.)*[`\"]\s*,",
+    re.IGNORECASE,
+)
+
 
 class GoSQLInjectionAstRule(SecurityRule):
     """
@@ -254,6 +260,11 @@ class GoSQLInjectionAstRule(SecurityRule):
             reported_sinks.add(sink_id)
             src_expr = getattr(source, "name", "") or getattr(source, "code_snippet", "")
             sink_expr = getattr(sink, "name", "") or getattr(sink, "code_snippet", "")
+
+            # 参数化查询（占位符 + 绑定参数）应视为安全路径，避免兜底误报
+            if self._is_safe_parameterized_sink(line_no, sink_expr, context):
+                continue
+
             finding: dict[str, Any] = {
                 "type": "SQL_INJECTION",
                 "rule_id": self.rule_id,
@@ -267,6 +278,25 @@ class GoSQLInjectionAstRule(SecurityRule):
                 "sink_expr": sink_expr,
             }
             context.add_finding(finding)
+
+    def _is_safe_parameterized_sink(self, line_no: int, sink_expr: str, context: AnalysisContext) -> bool:
+        source_code = context.extras.get("source") or ""
+        if source_code:
+            lines = source_code.splitlines()
+            if 1 <= line_no <= len(lines):
+                line_text = lines[line_no - 1]
+                if self._looks_like_parameterized_query_call(line_text):
+                    return True
+
+        return self._looks_like_parameterized_query_call(sink_expr)
+
+    @staticmethod
+    def _looks_like_parameterized_query_call(text: str) -> bool:
+        if not text:
+            return False
+        if "+" in text:
+            return False
+        return bool(_GO_PARAMETERIZED_CALL_RE.search(text))
 
     # ------------------------------------------------------------------
     # 辅助方法

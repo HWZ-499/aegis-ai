@@ -79,13 +79,22 @@ class JavaDeserializationAstRule(SecurityRule):
             languages=["java"],
         )
         self._reported_lines: set[int] = set()
+        self._var_assignments: dict[str, Any] = {}
 
     def before_file(self, context: AnalysisContext) -> None:
         self._reported_lines = set()
+        self._var_assignments = {}
 
     def visit(self, node: Any, context: AnalysisContext) -> None:
         if not TREE_SITTER_AVAILABLE or not isinstance(node, Node):
             return
+
+        if node.type == "local_variable_declaration":
+            self._track_local_variable_declaration(node)
+        elif node.type == "resource":
+            self._track_resource_assignment(node)
+        elif node.type == "assignment_expression":
+            self._track_assignment_expression(node)
 
         if node.type == "method_invocation":
             self._check_method_invocation(node, context)
@@ -117,15 +126,20 @@ class JavaDeserializationAstRule(SecurityRule):
         method_name: str,
     ) -> None:
         """检测 ObjectInputStream.readObject() 等无条件危险方法。"""
-        full_text = self._get_node_text(node) or ""
-        full_lower = full_text.lower()
+        receiver = self._get_receiver_name(node)
+        if receiver is None:
+            return
 
-        # 确认 receiver 是已知的危险类型
-        if not any(recv in full_lower for recv in _DANGEROUS_RECEIVERS):
+        # 确认 receiver 是已知的危险类型（变量名或赋值表达式）
+        if not self._is_dangerous_receiver(node, receiver):
             return
 
         # 检查是否存在安全过滤措施
-        if any(s in full_text for s in _SANITIZERS):
+        if self._receiver_has_sanitizer(receiver):
+            return
+
+        # 仅在可判定为不可信输入上下文时报告，降低本地安全数据样例误报
+        if not self._receiver_from_untrusted_source(receiver, context):
             return
 
         self._report(node, context, method_name)
@@ -268,10 +282,18 @@ class JavaDeserializationAstRule(SecurityRule):
 
     @staticmethod
     def _get_method_name(node: Any) -> str | None:
-        for child in node.children:
-            if child.type == "identifier":
-                text = child.text
-                return text.decode("utf-8") if isinstance(text, bytes) else str(text)
+        identifiers = [child for child in node.children if getattr(child, "type", "") == "identifier"]
+        if not identifiers:
+            return None
+        text = identifiers[-1].text
+        return text.decode("utf-8") if isinstance(text, bytes) else str(text)
+
+    @staticmethod
+    def _get_receiver_name(node: Any) -> str | None:
+        children = list(node.children)
+        if len(children) >= 3 and children[1].type == "." and children[0].type == "identifier":
+            text = children[0].text
+            return text.decode("utf-8") if isinstance(text, bytes) else str(text)
         return None
 
     @staticmethod
@@ -298,6 +320,155 @@ class JavaDeserializationAstRule(SecurityRule):
         for child in getattr(node, "children", []) or []:
             result.extend(self._collect_identifiers(child))
         return result
+
+    def _is_dangerous_receiver(self, node: Any, receiver: str) -> bool:
+        receiver_lower = receiver.lower()
+        if receiver_lower in _DANGEROUS_RECEIVERS:
+            return True
+
+        full_lower = (self._get_node_text(node) or "").lower()
+        if any(recv in full_lower for recv in _DANGEROUS_RECEIVERS):
+            return True
+
+        assigned_expr = self._resolve_var_expr(receiver, set())
+        if assigned_expr is None:
+            return False
+        assigned_lower = (self._get_node_text(assigned_expr) or "").lower()
+        return "objectinputstream" in assigned_lower or "xmldecoder" in assigned_lower
+
+    def _receiver_has_sanitizer(self, receiver: str) -> bool:
+        assigned_expr = self._resolve_var_expr(receiver, set())
+        if assigned_expr is None:
+            return False
+        assigned_text = self._get_node_text(assigned_expr) or ""
+        return any(s in assigned_text for s in _SANITIZERS)
+
+    def _receiver_from_untrusted_source(self, receiver: str, context: AnalysisContext) -> bool:
+        assigned_expr = self._resolve_var_expr(receiver, set())
+        if assigned_expr is None:
+            return self._file_has_java_user_input(context)
+
+        assigned_text = self._get_node_text(assigned_expr) or ""
+        assigned_lower = assigned_text.lower()
+
+        if "bytearrayinputstream" in assigned_lower:
+            # ByteArrayInputStream 仅在文件中存在明确用户输入来源时视为风险
+            return self._file_has_java_user_input(context)
+
+        if "getinputstream(" in assigned_lower:
+            return True
+
+        if "socket" in assigned_lower and "inputstream" in assigned_lower:
+            return True
+
+        return self._subtree_has_user_input(assigned_expr, context)
+
+    @staticmethod
+    def _file_has_java_user_input(context: AnalysisContext) -> bool:
+        source_code = context.extras.get("source") or ""
+        if not source_code:
+            return False
+        patterns = (
+            "request.getParameter(",
+            "req.getParameter(",
+            "request.getHeader(",
+            "request.getInputStream(",
+            "request.getReader(",
+            "request.getQueryString(",
+            "request.getRequestURI(",
+            "request.getPathInfo(",
+            "request.getBody(",
+        )
+        source_lower = source_code.lower()
+        return any(p.lower() in source_lower for p in patterns)
+
+    def _track_local_variable_declaration(self, node: Any) -> None:
+        for child in getattr(node, "children", []) or []:
+            if getattr(child, "type", "") == "variable_declarator":
+                self._track_declarator(child)
+
+    def _track_resource_assignment(self, node: Any) -> None:
+        var_name: str | None = None
+        expr_node: Any | None = None
+        seen_equal = False
+
+        for child in getattr(node, "children", []) or []:
+            ctype = getattr(child, "type", "")
+            if ctype == "identifier" and var_name is None:
+                var_name = self._get_node_text(child) or None
+                continue
+            if ctype == "=":
+                seen_equal = True
+                continue
+            if seen_equal:
+                expr_node = child
+                break
+
+        if var_name and expr_node is not None:
+            self._var_assignments[var_name] = expr_node
+
+    def _track_declarator(self, declarator: Any) -> None:
+        var_name: str | None = None
+        expr_node: Any | None = None
+        seen_equal = False
+
+        for child in getattr(declarator, "children", []) or []:
+            ctype = getattr(child, "type", "")
+            if ctype == "identifier" and var_name is None:
+                var_name = self._get_node_text(child) or None
+                continue
+            if ctype == "=":
+                seen_equal = True
+                continue
+            if seen_equal:
+                expr_node = child
+                break
+
+        if var_name and expr_node is not None:
+            self._var_assignments[var_name] = expr_node
+
+    def _track_assignment_expression(self, node: Any) -> None:
+        left_node: Any | None = None
+        right_node: Any | None = None
+        seen_equal = False
+
+        for child in getattr(node, "children", []) or []:
+            ctype = getattr(child, "type", "")
+            if ctype == "=":
+                seen_equal = True
+                continue
+            if not seen_equal and ctype == "identifier":
+                left_node = child
+                continue
+            if seen_equal:
+                right_node = child
+                break
+
+        if left_node is None or right_node is None:
+            return
+
+        name = self._get_node_text(left_node) or ""
+        if not name:
+            return
+        self._var_assignments[name] = right_node
+
+    def _resolve_var_expr(self, var_name: str, seen_vars: set[str]) -> Any | None:
+        if var_name in seen_vars:
+            return None
+        seen_vars.add(var_name)
+
+        expr = self._var_assignments.get(var_name)
+        if expr is None:
+            return None
+
+        if getattr(expr, "type", "") == "identifier":
+            nested_name = self._get_node_text(expr) or ""
+            if nested_name:
+                nested = self._resolve_var_expr(nested_name, seen_vars)
+                if nested is not None:
+                    return nested
+
+        return expr
 
     def _report(self, node: Any, context: AnalysisContext, method_name: str) -> None:
         line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
