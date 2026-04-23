@@ -535,7 +535,7 @@ class RAGEnhancer:
             timeout_seconds: RAG 检索超时秒数（TDD 10.2），超时则仅跳过 RAG 不阻塞
         """
         self.use_rag = use_rag
-        self.collection = None
+        self.collection: Any | None = None
         self.timeout_seconds = max(0.1, float(timeout_seconds))
 
         if use_rag and db_path:

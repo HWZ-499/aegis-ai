@@ -1,4 +1,4 @@
-"""
+﻿"""
 cross_file_analyzer.py - 跨文件依赖图分析器
 
 实现跨文件的模块依赖关系解析：
@@ -31,8 +31,8 @@ try:
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
-    Parser = None
-    Node = None
+    Parser = None  # type: ignore[misc,assignment]
+    Node = None  # type: ignore[misc,assignment]
     get_language = None
 
 logger = logging.getLogger(__name__)

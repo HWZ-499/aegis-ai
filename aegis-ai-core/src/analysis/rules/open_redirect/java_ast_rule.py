@@ -36,6 +36,22 @@ _REDIRECT_METHODS = frozenset(["sendRedirect"])
 # setHeader 中的重定向 header 名
 _REDIRECT_HEADERS = frozenset(["location", "refresh"])
 
+# Java 用户输入方法（用于 method_invocation 边界匹配）
+_JAVA_USER_INPUT_METHODS = frozenset(
+    [
+        "getParameter",
+        "getParameterValues",
+        "getHeader",
+        "getCookies",
+        "getInputStream",
+        "getReader",
+        "getQueryString",
+        "getRequestURI",
+        "getPathInfo",
+        "getBody",
+    ]
+)
+
 
 class JavaOpenRedirectAstRule(SecurityRule):
     """
@@ -148,10 +164,18 @@ class JavaOpenRedirectAstRule(SecurityRule):
 
     @staticmethod
     def _get_method_name(node: Any) -> str | None:
-        for child in node.children:
-            if child.type == "identifier":
-                text = child.text
-                return text.decode("utf-8") if isinstance(text, bytes) else str(text)
+        identifiers = [child for child in node.children if getattr(child, "type", "") == "identifier"]
+        if not identifiers:
+            return None
+        text = identifiers[-1].text
+        return text.decode("utf-8") if isinstance(text, bytes) else str(text)
+
+    @staticmethod
+    def _get_receiver_name(node: Any) -> str | None:
+        children = list(node.children)
+        if len(children) >= 3 and children[1].type == "." and children[0].type == "identifier":
+            text = children[0].text
+            return text.decode("utf-8") if isinstance(text, bytes) else str(text)
         return None
 
     @staticmethod
@@ -162,12 +186,29 @@ class JavaOpenRedirectAstRule(SecurityRule):
         return []
 
     def _subtree_has_user_input(self, node: Any, context: AnalysisContext) -> bool:
+        if getattr(node, "type", "") == "method_invocation":
+            if self._is_java_user_input_call(node):
+                return True
+            # method_invocation 下避免把 receiver 标识符（如 request）直接当作用户输入；
+            # 仅递归参数列表，降低 request.getAttribute(...) 等误报风险。
+            for arg in self._get_arguments(node):
+                if self._subtree_has_user_input(arg, context):
+                    return True
+            return False
+
         if is_user_input_node(node, context, language="java"):
             return True
         for child in getattr(node, "children", []) or []:
             if self._subtree_has_user_input(child, context):
                 return True
         return False
+
+    def _is_java_user_input_call(self, node: Any) -> bool:
+        receiver = self._get_receiver_name(node)
+        method_name = self._get_method_name(node)
+        if receiver not in ("request", "req") or method_name is None:
+            return False
+        return method_name in _JAVA_USER_INPUT_METHODS
 
     def _report(self, node: Any, context: AnalysisContext, method_name: str) -> None:
         line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0

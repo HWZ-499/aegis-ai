@@ -246,14 +246,14 @@ class JavaDeserializationAstRule(SecurityRule):
                 "检测到 Java 代码中存在 ObjectInputStream.readObject 调用，且同一文件中存在用户输入来源，"
                 "建议确认反序列化的数据是否经过严格验证或改用 JSON 等安全格式。"
             )
-            finding: dict[str, Any] = {
+            fallback_finding: dict[str, Any] = {
                 "type": "DESERIALIZATION",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
                 "line": line_no,
                 "details": details,
             }
-            context.add_finding(finding)
+            context.add_finding(fallback_finding)
             break
 
     # ------------------------------------------------------------------

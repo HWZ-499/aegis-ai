@@ -257,6 +257,52 @@ class TestDataFlowTrackerConcatPropagation:
         assert not tracker.is_tainted("query")
 
 
+class TestDataFlowTrackerGoJavaSources:
+    """Go / Java Source 模式覆盖。"""
+
+    def test_go_formvalue_assignment_tainted(self):
+        """Go: id := r.FormValue(\"id\") 应被识别为用户输入。"""
+        tracker = DataFlowTracker(language="go")
+        tracker.track_assignment("id", 'r.FormValue("id")', line=1)
+
+        assert tracker.is_tainted("id")
+
+    def test_go_url_query_assignment_tainted(self):
+        """Go: id := req.URL.Query().Get(\"id\") 应被识别为用户输入。"""
+        tracker = DataFlowTracker(language="go")
+        tracker.track_assignment("id", 'req.URL.Query().Get("id")', line=1)
+
+        assert tracker.is_tainted("id")
+
+    def test_java_getparameter_assignment_tainted(self):
+        """Java: id = request.getParameter(\"id\") 应被识别为用户输入。"""
+        tracker = DataFlowTracker(language="java")
+        tracker.track_assignment("id", 'request.getParameter("id")', line=1)
+
+        assert tracker.is_tainted("id")
+
+    def test_java_non_input_getter_not_tainted(self):
+        """Java: request.getSetting(...) 不应被误判为用户输入。"""
+        tracker = DataFlowTracker(language="java")
+        tracker.track_assignment("cfg", 'request.getSetting("theme")', line=1)
+
+        assert not tracker.is_tainted("cfg")
+
+    def test_go_non_request_receiver_not_tainted(self):
+        """Go: logger.FormValue(...) 不应被误判为用户输入。"""
+        tracker = DataFlowTracker(language="go")
+        tracker.track_assignment("id", 'logger.FormValue("id")', line=1)
+
+        assert not tracker.is_tainted("id")
+
+    def test_java_non_request_prefix_not_tainted(self):
+        """Java: safeRequest.getParameter(...) 不应被误判为用户输入。"""
+        tracker = DataFlowTracker(language="java")
+        tracker.track_assignment("id", 'safeRequest.getParameter("id")', line=1)
+
+        assert not tracker.is_tainted("id")
+
+
 # =====================================================================
 # 2. AnalysisContext 便捷方法测试
 # =====================================================================

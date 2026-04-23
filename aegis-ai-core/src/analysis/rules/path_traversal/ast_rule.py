@@ -89,6 +89,7 @@ _SANITIZE_ATTRS = frozenset(
 
 # ── 用户输入来源 ────────────────────────────────────────────────────────
 _USER_INPUT_OBJS = frozenset(["request", "req"])
+_ENV_SOURCE_TYPES = frozenset(["os_environ", "process_env", "env", "environment"])
 _USER_INPUT_ATTRS = frozenset(
     [
         "form",
@@ -108,9 +109,28 @@ _USER_INPUT_ATTRS = frozenset(
 )
 
 
+def _is_os_path_join_call(func: ast.Attribute) -> bool:
+    """
+    仅识别 os.path.join(...)，避免把 "".join(...) 误判为路径构造。
+    """
+    if func.attr != "join":
+        return False
+    owner = func.value
+    if not isinstance(owner, ast.Attribute):
+        return False
+    return isinstance(owner.value, ast.Name) and owner.value.id == "os" and owner.attr == "path"
+
+
 def _collect_names(node: ast.AST) -> list[str]:
     """收集节点子树中所有 Name.id。"""
     return [n.id for n in ast.walk(node) if isinstance(n, ast.Name)]
+
+
+def _is_env_taint_source(context: AnalysisContext, var_name: str) -> bool:
+    """变量污点来源是否为环境变量。"""
+    source = context.get_taint_source(var_name)
+    source_type = getattr(source, "source_type", "") if source is not None else ""
+    return source_type in _ENV_SOURCE_TYPES
 
 
 def _is_sanitized_node(node: ast.AST) -> bool:
@@ -138,8 +158,13 @@ def _is_user_input_node(node: ast.AST, context: AnalysisContext | None = None) -
     """
     if context is not None:
         names = _collect_names(node)
-        if names and any(context.is_var_tainted(n) for n in names):
-            return True
+        if names:
+            tainted_names = [n for n in names if context.is_var_tainted(n)]
+            if tainted_names:
+                # 运维环境变量来源不按远程用户输入处理。
+                if all(_is_env_taint_source(context, n) for n in tainted_names):
+                    return False
+                return True
         if names and all(context.has_tracked_var(n) for n in names):
             return False
 
@@ -229,6 +254,8 @@ class PythonPathTraversalAstRule(SecurityRule):
         if isinstance(func, ast.Attribute):
             attr = func.attr
             if attr in _PATH_CONSTRUCT_FUNCS:
+                if not _is_os_path_join_call(func):
+                    return
                 # os.path.join(base, user_input) → 检查最后一个参数（目录遍历入口）
                 self._check_path_args(node, context, f"os.path.{attr}", arg_index=-1)
             elif attr in _SINK_METHODS:

@@ -46,7 +46,8 @@ def current_memory_mb() -> float:
     try:
         import psutil
 
-        return psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
+        rss_bytes = psutil.Process(os.getpid()).memory_info().rss
+        return float(rss_bytes) / (1024 * 1024)
     except (ImportError, OSError):
         return 0.0
 

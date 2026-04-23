@@ -14,6 +14,7 @@ Go SQL 注入 AST/污点规则。
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ...base import (
@@ -53,6 +54,12 @@ _SQL_EXEC_METHODS = frozenset(
     ]
 )
 
+# Go 常见用户输入调用（用于 AST 本地传播）
+_GO_USER_INPUT_CALL_RE = re.compile(
+    r"\b(?:r|req|request)\.(?:FormValue|PostFormValue)\s*\("
+    r"|\b(?:r|req|request)\.URL\.Query\s*\("
+)
+
 
 class GoSQLInjectionAstRule(SecurityRule):
     """
@@ -66,9 +73,11 @@ class GoSQLInjectionAstRule(SecurityRule):
             languages=["go"],
         )
         self._reported_lines: set[int] = set()
+        self._var_assignments: dict[str, Any] = {}
 
     def before_file(self, context: AnalysisContext) -> None:
         self._reported_lines = set()
+        self._var_assignments = {}
 
     def visit(self, node: Any, context: AnalysisContext) -> None:
         """
@@ -76,6 +85,12 @@ class GoSQLInjectionAstRule(SecurityRule):
         """
         if not TREE_SITTER_AVAILABLE or not isinstance(node, Node):
             return
+
+        # 0. 跟踪局部变量赋值（用于 identifier 参数回溯）
+        if node.type in ("short_var_declaration", "assignment_statement"):
+            self._track_expr_list_assignment(node)
+        elif node.type == "var_spec":
+            self._track_var_spec_assignment(node)
 
         # 1. 检测函数/方法调用
         if node.type == "call_expression":
@@ -123,28 +138,56 @@ class GoSQLInjectionAstRule(SecurityRule):
         elif first_arg.type == "identifier":
             if is_user_input_node(first_arg, context, language="go"):
                 self._report(node, context, func_name)
+                return
+
+            assigned_expr = self._resolve_identifier_expr(first_arg)
+            if assigned_expr is None:
+                return
+
+            if self._is_parameterized_query(assigned_expr):
+                return
+
+            if assigned_expr.type == "binary_expression":
+                if self._has_sql_concat_with_input(assigned_expr, context):
+                    self._report(node, context, func_name)
+                return
+
+            if assigned_expr.type == "call_expression":
+                inner_func = self._get_func_name(assigned_expr)
+                if inner_func == "Sprintf" and self._is_sprintf_sql_with_input(assigned_expr, context):
+                    self._report(node, context, func_name)
+                return
+
+            text = (self._get_node_text(assigned_expr) or "").lower()
+            if any(kw in text for kw in _SQL_KEYWORDS) and self._subtree_has_user_input(assigned_expr, context):
+                self._report(node, context, func_name)
 
     def _check_sprintf_sql(self, node: Any, context: AnalysisContext) -> None:
         """检测 fmt.Sprintf("SELECT...%s", userInput) 模式。"""
+        if self._is_sprintf_sql_with_input(node, context):
+            self._report(node, context, "fmt.Sprintf → SQL")
+
+    def _is_sprintf_sql_with_input(self, node: Any, context: AnalysisContext) -> bool:
+        """判断 fmt.Sprintf 是否在构造包含用户输入的 SQL。"""
         args = self._get_arguments(node)
         if len(args) < 2:
-            return
+            return False
 
         # 第一个参数必须是含 SQL 关键词的格式字符串
         format_str = self._get_node_text(args[0]) or ""
         format_lower = format_str.lower()
         if not any(kw in format_lower for kw in _SQL_KEYWORDS):
-            return
+            return False
 
         # 含 %s / %v 等格式化占位符
         if "%s" not in format_str and "%v" not in format_str and "%d" not in format_str:
-            return
+            return False
 
         # 后续参数中是否有用户输入
         for arg in args[1:]:
             if self._subtree_has_user_input(arg, context):
-                self._report(node, context, "fmt.Sprintf → SQL")
-                return
+                return True
+        return False
 
     def _check_string_concatenation(self, node: Any, context: AnalysisContext) -> None:
         """检测独立的 SQL 字符串拼接。"""
@@ -283,13 +326,107 @@ class GoSQLInjectionAstRule(SecurityRule):
             return False
         return self._subtree_has_user_input(node, context)
 
-    def _subtree_has_user_input(self, node: Any, context: AnalysisContext) -> bool:
+    def _subtree_has_user_input(
+        self,
+        node: Any,
+        context: AnalysisContext,
+        seen_vars: set[str] | None = None,
+    ) -> bool:
+        seen_vars = seen_vars or set()
+
         if is_user_input_node(node, context, language="go"):
             return True
+
+        if self._looks_like_go_user_input_expr(node):
+            return True
+
+        if getattr(node, "type", "") == "identifier":
+            var_name = self._get_node_text(node) or ""
+            if var_name and var_name not in seen_vars:
+                seen_vars.add(var_name)
+                assigned_expr = self._var_assignments.get(var_name)
+                if assigned_expr is not None and self._subtree_has_user_input(assigned_expr, context, seen_vars):
+                    return True
+
         for child in getattr(node, "children", []) or []:
-            if self._subtree_has_user_input(child, context):
+            if self._subtree_has_user_input(child, context, seen_vars):
                 return True
         return False
+
+    def _resolve_identifier_expr(self, node: Any) -> Any | None:
+        if getattr(node, "type", "") != "identifier":
+            return None
+        var_name = self._get_node_text(node) or ""
+        if not var_name:
+            return None
+        return self._resolve_var_expr(var_name, set())
+
+    def _resolve_var_expr(self, var_name: str, seen_vars: set[str]) -> Any | None:
+        if var_name in seen_vars:
+            return None
+        seen_vars.add(var_name)
+
+        expr = self._var_assignments.get(var_name)
+        if expr is None:
+            return None
+
+        if getattr(expr, "type", "") == "identifier":
+            nested_name = self._get_node_text(expr) or ""
+            if nested_name:
+                nested = self._resolve_var_expr(nested_name, seen_vars)
+                if nested is not None:
+                    return nested
+
+        return expr
+
+    def _track_expr_list_assignment(self, node: Any) -> None:
+        expr_lists = [c for c in node.children if getattr(c, "type", "") == "expression_list"]
+        if len(expr_lists) < 2:
+            return
+
+        left_nodes = [c for c in expr_lists[0].children if getattr(c, "type", "") == "identifier"]
+        right_nodes = [c for c in expr_lists[1].children if getattr(c, "type", "") != ","]
+        if not left_nodes or not right_nodes:
+            return
+
+        for idx, left in enumerate(left_nodes):
+            if idx >= len(right_nodes):
+                break
+            name = self._get_node_text(left) or ""
+            if not name:
+                continue
+            self._var_assignments[name] = right_nodes[idx]
+
+    def _track_var_spec_assignment(self, node: Any) -> None:
+        left_names: list[str] = []
+        right_nodes: list[Any] = []
+        seen_values = False
+
+        for child in node.children:
+            ctype = getattr(child, "type", "")
+            if ctype == "expression_list" and not seen_values:
+                right_nodes = [c for c in child.children if getattr(c, "type", "") != ","]
+                seen_values = True
+                continue
+
+            if not seen_values and ctype == "identifier":
+                name = self._get_node_text(child) or ""
+                if name:
+                    left_names.append(name)
+
+        if not left_names or not right_nodes:
+            return
+
+        for idx, name in enumerate(left_names):
+            if idx >= len(right_nodes):
+                break
+            self._var_assignments[name] = right_nodes[idx]
+
+    def _looks_like_go_user_input_expr(self, node: Any) -> bool:
+        text = self._get_node_text(node) or ""
+        if not text:
+            return False
+        return bool(_GO_USER_INPUT_CALL_RE.search(text))
 
     def _collect_identifiers(self, node: Any) -> list[str]:
         result: list[str] = []

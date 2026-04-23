@@ -73,7 +73,7 @@ def _get_str_value(node: ast.AST) -> str | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     if isinstance(node, ast.Str):  # Python < 3.8
-        return node.s
+        return node.s if isinstance(node.s, str) else None
     return None
 
 
@@ -369,7 +369,7 @@ class PythonSQLInjectionAstRule(SecurityRule):
     def _flatten_binop(node: ast.BinOp) -> list[ast.AST]:
         """展开连续的 + 拼接，返回所有叶节点。"""
         result: list[ast.AST] = []
-        stack = [node]
+        stack: list[ast.AST] = [node]
         while stack:
             cur = stack.pop()
             if isinstance(cur, ast.BinOp) and isinstance(cur.op, (ast.Add, ast.Mod)):

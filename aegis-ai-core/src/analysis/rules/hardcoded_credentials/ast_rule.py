@@ -134,7 +134,7 @@ def _extract_str_value(node: ast.AST) -> str | None:
         if isinstance(node.value, (str, int, float)):
             return str(node.value)
     if isinstance(node, ast.Str):  # Python 3.7 兼容
-        return node.s
+        return node.s if isinstance(node.s, str) else None
     return None
 
 

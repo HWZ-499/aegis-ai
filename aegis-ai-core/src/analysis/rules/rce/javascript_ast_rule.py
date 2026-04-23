@@ -1,4 +1,4 @@
-"""
+﻿"""
 rce.javascript_ast_rule
 
 JavaScript/TypeScript RCE（远程代码执行 / 命令执行）AST 规则。
@@ -31,7 +31,7 @@ try:
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
-    Node = Any
+    Node = Any  # type: ignore[misc,assignment]
 
 
 class JavaScriptRCEAstRule(SecurityRule):
@@ -110,15 +110,15 @@ class JavaScriptRCEAstRule(SecurityRule):
         # 3. vm.runInNewContext() - Node.js VM 模块（代码执行）
         if object_name == "vm" and method_name in ("runInNewContext", "runInContext", "runInThisContext"):
             line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-            finding: dict[str, Any] = {
+            vm_finding: dict[str, Any] = {
                 "type": "RCE_COMMAND_EXEC",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
                 "line": line_no,
                 "details": f"JavaScript AST: 发现 vm.{method_name}() 调用，可能导致代码执行。",
             }
-            finding.update(tree_sitter_node_to_range(node))
-            context.add_finding(finding)
+            vm_finding.update(tree_sitter_node_to_range(node))
+            context.add_finding(vm_finding)
             return
 
         # 4. unserialize() - node-serialize 库（针对 NodeGoat）
@@ -130,17 +130,17 @@ class JavaScriptRCEAstRule(SecurityRule):
                     for arg in child.children:
                         if self._looks_like_user_input_for_unserialize(arg):
                             line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                            finding: dict[str, Any] = {
+                            unserialize_finding: dict[str, Any] = {
                                 "type": "RCE_COMMAND_EXEC",
                                 "rule_id": self.rule_id,
                                 "severity": self.severity,
                                 "line": line_no,
                                 "details": "JavaScript AST: 发现 unserialize() 调用，参数来自用户输入（req.cookies.* 或 req.body.*），存在反序列化代码执行风险。",
                             }
-                            finding.update(tree_sitter_node_to_range(node))
+                            unserialize_finding.update(tree_sitter_node_to_range(node))
                             # TDD 7.1/7.2：用户输入参数位置作为 related_locations
                             if hasattr(arg, "start_point"):
-                                finding["related_locations"] = [
+                                unserialize_finding["related_locations"] = [
                                     make_related_location(
                                         str(context.file_path),
                                         arg.start_point[0] + 1,
@@ -148,7 +148,7 @@ class JavaScriptRCEAstRule(SecurityRule):
                                         message="用户输入来源",
                                     )
                                 ]
-                            context.add_finding(finding)
+                            context.add_finding(unserialize_finding)
                             return
 
     # ------------------------------------------------------------------

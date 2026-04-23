@@ -1,4 +1,4 @@
-"""PHP Deserialization AST rule — Tree-sitter based."""
+﻿"""PHP Deserialization AST rule — Tree-sitter based."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ try:
     _TS = True
 except ImportError:
     _TS = False
-    Node = Any
+    Node = Any  # type: ignore[misc,assignment]
 
 
 class PhpDeserializationAstRule(SecurityRule):

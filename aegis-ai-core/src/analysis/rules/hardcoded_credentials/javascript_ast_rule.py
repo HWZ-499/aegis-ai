@@ -1,4 +1,4 @@
-"""
+﻿"""
 hardcoded_credentials.javascript_ast_rule
 
 JavaScript/TypeScript 硬编码凭证 AST 规则。
@@ -27,7 +27,7 @@ try:
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
-    Node = Any
+    Node = Any  # type: ignore[misc,assignment]
 
 
 class JavaScriptHardcodedCredentialsAstRule(SecurityRule):

@@ -18,6 +18,7 @@ class BenchCase:
     description: str
     code: str
     expect_finding: bool  # True = 应报 (TP)，False = 不应报 (TN)
+    language: str = "javascript"
 
 
 # ── True Positive：应检出 ──
@@ -123,6 +124,7 @@ BENCH_CASES_TP: list[BenchCase] = [
         "pickle.loads(user_data)",
         "import pickle\ndef handle(data):\n    obj = pickle.loads(data)\n    return obj\n",
         True,
+        "python",
     ),
     # OPEN_REDIRECT
     BenchCase(
@@ -132,6 +134,7 @@ BENCH_CASES_TP: list[BenchCase] = [
         "redirect(request.args['url'])",
         "from flask import redirect, request\n@app.route('/go')\ndef go():\n    url = request.args.get('url')\n    return redirect(url)\n",
         True,
+        "python",
     ),
 ]
 
@@ -198,6 +201,7 @@ BENCH_CASES_TN: list[BenchCase] = [
         "json.loads (safe)",
         "import json\ndef handle(data):\n    return json.loads(data)\n",
         False,
+        "python",
     ),
     # OPEN_REDIRECT - safe
     BenchCase(
@@ -207,6 +211,7 @@ BENCH_CASES_TN: list[BenchCase] = [
         "redirect to constant URL",
         "from flask import redirect\n@app.route('/home')\ndef home():\n    return redirect('/dashboard')\n",
         False,
+        "python",
     ),
     BenchCase(
         "TN-SQL-02",

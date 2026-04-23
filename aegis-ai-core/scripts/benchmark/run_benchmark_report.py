@@ -18,6 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from scripts.benchmark.phase_metrics import collect_from_rule_samples, render_summary
 from src.scanner.benchmark import run_and_save_report, run_benchmark
 
 
@@ -40,7 +41,22 @@ def main() -> None:
         default=None,
         help="可选：扫描指定项目目录，将按类型统计追加到报告",
     )
+    parser.add_argument(
+        "--language",
+        type=str,
+        default=None,
+        help="可选：先输出 tests/rules 中指定语言的 TP/TN/FP/FN（javascript/python/php/java/go）",
+    )
     args = parser.parse_args()
+
+    if args.language:
+        stats = collect_from_rule_samples(PROJECT_ROOT / "tests" / "rules", args.language)
+        if stats:
+            print("语言样本指标:")
+            render_summary(stats)
+            print("")
+        else:
+            print(f"未找到语言 `{args.language}` 的样本。")
 
     md_path, json_path, result = run_and_save_report(
         output_dir=args.output_dir,

@@ -1,4 +1,4 @@
-# cli.py - 命令行工具
+﻿# cli.py - 命令行工具
 """
 Aegis 安全扫描命令行工具
 """
@@ -22,7 +22,7 @@ try:
     CROSS_FILE_AVAILABLE = True
 except ImportError:
     CROSS_FILE_AVAILABLE = False
-    CrossFileAnalyzer = None
+    CrossFileAnalyzer = None  # type: ignore[misc,assignment]
 
 
 def _build_ai_code_contexts(results: dict[str, list[dict]], project_path: Path) -> dict[str, str]:

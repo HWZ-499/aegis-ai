@@ -17,6 +17,7 @@ dataflow_tracker.py - 数据流追踪器（阶段二增强版）
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 
@@ -104,6 +105,62 @@ class DataFlowTracker:
         "request.FILES",  # Django
     ]
 
+    USER_INPUT_PATTERNS_JAVA = [
+        "request.getParameter(",
+        "request.getParameterValues(",
+        "request.getHeader(",
+        "request.getCookies(",
+        "request.getInputStream(",
+        "request.getReader(",
+        "request.getQueryString(",
+        "request.getRequestURI(",
+        "request.getPathInfo(",
+        "request.getBody(",
+        "req.getParameter(",
+        "req.getParameterValues(",
+        "req.getHeader(",
+    ]
+
+    USER_INPUT_PATTERNS_GO = [
+        "r.FormValue(",
+        "r.PostFormValue(",
+        "r.URL.Query()",
+        "req.FormValue(",
+        "req.PostFormValue(",
+        "req.URL.Query()",
+        "request.FormValue(",
+        "request.PostFormValue(",
+        "request.URL.Query()",
+        "c.Query(",
+        "c.Param(",
+        "c.PostForm(",
+        "c.DefaultQuery(",
+        "ctx.Query(",
+        "ctx.Param(",
+        "ctx.PostForm(",
+        "ctx.DefaultQuery(",
+        "ctx.BindJSON(",
+    ]
+
+    # Java/Go 使用正则边界匹配，避免 receiver 名称子串误报（如 safeRequest / logger）
+    USER_INPUT_REGEX_PATTERNS_JAVA = [
+        r"\b(?:request|req)\.getParameter(?:Values)?\s*\(",
+        r"\b(?:request|req)\.getHeader\s*\(",
+        r"\brequest\.getCookies\s*\(",
+        r"\brequest\.getInputStream\s*\(",
+        r"\brequest\.getReader\s*\(",
+        r"\brequest\.getQueryString\s*\(",
+        r"\brequest\.getRequestURI\s*\(",
+        r"\brequest\.getPathInfo\s*\(",
+        r"\brequest\.getBody\s*\(",
+    ]
+
+    USER_INPUT_REGEX_PATTERNS_GO = [
+        r"\b(?:r|req|request)\.(?:FormValue|PostFormValue)\s*\(",
+        r"\b(?:r|req|request)\.URL\.Query\s*\(\)",
+        r"\b(?:c|ctx)\.(?:Query|Param|PostForm|DefaultQuery|BindJSON)\s*\(",
+    ]
+
     # ──────────────────────────────────────────────
     # 已知 Sanitizer 函数（精确匹配，不再子串）
     # ──────────────────────────────────────────────
@@ -155,6 +212,8 @@ class DataFlowTracker:
         self._variables: dict[str, VariableInfo] = {}
         self._tainted_vars: set[str] = set()
         self._sanitized_vars: set[str] = set()
+        self._user_input_regex: list[re.Pattern[str]] = []
+        self._regex_only_user_input = False
 
         # 根据语言选择模式
         if language in ("javascript", "typescript"):
@@ -163,8 +222,27 @@ class DataFlowTracker:
         elif language == "python":
             self._user_input_patterns = self.USER_INPUT_PATTERNS_PY
             self._sanitizer_functions = self.SANITIZER_FUNCTIONS_PY
+        elif language == "java":
+            self._user_input_patterns = self.USER_INPUT_PATTERNS_JAVA
+            self._user_input_regex = [re.compile(p, re.IGNORECASE) for p in self.USER_INPUT_REGEX_PATTERNS_JAVA]
+            self._regex_only_user_input = True
+            self._sanitizer_functions = self.SANITIZER_FUNCTIONS_JS | self.SANITIZER_FUNCTIONS_PY
+        elif language == "go":
+            self._user_input_patterns = self.USER_INPUT_PATTERNS_GO
+            self._user_input_regex = [re.compile(p, re.IGNORECASE) for p in self.USER_INPUT_REGEX_PATTERNS_GO]
+            self._regex_only_user_input = True
+            self._sanitizer_functions = self.SANITIZER_FUNCTIONS_JS | self.SANITIZER_FUNCTIONS_PY
         else:
-            self._user_input_patterns = self.USER_INPUT_PATTERNS_JS + self.USER_INPUT_PATTERNS_PY
+            self._user_input_patterns = (
+                self.USER_INPUT_PATTERNS_JS
+                + self.USER_INPUT_PATTERNS_PY
+                + self.USER_INPUT_PATTERNS_JAVA
+                + self.USER_INPUT_PATTERNS_GO
+            )
+            self._user_input_regex = [
+                re.compile(p, re.IGNORECASE)
+                for p in (self.USER_INPUT_REGEX_PATTERNS_JAVA + self.USER_INPUT_REGEX_PATTERNS_GO)
+            ]
             self._sanitizer_functions = self.SANITIZER_FUNCTIONS_JS | self.SANITIZER_FUNCTIONS_PY
 
     def reset(self) -> None:
@@ -395,8 +473,14 @@ class DataFlowTracker:
             expr: 表达式字符串（如 ``"req.body"``, ``"req.query.id"``）
         """
         expr_lower = expr.lower()
-        for pattern in self._user_input_patterns:
-            if pattern.lower() in expr_lower or expr_lower.startswith(pattern.lower()):
+        expr_stripped = expr.strip()
+        for pattern in self._user_input_regex:
+            if pattern.search(expr_stripped):
+                return True
+        if self._regex_only_user_input:
+            return False
+        for pattern_text in self._user_input_patterns:
+            if pattern_text.lower() in expr_lower or expr_lower.startswith(pattern_text.lower()):
                 return True
         return False
 
@@ -432,16 +516,14 @@ class DataFlowTracker:
 
     def _check_taint_source(self, expr: str, line: int) -> TaintSource | None:
         """检查表达式是否来自用户输入。"""
-        expr_lower = expr.lower()
-        for pattern in self._user_input_patterns:
-            if pattern.lower() in expr_lower or expr_lower.startswith(pattern.lower()):
-                return TaintSource(
-                    source_type="user_input",
-                    source_expr=expr,
-                    line=line,
-                    taint_level=TaintLevel.CRITICAL,
-                )
-        return None
+        if not self.is_user_input_expr(expr):
+            return None
+        return TaintSource(
+            source_type="user_input",
+            source_expr=expr,
+            line=line,
+            taint_level=TaintLevel.CRITICAL,
+        )
 
     def _detect_sanitizer_call(self, expr: str) -> str | None:
         """

@@ -1,4 +1,4 @@
-"""
+﻿"""
 deserialization.javascript_ast_rule
 
 JavaScript/TypeScript 反序列化风险 AST 规则。
@@ -23,7 +23,7 @@ try:
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
-    Node = Any
+    Node = Any  # type: ignore[misc,assignment]
 
 
 def _get_node_text(node: Any) -> str | None:

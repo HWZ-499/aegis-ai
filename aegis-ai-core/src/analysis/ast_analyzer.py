@@ -46,8 +46,12 @@ class SecurityVisitor(ast.NodeVisitor):
     def _is_sql_string(self, node):
         """判断节点是否包含 SQL 语句"""
         if isinstance(node, ast.Str):
+            text = node.s
+            if not isinstance(text, str):
+                return False
             sql_keywords = ["select", "insert", "update", "delete", "drop", "create", "alter"]
-            return any(keyword in node.s.lower() for keyword in sql_keywords)
+            lowered = text.lower()
+            return any(keyword in lowered for keyword in sql_keywords)
         elif isinstance(node, ast.JoinedStr):  # f-string
             return True
         return False

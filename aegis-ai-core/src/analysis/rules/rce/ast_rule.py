@@ -96,6 +96,7 @@ _USER_INPUT_ATTRS = frozenset(
     ]
 )
 _USER_INPUT_OBJS = frozenset(["request", "req"])
+_ENV_SOURCE_TYPES = frozenset(["os_environ", "process_env", "env", "environment"])
 
 
 def _collect_names(node: ast.AST) -> list[str]:
@@ -114,8 +115,13 @@ def _is_user_input_node(node: ast.AST, context: AnalysisContext | None = None) -
     """
     if context is not None:
         names = _collect_names(node)
-        if names and any(context.is_var_tainted(n) for n in names):
-            return True
+        if names:
+            tainted_names = [n for n in names if context.is_var_tainted(n)]
+            if tainted_names:
+                # 环境变量来源不视为远程用户输入
+                if all(_is_env_taint_source(context, n) for n in tainted_names):
+                    return False
+                return True
         if names and all(context.has_tracked_var(n) for n in names):
             return False
 
@@ -177,6 +183,28 @@ def _is_env_var_source(node: ast.AST) -> bool:
             if inner_obj == "os" and func.value.attr == "environ" and func.attr == "get":
                 return True
     return False
+
+
+def _is_env_taint_source(context: AnalysisContext, var_name: str) -> bool:
+    """变量污点来源是否为环境变量。"""
+    source = context.get_taint_source(var_name)
+    source_type = getattr(source, "source_type", "") if source is not None else ""
+    return source_type in _ENV_SOURCE_TYPES
+
+
+def _is_env_only_tainted_node(node: ast.AST, context: AnalysisContext | None = None) -> bool:
+    """
+    表达式中若仅包含环境变量来源的污点，视为非远程输入场景。
+    """
+    if context is None:
+        return False
+    tainted_names = [name for name in _collect_names(node) if context.is_var_tainted(name)]
+    return bool(tainted_names) and all(_is_env_taint_source(context, n) for n in tainted_names)
+
+
+def _is_compile_call(node: ast.AST) -> bool:
+    """节点是否为 compile(...) 调用。"""
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "compile"
 
 
 class PythonRCEAstRule(SecurityRule):
@@ -278,6 +306,8 @@ class PythonRCEAstRule(SecurityRule):
         names = _collect_names(first_arg)
         if context is not None and names and all(context.is_var_sanitized(n) for n in names):
             return
+        if _is_env_only_tainted_node(first_arg, context):
+            return
 
         # 用户输入直接流入
         if _is_user_input_node(first_arg, context):
@@ -299,6 +329,12 @@ class PythonRCEAstRule(SecurityRule):
             )
             return
 
+        # exec/eval + compile(local_code, ...) 常用于本地配置/脚本加载，
+        # 若 compile 参数未显示为用户输入则不报，避免工具框架误报。
+        if func_name in ("eval", "exec") and _is_compile_call(first_arg):
+            if not _is_user_input_node(first_arg, context):
+                return
+
         # 工具/CLI/安装脚本场景（如 flask cli.py、django manage.py）
         is_setup = _is_setup_script(context.file_path)
         if is_setup:
@@ -308,6 +344,10 @@ class PythonRCEAstRule(SecurityRule):
                 "Low",
                 details=f"[工具脚本] 发现 {func_name}()，参数含变量，处于框架工具脚本上下文，已降级。",
             )
+            return
+
+        # compile() 本身不执行代码；若未确认首参可控则不报，避免噪声误报。
+        if func_name == "compile":
             return
 
         # 参数含变量但来源不明 → 保守召回，降一级
@@ -343,6 +383,8 @@ class PythonRCEAstRule(SecurityRule):
         # 净化感知：shlex.quote / shlex.split / 白名单等
         names = _collect_names(first_arg) if first_arg else []
         if context is not None and names and all(context.is_var_sanitized(n) for n in names):
+            return
+        if first_arg is not None and _is_env_only_tainted_node(first_arg, context):
             return
 
         # subprocess 使用 shell=False 且首参为 list 时降级为 Low（安全用法）

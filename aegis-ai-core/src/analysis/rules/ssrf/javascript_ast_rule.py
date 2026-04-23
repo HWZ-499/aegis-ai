@@ -13,6 +13,7 @@ OWASP: A10:2021 – Server-Side Request Forgery (SSRF)
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ...base import AnalysisContext, SecurityRule, safe_find_paths
@@ -25,6 +26,7 @@ class JavaScriptSSRFAstRule(SecurityRule):
     报告条件：存在污点路径，用户可控输入流入 HTTP 请求函数（fetch/axios/http.get 等），
     且路径未被净化（URL 白名单校验、域名过滤等）。
     """
+    _SUPERTEST_LOCAL_CALL_RE = re.compile(r"request\((?:this\.)?(?:app|server)\d*\)")
 
     def __init__(self) -> None:
         super().__init__(
@@ -68,6 +70,18 @@ class JavaScriptSSRFAstRule(SecurityRule):
             line_no = getattr(sink, "line", 0) or 0
             src_expr = getattr(source, "name", "") or getattr(source, "code_snippet", "")
             sink_expr = getattr(sink, "name", "") or getattr(sink, "code_snippet", "")
+
+            # Supertest 常见写法 request(app) / request(this.app) 是本地应用测试调用，
+            # 不是外部 URL 请求目标，不应作为 SSRF sink。
+            # 注意 sink_expr 可能是整段代码块，因此要做包含匹配而非前缀匹配。
+            normalized_sink = "".join(sink_expr.lower().split())
+            if (
+                "request(app)" in normalized_sink
+                or "request(this.app)" in normalized_sink
+                or "request(server)" in normalized_sink
+                or self._SUPERTEST_LOCAL_CALL_RE.search(normalized_sink)
+            ):
+                continue
 
             details = (
                 "检测到 JavaScript/TypeScript 代码中用户可控输入直接用于 HTTP 请求目标 URL"

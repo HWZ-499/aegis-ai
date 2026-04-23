@@ -76,3 +76,7 @@ aegis-vscode/resources/aegis-ai-core/
 
 # VSCode 测试下载的 VS Code 实例
 .vscode-test/
+aegis-vscode/.vscode-test/
+
+# 测试运行时生成的 baseline 文件
+aegis-ai-core/tests/**/.aegis-baseline.json

@@ -1,4 +1,4 @@
-# security_rules.py
+﻿# security_rules.py
 """
 .. deprecated:: 1.2.0
     此模块为旧版正则规则引擎，已被 ``rule_engine.py`` + ``rules/`` 目录取代。
@@ -19,7 +19,7 @@ try:
 
     _TS_AVAILABLE = True
 except ImportError:
-    _TsParser = None
+    _TsParser = None  # type: ignore[misc,assignment]
     _ts_get_language = None
     _TS_AVAILABLE = False
 

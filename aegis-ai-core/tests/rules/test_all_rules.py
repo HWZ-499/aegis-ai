@@ -99,9 +99,6 @@ def _collect_cases():
             for sample_file in sorted(sub_dir.iterdir()):
                 if sample_file.suffix.lower() not in JS_EXTENSIONS | PY_EXTENSIONS | PHP_EXTENSIONS | JAVA_EXTENSIONS | GO_EXTENSIONS:
                     continue
-                # Python SQL：规则尚未追踪「先赋值再传入 execute」的变量，暂跳过
-                if sample_file.name == "tp_python_cursor_execute_format.py":
-                    continue
                 cases.append((sample_file, vuln_type, expect))
     return cases
 
@@ -138,3 +135,15 @@ def test_rule_sample(case):
             f"[FP] 误报: {file_path.relative_to(RULES_DIR)}\n"
             f"不期望检测到 {vuln_type}，但 findings = {[f for f in findings if f.get('type') == vuln_type]}"
         )
+
+
+def test_python_sqli_variable_execute_tp_case_is_included() -> None:
+    """
+    回归保护：tp_python_cursor_execute_format.py 不应被长期跳过。
+    """
+    case_names = {
+        file_path.name
+        for file_path, vuln_type, expect_finding in _ALL_CASES
+        if vuln_type == "SQL_INJECTION" and expect_finding
+    }
+    assert "tp_python_cursor_execute_format.py" in case_names

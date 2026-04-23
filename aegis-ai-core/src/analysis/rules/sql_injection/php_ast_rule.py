@@ -1,4 +1,4 @@
-"""PHP SQL Injection AST rule — Tree-sitter based."""
+﻿"""PHP SQL Injection AST rule — Tree-sitter based."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ try:
     _TS = True
 except ImportError:
     _TS = False
-    Node = Any
+    Node = Any  # type: ignore[misc,assignment]
 
 
 class PhpSQLInjectionAstRule(SecurityRule):
@@ -43,20 +43,32 @@ class PhpSQLInjectionAstRule(SecurityRule):
     def __init__(self) -> None:
         super().__init__(rule_id="SQL_INJECTION_PHP_AST", severity="High", languages=["php"])
         self._reported: set[int] = set()
+        self._safe_prepared_stmt_vars: set[str] = set()
 
     def before_file(self, context: AnalysisContext) -> None:
         self._reported = set()
+        self._safe_prepared_stmt_vars = set()
 
     def visit(self, node: Any, context: AnalysisContext) -> None:
         if not _TS or not isinstance(node, Node):
             return
 
+        # assignment_expression: $stmt = $pdo->prepare("SELECT ... ?")
+        if node.type == "assignment_expression":
+            self._track_safe_prepare_assignment(node)
+            return
+
         # member_call_expression: $conn->query($sql)
         if node.type == "member_call_expression":
             method_name = self._get_method_name(node)
+            receiver_var = self._get_receiver_var(node)
             if method_name and method_name in self.QUERY_METHODS:
                 # Skip if this is prepare() — parameterized query
                 if method_name == "prepare":
+                    return
+                # Skip safe prepared statement execute flow:
+                # $stmt = $pdo->prepare("... ?"); $stmt->execute([$id]);
+                if method_name == "execute" and receiver_var and receiver_var in self._safe_prepared_stmt_vars:
                     return
                 self._check_args(node, context, f"$obj->{method_name}")
 
@@ -122,6 +134,52 @@ class PhpSQLInjectionAstRule(SecurityRule):
                                 context.add_finding(finding)
                                 return
 
+    def _track_safe_prepare_assignment(self, node: Any) -> None:
+        """
+        记录安全 prepared statement 变量（静态 SQL + 占位符）。
+        """
+        children = list(getattr(node, "children", []))
+        if len(children) < 3:
+            return
+
+        left = children[0]
+        right = children[-1]
+        if getattr(left, "type", "") != "variable_name":
+            return
+        if getattr(right, "type", "") != "member_call_expression":
+            return
+
+        method_name = self._get_method_name(right)
+        if method_name != "prepare":
+            return
+        if not self._is_static_prepare_call(right):
+            return
+
+        var_name = self._get_node_text(left).lstrip("$")
+        if var_name:
+            self._safe_prepared_stmt_vars.add(var_name)
+
+    def _is_static_prepare_call(self, node: Any) -> bool:
+        """
+        prepare(...) 首参为静态 SQL 字符串（无变量插值）且包含占位符。
+        """
+        for child in getattr(node, "children", []):
+            if child.type != "arguments":
+                continue
+            for arg in child.children:
+                if arg.type != "argument":
+                    continue
+                inner = self._unwrap_arg(arg)
+                if inner is None:
+                    return False
+                text = self._get_node_text(inner)
+                if inner.type in ("string", "encapsed_string"):
+                    if self._string_has_variable(inner):
+                        return False
+                    return "?" in text or "%s" in text or ":" in text
+                return False
+        return False
+
     def _expr_contains_tainted_var(self, node: Any, context: AnalysisContext) -> bool:
         if node.type == "variable_name":
             var = self._get_node_text(node).lstrip("$")
@@ -154,6 +212,14 @@ class PhpSQLInjectionAstRule(SecurityRule):
         for child in node.children:
             if child.type == "name":
                 return child.text.decode("utf-8") if hasattr(child, "text") else None
+        return None
+
+    @staticmethod
+    def _get_receiver_var(node: Any) -> str | None:
+        for child in node.children:
+            if child.type == "variable_name":
+                text = child.text.decode("utf-8") if hasattr(child, "text") else ""
+                return text.lstrip("$") or None
         return None
 
     @staticmethod
