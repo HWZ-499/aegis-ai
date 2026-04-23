@@ -153,3 +153,22 @@ Ground-truth 格式：每项 `{"file": str, "line": int, "type": str}`，`file` 
   - `npm test` 通过（`27 passing`）
 
 建议后续继续按“规则样例 + 真实项目 ground-truth”双轨维护，避免仅在样例集上指标乐观。
+
+---
+
+## 9. Round 6 真实项目基准扩展（2026-04-23）
+
+新增了 Java/Go 的项目级 pilot benchmark 与对应 ground-truth：
+
+- `scripts/data/ground_truth_java_deserialization_demo.json`
+- `scripts/data/ground_truth_go_insecure_web_app.json`
+
+同时恢复了 PHP 的 DVWA 项目级评估（目标目录已补齐）。
+
+当日评估结果：
+
+- PHP（DVWA）：Recall=87.5%，Precision=28.8%，F1=0.43
+- Java（java-deserialization-demo pilot）：Recall=0.0%，Precision=0.0%，F1=0.00
+- Go（go-insecure-web-app pilot）：Recall=0.0%，Precision=0.0%，F1=0.00
+
+这组数据可作为后续 Java/Go 规则迭代的项目级基线。

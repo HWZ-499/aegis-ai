@@ -1,0 +1,32 @@
+[
+  {
+    "file": "main.go",
+    "line": 100,
+    "type": "XSS_RISK",
+    "is_true_positive": true
+  },
+  {
+    "file": "main.go",
+    "line": 239,
+    "type": "PATH_TRAVERSAL",
+    "is_true_positive": true
+  },
+  {
+    "file": "main.go",
+    "line": 270,
+    "type": "RCE_COMMAND_EXEC",
+    "is_true_positive": true
+  },
+  {
+    "file": "main.go",
+    "line": 166,
+    "type": "SQL_INJECTION",
+    "is_true_positive": false
+  },
+  {
+    "file": "main.go",
+    "line": 222,
+    "type": "SQL_INJECTION",
+    "is_true_positive": false
+  }
+]

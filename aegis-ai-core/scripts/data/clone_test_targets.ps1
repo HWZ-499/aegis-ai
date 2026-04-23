@@ -37,9 +37,36 @@ if (-not (Test-Path "vulnerable-nodejs-express-mysql")) {
     Write-Host "vulnerable-nodejs-express-mysql 已存在，跳过克隆" -ForegroundColor Gray
 }
 
+if (-not (Test-Path "DVWA")) {
+    Write-Host "正在克隆 DVWA（PHP 真实项目评估目标）..." -ForegroundColor Yellow
+    git clone --depth 1 https://github.com/digininja/DVWA.git
+    Write-Host "DVWA 已克隆到 $BaseDir\DVWA" -ForegroundColor Green
+} else {
+    Write-Host "DVWA 已存在，跳过克隆" -ForegroundColor Gray
+}
+
+if (-not (Test-Path "java-webapp-security-lab")) {
+    Write-Host "正在克隆 Java WebApp Security Lab（Java pilot 评估目标）..." -ForegroundColor Yellow
+    git clone --depth 1 https://github.com/DularaAbhiranda/WebApp-Security-Vulnerabilities-Lab.git java-webapp-security-lab
+    Write-Host "java-webapp-security-lab 已克隆到 $BaseDir\java-webapp-security-lab" -ForegroundColor Green
+} else {
+    Write-Host "java-webapp-security-lab 已存在，跳过克隆" -ForegroundColor Gray
+}
+
+if (-not (Test-Path "go-insecure-web-app")) {
+    Write-Host "正在克隆 Go Insecure Web App（Go pilot 评估目标）..." -ForegroundColor Yellow
+    git clone --depth 1 https://github.com/Emin-F/Go-Insecure-Web-APP.git go-insecure-web-app
+    Write-Host "go-insecure-web-app 已克隆到 $BaseDir\go-insecure-web-app" -ForegroundColor Green
+} else {
+    Write-Host "go-insecure-web-app 已存在，跳过克隆" -ForegroundColor Gray
+}
+
 Write-Host ""
 Write-Host "克隆完成。在 aegis-ai-core 目录下执行扫描示例：" -ForegroundColor Cyan
 Write-Host "  python -m src.scanner.cli `"$BaseDir\NodeGoat`" --engine new -o reports/nodegoat-report.html -v" -ForegroundColor White
 Write-Host "  python -m src.scanner.cli `"$BaseDir\juice-shop`" --engine new -o reports/juice-shop-report.html -v" -ForegroundColor White
 Write-Host "  python -m src.scanner.cli `"$BaseDir\vulnerable-nodejs-express-mysql`" --engine new -o reports/vuln-express-report.html -v" -ForegroundColor White
 Write-Host "  python scripts/run_benchmark_report.py --project-dir `"$BaseDir\juice-shop`"" -ForegroundColor White
+Write-Host "  python scripts/benchmark/evaluate_project.py --project-dir `"$BaseDir\DVWA`" --ground-truth scripts/data/ground_truth_dvwa.json" -ForegroundColor White
+Write-Host "  python scripts/benchmark/evaluate_project.py --project-dir `"$BaseDir\java-webapp-security-lab\java-deserialization-demo`" --ground-truth scripts/data/ground_truth_java_deserialization_demo.json" -ForegroundColor White
+Write-Host "  python scripts/benchmark/evaluate_project.py --project-dir `"$BaseDir\go-insecure-web-app`" --ground-truth scripts/data/ground_truth_go_insecure_web_app.json" -ForegroundColor White
