@@ -1,0 +1,14 @@
+[
+  {
+    "file": "src/com/example/vulnerable/VulnerableServer.java",
+    "line": 20,
+    "type": "DESERIALIZATION",
+    "is_true_positive": true
+  },
+  {
+    "file": "src/com/example/secure/SecureServer.java",
+    "line": 50,
+    "type": "DESERIALIZATION",
+    "is_true_positive": false
+  }
+]
