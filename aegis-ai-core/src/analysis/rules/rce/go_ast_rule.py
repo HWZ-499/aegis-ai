@@ -13,6 +13,7 @@ Go RCE / 命令执行 AST/污点规则。
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ...base import (
@@ -36,6 +37,12 @@ _RCE_FUNCS = frozenset(["Command", "CommandContext", "Exec", "StartProcess"])
 
 # 危险的包名
 _RCE_PACKAGES = frozenset(["exec", "os", "syscall"])
+
+_GO_SHELL_NAMES = frozenset(["sh", "/bin/sh", "bash", "/bin/bash"])
+_GO_USER_INPUT_CALL_RE = re.compile(
+    r"\b(?:c|ctx|r|req|request)\.(?:Query|FormValue|PostForm|PostFormValue|Param|DefaultQuery)\s*\(",
+    re.IGNORECASE,
+)
 
 
 class GoRCEAstRule(SecurityRule):
@@ -76,6 +83,10 @@ class GoRCEAstRule(SecurityRule):
 
         args = self._get_arguments(node)
         if not args:
+            return
+
+        if self._is_shell_dynamic_exec(args, context):
+            self._report(node, context, f"{pkg_name or ''}.{func_name}")
             return
 
         # exec.CommandContext 第一个参数是 ctx，跳过
@@ -168,10 +179,81 @@ class GoRCEAstRule(SecurityRule):
     def _subtree_has_user_input(self, node: Any, context: AnalysisContext) -> bool:
         if is_user_input_node(node, context, language="go"):
             return True
+        text = self._get_node_text(node) or ""
+        if text and _GO_USER_INPUT_CALL_RE.search(text):
+            return True
         for child in getattr(node, "children", []) or []:
             if self._subtree_has_user_input(child, context):
                 return True
         return False
+
+    def _is_shell_dynamic_exec(self, args: list[Any], context: AnalysisContext) -> bool:
+        """
+        识别 `exec.Command("sh","-c", dynamic)` 风险模式。
+
+        该模式在真实项目中常见于先构造命令字符串再交给 shell 执行。
+        """
+        if len(args) < 3:
+            return False
+
+        shell_idx = 0
+        if not self._is_shell_name(args[shell_idx]):
+            if len(args) < 4:
+                return False
+            shell_idx = 1
+            if not self._is_shell_name(args[shell_idx]):
+                return False
+
+        dash_c_idx = shell_idx + 1
+        cmd_idx = shell_idx + 2
+        if cmd_idx >= len(args):
+            return False
+
+        if not self._is_dash_c(args[dash_c_idx]):
+            return False
+
+        cmd_arg = args[cmd_idx]
+        if self._is_string_literal(cmd_arg):
+            return False
+
+        if self._subtree_has_user_input(cmd_arg, context):
+            return True
+
+        if self._looks_like_dynamic_command_expr(cmd_arg) and self._file_has_go_user_input(context):
+            return True
+
+        return False
+
+    def _file_has_go_user_input(self, context: AnalysisContext) -> bool:
+        source_code = context.extras.get("source") or ""
+        if not source_code:
+            return False
+        return bool(_GO_USER_INPUT_CALL_RE.search(source_code))
+
+    def _looks_like_dynamic_command_expr(self, node: Any) -> bool:
+        text = self._get_node_text(node) or ""
+        if not text:
+            return False
+        lowered = text.lower()
+        return (
+            ".string(" in lowered
+            or "sprintf(" in lowered
+            or "+" in lowered
+        )
+
+    def _is_shell_name(self, node: Any) -> bool:
+        text = (self._get_node_text(node) or "").strip()
+        unquoted = text.strip("`\"")
+        return unquoted in _GO_SHELL_NAMES
+
+    @staticmethod
+    def _is_dash_c(node: Any) -> bool:
+        text = (GoRCEAstRule._get_node_text(node) or "").strip()
+        return text in ('"-c"', "`-c`")
+
+    @staticmethod
+    def _is_string_literal(node: Any) -> bool:
+        return getattr(node, "type", "") in ("interpreted_string_literal", "raw_string_literal")
 
     def _report(self, node: Any, context: AnalysisContext, func_desc: str) -> None:
         line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0

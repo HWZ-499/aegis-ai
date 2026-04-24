@@ -652,6 +652,39 @@ class SourceSinkRegistry:
                 taint_level=TaintLevel.CRITICAL,
                 description="net/http: r.FormValue()",
             ),
+            # Fiber / Gin 常见输入 API
+            SourcePattern(
+                name="go_web_query",
+                pattern=r"\.Query\s*\(",
+                is_regex=True,
+                languages=["go"],
+                taint_level=TaintLevel.CRITICAL,
+                description="Fiber/Gin: c.Query()",
+            ),
+            SourcePattern(
+                name="go_web_param",
+                pattern=r"\.Param\s*\(",
+                is_regex=True,
+                languages=["go"],
+                taint_level=TaintLevel.CRITICAL,
+                description="Fiber/Gin: c.Param()",
+            ),
+            SourcePattern(
+                name="go_web_post_form",
+                pattern=r"\.(PostForm|PostFormValue)\s*\(",
+                is_regex=True,
+                languages=["go"],
+                taint_level=TaintLevel.CRITICAL,
+                description="Fiber/Gin: c.PostForm()/r.PostFormValue()",
+            ),
+            SourcePattern(
+                name="go_web_default_query",
+                pattern=r"\.DefaultQuery\s*\(",
+                is_regex=True,
+                languages=["go"],
+                taint_level=TaintLevel.CRITICAL,
+                description="Fiber/Gin: c.DefaultQuery()",
+            ),
             SourcePattern(
                 name="go_http_header_get",
                 pattern=r"\.Header\.Get\s*\(",
@@ -1297,12 +1330,12 @@ class SourceSinkRegistry:
             # SQL Injection
             SinkPattern(
                 name="go_db_query_exec",
-                pattern=r"\.(Query|QueryContext|QueryRow|Exec|ExecContext)\s*\(",
+                pattern=r"\b(?:db|conn|connection|tx|stmt)\.(Query|QueryContext|QueryRow|Exec|ExecContext)\s*\(",
                 is_regex=True,
                 category=VulnCategory.SQL_INJECTION,
                 languages=["go"],
                 severity="High",
-                description="database/sql 查询 / 执行",
+                description="database/sql 查询 / 执行（数据库对象调用）",
                 cwe="CWE-89",
             ),
             # RCE / 命令执行
@@ -1325,6 +1358,16 @@ class SourceSinkRegistry:
                 languages=["go"],
                 severity="High",
                 description="fmt.Fprintf 向 ResponseWriter 输出",
+                cwe="CWE-79",
+            ),
+            SinkPattern(
+                name="go_fiber_send_string",
+                pattern=r"\.SendString\s*\(",
+                is_regex=True,
+                category=VulnCategory.XSS,
+                languages=["go"],
+                severity="High",
+                description="Fiber SendString 直接输出响应",
                 cwe="CWE-79",
             ),
             # Open Redirect
@@ -1357,6 +1400,16 @@ class SourceSinkRegistry:
                 languages=["go"],
                 severity="High",
                 description="os.OpenFile 文件访问",
+                cwe="CWE-22",
+            ),
+            SinkPattern(
+                name="go_read_file",
+                pattern=r"\b(?:ioutil|os)\.ReadFile\s*\(",
+                is_regex=True,
+                category=VulnCategory.PATH_TRAVERSAL,
+                languages=["go"],
+                severity="High",
+                description="ReadFile 文件读取",
                 cwe="CWE-22",
             ),
             # Deserialization
