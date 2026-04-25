@@ -65,3 +65,46 @@ def test_evaluate_project_against_ground_truth_disables_cache(monkeypatch, tmp_p
     evaluate_project_against_ground_truth(project_dir, [], engine="new")
 
     assert captured["use_cache"] is False
+
+
+def test_evaluate_project_matches_line_candidates(monkeypatch, tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    class FakeScanner:
+        def __init__(
+            self,
+            project_path: str,
+            ignore_patterns=None,
+            use_cache: bool = True,
+            use_parallel: bool = True,
+            max_workers=None,
+            engine: str = "new",
+            extra_rule_dirs=None,
+        ) -> None:
+            pass
+
+        def scan_project(self, verbose: bool = False):
+            return {
+                "vulnerabilities/sqli/source/low.php": [
+                    {"type": "XSS_RISK", "line": 20},
+                ]
+            }
+
+    import src.scanner.project_scanner as project_scanner_module
+
+    monkeypatch.setattr(project_scanner_module, "ProjectScanner", FakeScanner)
+
+    ground_truth = [
+        {
+            "file": "vulnerabilities/sqli/source/low.php",
+            "line": 32,
+            "line_candidates": [20, 47],
+            "type": "XSS_RISK",
+            "is_true_positive": True,
+        }
+    ]
+
+    result = evaluate_project_against_ground_truth(project_dir, ground_truth, engine="new")
+    assert result.tp == 1
+    assert result.fn == 0

@@ -162,6 +162,7 @@
   {
     "file": "vulnerabilities/sqli/source/low.php",
     "line": 32,
+    "line_candidates": [20, 47],
     "type": "XSS_RISK",
     "severity": "Medium",
     "is_true_positive": true,
