@@ -1,0 +1,41 @@
+{
+  "target": "flask-2.3.2",
+  "date": "2026-04-25",
+  "metrics": {
+    "tp": 0,
+    "fp": 10,
+    "fn": 1,
+    "tn": 1,
+    "recall": 0.0,
+    "precision": 0.0,
+    "fpr": 0.9091,
+    "f1": 0.0
+  },
+  "by_category": {
+    "HARDCODED_SECRET": {
+      "tp": 0,
+      "tn": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    "RCE_COMMAND_EXEC": {
+      "tp": 0,
+      "tn": 1,
+      "fp": 2,
+      "fn": 0
+    },
+    "HARDCODED_CREDENTIALS": {
+      "tp": 0,
+      "tn": 0,
+      "fp": 7,
+      "fn": 0
+    },
+    "DESERIALIZATION": {
+      "tp": 0,
+      "tn": 0,
+      "fp": 1,
+      "fn": 0
+    }
+  },
+  "details": []
+}

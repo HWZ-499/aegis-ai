@@ -1,0 +1,53 @@
+{
+  "target": "DVWA",
+  "date": "2026-04-25",
+  "metrics": {
+    "tp": 24,
+    "fp": 33,
+    "fn": 0,
+    "tn": 1,
+    "recall": 1.0,
+    "precision": 0.4211,
+    "fpr": 0.9706,
+    "f1": 0.5926
+  },
+  "by_category": {
+    "SQL_INJECTION": {
+      "tp": 13,
+      "tn": 0,
+      "fp": 7,
+      "fn": 0
+    },
+    "RCE_COMMAND_EXEC": {
+      "tp": 5,
+      "tn": 1,
+      "fp": 4,
+      "fn": 0
+    },
+    "XSS_RISK": {
+      "tp": 3,
+      "tn": 0,
+      "fp": 13,
+      "fn": 0
+    },
+    "OPEN_REDIRECT": {
+      "tp": 3,
+      "tn": 0,
+      "fp": 1,
+      "fn": 0
+    },
+    "PATH_TRAVERSAL": {
+      "tp": 0,
+      "tn": 0,
+      "fp": 5,
+      "fn": 0
+    },
+    "HARDCODED_CREDENTIALS": {
+      "tp": 0,
+      "tn": 0,
+      "fp": 3,
+      "fn": 0
+    }
+  },
+  "details": []
+}
