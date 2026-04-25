@@ -2,61 +2,80 @@
 
 ## Scope
 
-- Continue real-world precision hardening from Phase 4 follow-up.
-- This round focuses on a PHP regex-layer RCE false-positive pattern found in DVWA and rule fixtures.
+- Continue Phase 4 follow-up hardening on DVWA.
+- Round 9 is split into two sub-iterations:
+  1. PHP regex RCE false-positive suppression (constant command assignment case).
+  2. PHP SQLi recall recovery for `mysqli_real_escape_string` + unquoted numeric interpolation.
 
 ## Baseline (Round 9 Start)
 
-- DVWA (2026-04-25 baseline):
+- DVWA baseline:
   - Recall: 87.5%
   - Precision: 28.8%
   - F1: 0.43
   - TP/FP/FN/TN: 21 / 52 / 3 / 1
 
-## Root Cause
+## Root Causes
 
-The PHP regex supplemental filter in `analyze_php()` used whole-line variable checks:
-
-- For lines like `$out = shell_exec("php -v");`, the left-hand `$out` made the line look "variable-driven".
-- That prevented the "constant command" skip path and produced avoidable RCE false positives.
+1. **RCE regex FP**: `analyze_php()` used whole-line variable checks, so `$out = shell_exec("...")` was treated as variable-driven and incorrectly reported.
+2. **SQLi FN**: for PHP SQL where user input was weakly escaped (`mysqli_real_escape_string`) but interpolated as unquoted numeric (`... WHERE id = $id`), existing taint + regex logic missed detections.
 
 ## Implemented Changes
 
-### Code updates
+### A) RCE FP hardening
 
 - `aegis-ai-core/src/analysis/rule_engine.py`
-  - Added `_extract_first_php_call_argument()` to parse first argument of PHP command-exec sinks (`system/exec/shell_exec/...`) without being confused by left-value variables.
-  - Added literal-expression recognition for PHP command arguments.
-  - Refined regex supplemental RCE filtering:
-    - Skip constant command expressions by default (reduces FP).
-    - Keep complex shell-meta commands in non-setup scripts (preserves recall on existing benchmark expectation).
-    - Always skip setup/install-like scripts for constant command checks.
+  - Added first-argument extraction for PHP command sinks (`system/exec/shell_exec/...`).
+  - Refined constant-command filtering:
+    - Skip low-risk constant commands by default.
+    - Keep complex shell-meta command cases in non-setup scripts to preserve benchmark recall.
+    - Skip setup/install-like scripts for constant command checks.
 
-### New regression fixture (RED -> GREEN)
+- New regression fixture:
+  - `aegis-ai-core/tests/rules/rce/false_positive/fp_php_shell_exec_constant_assignment.php`
 
-- `aegis-ai-core/tests/rules/rce/false_positive/fp_php_shell_exec_constant_assignment.php`
-  - Case: `$out = shell_exec("php -v");`
-  - Expected: no `RCE_COMMAND_EXEC`.
+### B) SQLi recall hardening
+
+- `aegis-ai-core/src/analysis/rules/sql_injection/php_ast_rule.py`
+  - Added weak-sanitizer SQL detection path:
+    - Detect SQL executed via variable assignment where interpolated variable is:
+      - sanitized only by `mysqli_real_escape_string` / `addslashes`
+      - used unquoted in SQL comparison/operator context
+  - Added assignment backtracking helper (`_find_latest_assignment_expr`) to inspect SQL text when sink arg is `$query`-style variable.
+  - Added SQL-shape and unquoted-variable helpers for stable matching.
+
+- New regression fixture:
+  - `aegis-ai-core/tests/rules/sql_injection/true_positive/tp_php_mysqli_real_escape_string_unquoted_numeric.php`
 
 ## Validation
 
-- RED: new fixture initially failed (reported `RCE_COMMAND_EXEC` from `PHP-Regex`).
-- GREEN after fix:
-  - `python -m pytest -q tests/rules/test_all_rules.py -k "rce and php"` ✅
-  - `python -m pytest -q tests/rules/test_all_rules.py` ✅
-  - `python -m ruff check src/analysis/rule_engine.py` ✅
+- `python -m pytest -q tests/rules/test_all_rules.py -k "rce and php"` ✅
+- `python -m pytest -q tests/rules/test_all_rules.py -k "SQL_INJECTION and php"` ✅
+- `python -m pytest -q tests/rules/test_all_rules.py -k "tp_php_mysqli_real_escape_string_unquoted_numeric"` ✅
+- `python -m pytest -q tests/rules/test_all_rules.py` ✅
+- `python -m ruff check src/analysis/rule_engine.py src/analysis/rules/sql_injection/php_ast_rule.py` ✅
 
-## Benchmark Outcome (Round 9 Current)
+## Benchmark Outcome
 
-- DVWA re-evaluated on 2026-04-25:
-  - Recall: 87.5% (no regression vs baseline)
-  - Precision: 29.6% (improved from 28.8%)
-  - F1: 0.44 (improved from 0.43)
-  - TP/FP/FN/TN: 21 / 50 / 3 / 1
+### Checkpoint A (after RCE FP fix)
 
-Net effect in this round:
+- Recall: 87.5%
+- Precision: 29.6%
+- F1: 0.44
+- TP/FP/FN/TN: 21 / 50 / 3 / 1
 
-- FP: `52 -> 50`
-- Recall: `87.5% -> 87.5%`
-- Precision: `28.8% -> 29.6%`
-- F1: `0.43 -> 0.44`
+### Checkpoint B (after SQLi recall fix, current round end)
+
+- Recall: 95.8%
+- Precision: 30.7%
+- F1: 0.46
+- TP/FP/FN/TN: 23 / 52 / 1 / 1
+
+## Net Effect (Round 9 Start -> End)
+
+- TP: `21 -> 23`
+- FP: `52 -> 52`
+- FN: `3 -> 1`
+- Recall: `87.5% -> 95.8%`
+- Precision: `28.8% -> 30.7%`
+- F1: `0.43 -> 0.46`

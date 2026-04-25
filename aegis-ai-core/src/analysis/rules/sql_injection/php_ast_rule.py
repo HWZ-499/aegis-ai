@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ...base import AnalysisContext, SecurityRule, tree_sitter_node_to_range
@@ -92,6 +93,23 @@ class PhpSQLInjectionAstRule(SecurityRule):
                             continue
                         if inner.type == "string" and not self._string_has_variable(inner):
                             continue
+                        if inner.type in ("string", "encapsed_string", "binary_expression"):
+                            weak_var = self._find_weakly_sanitized_unquoted_sql_var(inner, context)
+                            if weak_var:
+                                self._reported.add(line)
+                                finding = {
+                                    "type": "SQL_INJECTION",
+                                    "rule_id": self.rule_id,
+                                    "severity": self.severity,
+                                    "line": line,
+                                    "details": (
+                                        f"PHP: {call_desc}() 的 SQL 中直接使用未加引号变量 ${weak_var}。"
+                                        "仅使用 mysqli_real_escape_string/addslashes 仍存在注入风险，建议参数化查询。"
+                                    ),
+                                }
+                                finding.update(tree_sitter_node_to_range(node))
+                                context.add_finding(finding)
+                                return
                         if _subtree_contains_php_user_input(arg, context):
                             self._reported.add(line)
                             finding = {
@@ -115,6 +133,23 @@ class PhpSQLInjectionAstRule(SecurityRule):
                                     "severity": self.severity,
                                     "line": line,
                                     "details": f"PHP: {call_desc}() 的参数变量 ${var} 被污染，存在 SQL 注入风险。",
+                                }
+                                finding.update(tree_sitter_node_to_range(node))
+                                context.add_finding(finding)
+                                return
+                            assigned_expr = self._find_latest_assignment_expr(var, line, context)
+                            weak_var = self._find_weakly_sanitized_unquoted_sql_var_in_text(assigned_expr, context)
+                            if weak_var:
+                                self._reported.add(line)
+                                finding = {
+                                    "type": "SQL_INJECTION",
+                                    "rule_id": self.rule_id,
+                                    "severity": self.severity,
+                                    "line": line,
+                                    "details": (
+                                        f"PHP: {call_desc}() 使用变量 ${var} 执行 SQL，且其中 ${weak_var} 以未加引号方式拼接。"
+                                        "mysqli_real_escape_string/addslashes 在该场景下不足以防御注入。"
+                                    ),
                                 }
                                 finding.update(tree_sitter_node_to_range(node))
                                 context.add_finding(finding)
@@ -189,6 +224,94 @@ class PhpSQLInjectionAstRule(SecurityRule):
             for child in node.children:
                 if self._expr_contains_tainted_var(child, context):
                     return True
+        return False
+
+    def _find_weakly_sanitized_unquoted_sql_var(self, node: Any, context: AnalysisContext) -> str | None:
+        """
+        检测“弱净化后仍未加引号拼接”的 SQL 变量。
+
+        该逻辑用于补齐此类漏报：
+        1) 用户输入 -> mysqli_real_escape_string/addslashes
+        2) 拼入 SQL 时未加引号（如 `... WHERE id = $id`）
+        """
+        sql_text = self._get_node_text(node)
+        if not sql_text:
+            return None
+
+        return self._find_weakly_sanitized_unquoted_sql_var_in_text(
+            sql_text,
+            context,
+            var_candidates=self._collect_variable_names(node),
+        )
+
+    def _find_weakly_sanitized_unquoted_sql_var_in_text(
+        self,
+        sql_text: str | None,
+        context: AnalysisContext,
+        var_candidates: set[str] | None = None,
+    ) -> str | None:
+        if not sql_text:
+            return None
+        if not self._looks_like_sql(sql_text):
+            return None
+
+        candidates = var_candidates if var_candidates is not None else set(re.findall(r"\$([A-Za-z_]\w*)", sql_text))
+        for var_name in sorted(candidates):
+            if context.is_var_tainted(var_name) or context.is_var_tainted("$" + var_name):
+                continue
+
+            sanitizer = (context.get_sanitizer_name(var_name) or context.get_sanitizer_name("$" + var_name) or "").lower()
+            if "mysqli_real_escape_string" not in sanitizer and "addslashes" not in sanitizer:
+                continue
+            if self._is_var_wrapped_by_quotes(sql_text, var_name):
+                continue
+            if self._is_sql_unquoted_var_usage(sql_text, var_name):
+                return var_name
+        return None
+
+    @staticmethod
+    def _looks_like_sql(text: str) -> bool:
+        return re.search(r"\b(select|update|delete|insert|replace|where|from|into)\b", text, re.IGNORECASE) is not None
+
+    @staticmethod
+    def _find_latest_assignment_expr(var_name: str, sink_line: int, context: AnalysisContext) -> str | None:
+        source = context.extras.get("source")
+        if not isinstance(source, str) or not source:
+            return None
+
+        lines = source.splitlines()
+        upper_bound = min(max(sink_line - 1, 0), len(lines))
+        assign_re = re.compile(rf"\${re.escape(var_name)}\s*=\s*(.+?)\s*;?\s*$")
+
+        for idx in range(upper_bound - 1, -1, -1):
+            line = lines[idx]
+            matched = assign_re.search(line)
+            if matched is not None:
+                return matched.group(1).strip()
+        return None
+
+    def _collect_variable_names(self, node: Any) -> set[str]:
+        result: set[str] = set()
+        if getattr(node, "type", "") == "variable_name":
+            var_name = self._get_node_text(node).lstrip("$")
+            if var_name:
+                result.add(var_name)
+        for child in getattr(node, "children", []):
+            result.update(self._collect_variable_names(child))
+        return result
+
+    @staticmethod
+    def _is_var_wrapped_by_quotes(sql_text: str, var_name: str) -> bool:
+        var_expr = rf"(?:\{{\s*)?\${re.escape(var_name)}(?:\s*\}})?"
+        return re.search(rf"['\"]\s*{var_expr}\s*['\"]", sql_text) is not None
+
+    @staticmethod
+    def _is_sql_unquoted_var_usage(sql_text: str, var_name: str) -> bool:
+        var_expr = rf"(?:\{{\s*)?\${re.escape(var_name)}(?:\s*\}})?"
+        if re.search(rf"(?:=|<>|!=|<|>|<=|>=)\s*{var_expr}\b", sql_text, re.IGNORECASE):
+            return True
+        if re.search(rf"\b(?:IN|LIKE|LIMIT|OFFSET)\b\s*\(?\s*{var_expr}\b", sql_text, re.IGNORECASE):
+            return True
         return False
 
     @staticmethod
