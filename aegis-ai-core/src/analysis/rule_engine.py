@@ -112,6 +112,17 @@ _PHP_REGEX_NEARLINE_DEDUPE_TYPES = frozenset(
         "DESERIALIZATION",
     }
 )
+_PHP_AST_NEARLINE_DEDUPE_TYPES = frozenset(
+    {
+        "SQL_INJECTION",
+        "RCE_COMMAND_EXEC",
+        "XSS_RISK",
+        "PATH_TRAVERSAL",
+        "OPEN_REDIRECT",
+        "DESERIALIZATION",
+    }
+)
+_JS_NEARLINE_DEDUPE_TYPES = frozenset({"XSS_RISK"})
 
 
 def _extract_first_php_call_argument(raw_line: str) -> str | None:
@@ -174,6 +185,68 @@ def _is_setup_like_php_file(path: Path) -> bool:
     """判断是否为安装/初始化类脚本（通常为低风险运维命令场景）。"""
     basename = path.name.lower()
     return any(basename.startswith(prefix) or basename == f"{prefix}.php" for prefix in _PHP_SETUP_SCRIPT_PREFIXES)
+
+
+def _dedupe_php_nearby_findings(findings: list[dict]) -> list[dict]:
+    """
+    PHP 结果后处理：合并 AST/Regex 在近邻行重复产生的同类 finding。
+
+    规则：同 (type, rule_id/source, details) 在 4 行内仅保留首条。
+    """
+    deduped: list[dict] = []
+    last_line_by_key: dict[tuple[str, str, str], int] = {}
+
+    for finding in sorted(findings, key=lambda item: int(item.get("line", 0))):
+        vuln_type = finding.get("type", "")
+        if vuln_type not in _PHP_AST_NEARLINE_DEDUPE_TYPES:
+            deduped.append(finding)
+            continue
+
+        line = int(finding.get("line", 0))
+        identity = str(finding.get("rule_id") or finding.get("source") or "")
+        details = str(finding.get("details") or "")
+        key = (vuln_type, identity, details)
+        previous_line = last_line_by_key.get(key)
+
+        if previous_line is not None and abs(line - previous_line) <= 4:
+            continue
+
+        last_line_by_key[key] = line
+        deduped.append(finding)
+
+    # 恢复原有行序，便于下游稳定展示
+    return sorted(deduped, key=lambda item: int(item.get("line", 0)))
+
+
+def _dedupe_nearby_findings(
+    findings: list[dict],
+    target_types: set[str] | frozenset[str],
+    window: int,
+) -> list[dict]:
+    """
+    通用近邻去重：同 (type, rule_id/source, details) 在 window 行内仅保留首条。
+    """
+    deduped: list[dict] = []
+    last_line_by_key: dict[tuple[str, str, str], int] = {}
+
+    for finding in sorted(findings, key=lambda item: int(item.get("line", 0))):
+        vuln_type = str(finding.get("type", ""))
+        if vuln_type not in target_types:
+            deduped.append(finding)
+            continue
+
+        line = int(finding.get("line", 0))
+        identity = str(finding.get("rule_id") or finding.get("source") or "")
+        details = str(finding.get("details") or "")
+        key = (vuln_type, identity, details)
+        previous_line = last_line_by_key.get(key)
+        if previous_line is not None and abs(line - previous_line) <= window:
+            continue
+
+        last_line_by_key[key] = line
+        deduped.append(finding)
+
+    return sorted(deduped, key=lambda item: int(item.get("line", 0)))
 
 
 def get_default_rules_for_language(
@@ -326,7 +399,10 @@ def _analyze_with(
             raw = analyzer.analyze(code, path, language=language)
         else:
             raw = analyzer.analyze(code, path)
-        return cast(list[dict[str, Any]], filter_suppressed_findings(raw, code))
+        filtered = cast(list[dict[str, Any]], filter_suppressed_findings(raw, code))
+        if language in ("javascript", "typescript"):
+            filtered = _dedupe_nearby_findings(filtered, target_types=_JS_NEARLINE_DEDUPE_TYPES, window=6)
+        return filtered
     except (RuntimeError, ValueError):
         logger.exception("_analyze_with(%s) failed for %s", language, path)
         return []
@@ -482,7 +558,7 @@ def analyze_php(code: str, file_path: Path | str) -> list[dict]:
             }
         )
 
-    return results
+    return _dedupe_php_nearby_findings(results)
 
 
 __all__ = [

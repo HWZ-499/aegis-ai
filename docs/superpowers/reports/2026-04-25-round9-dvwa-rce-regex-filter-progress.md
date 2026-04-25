@@ -8,6 +8,7 @@
   2. PHP SQLi recall recovery for `mysqli_real_escape_string` + unquoted numeric interpolation.
   3. PHP AST/Regex near-line de-duplication to reduce duplicate findings that inflate FP.
   4. PHP SQLi source-type risk gating (`php_server` low-risk source suppression).
+  5. JavaScript XSS near-line duplicate suppression for repeated `innerHTML` findings.
 
 ## Baseline (Round 9 Start)
 
@@ -65,6 +66,13 @@
     - `php_server`-only taint chains are treated as low-risk for SQLi and filtered out.
   - This specifically removes setup/bootstrap style SQL findings seeded only by server context values.
 
+### E) JavaScript XSS duplicate suppression
+
+- `aegis-ai-core/src/analysis/rule_engine.py`
+  - Added language-level nearby deduplication for JS/TS `XSS_RISK` findings in `_analyze_with`.
+  - For identical `(type, rule_id/source, details)` findings within 6 lines, only keep the first.
+  - This removes repeated adjacent `innerHTML` diagnostics while keeping distinct sinks.
+
 ## Validation
 
 - `python -m pytest -q tests/rules/test_all_rules.py -k "rce and php"` ✅
@@ -103,11 +111,18 @@
 - F1: 0.52
 - TP/FP/FN/TN: 23 / 41 / 1 / 1
 
+### Checkpoint E (after JS XSS dedup, current round end)
+
+- Recall: 95.8%
+- Precision: 43.4%
+- F1: 0.60
+- TP/FP/FN/TN: 23 / 30 / 1 / 1
+
 ## Net Effect (Round 9 Start -> End)
 
 - TP: `21 -> 23`
-- FP: `52 -> 41`
+- FP: `52 -> 30`
 - FN: `3 -> 1`
 - Recall: `87.5% -> 95.8%`
-- Precision: `28.8% -> 35.9%`
-- F1: `0.43 -> 0.52`
+- Precision: `28.8% -> 43.4%`
+- F1: `0.43 -> 0.60`
