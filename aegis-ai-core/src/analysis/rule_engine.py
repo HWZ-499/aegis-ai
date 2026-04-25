@@ -80,6 +80,92 @@ from .rules import (
 logger = logging.getLogger(__name__)
 
 
+_PHP_RCE_SINK_CALL_RE = re.compile(
+    r"\b(?:system|exec|shell_exec|passthru|popen|proc_open|pcntl_exec)\s*\(",
+    re.IGNORECASE,
+)
+_PHP_SUPERGLOBAL_RE = re.compile(r"\$_(?:GET|POST|REQUEST|COOKIE|FILES|SERVER)\b", re.IGNORECASE)
+_PHP_LITERAL_EXPR_PART = r"""(?:'[^'\\]*(?:\\.[^'\\]*)*'|"[^"\\]*(?:\\.[^"\\]*)*"|\d+|__DIR__|__FILE__)"""
+_PHP_LITERAL_COMMAND_EXPR_RE = re.compile(
+    rf"^\s*{_PHP_LITERAL_EXPR_PART}(?:\s*\.\s*{_PHP_LITERAL_EXPR_PART})*\s*$",
+    re.IGNORECASE,
+)
+_PHP_SETUP_SCRIPT_PREFIXES = (
+    "setup",
+    "install",
+    "migrate",
+    "upgrade",
+    "seed",
+    "bootstrap",
+    "fixture",
+    "deploy",
+    "init",
+)
+_PHP_SHELL_META_RE = re.compile(r"[|&;`<>]")
+
+
+def _extract_first_php_call_argument(raw_line: str) -> str | None:
+    """
+    从 `system(...)` / `shell_exec(...)` 等调用中提取第一个参数表达式。
+
+    仅用于 Regex 补充层 FP 过滤，不做完整 PHP 语法解析。
+    """
+    sink_match = _PHP_RCE_SINK_CALL_RE.search(raw_line)
+    if sink_match is None:
+        return None
+
+    start = sink_match.end()
+    in_single_quote = False
+    in_double_quote = False
+    escaped = False
+    nested_parentheses = 0
+    idx = start
+
+    while idx < len(raw_line):
+        ch = raw_line[idx]
+
+        if escaped:
+            escaped = False
+            idx += 1
+            continue
+        if ch == "\\" and (in_single_quote or in_double_quote):
+            escaped = True
+            idx += 1
+            continue
+
+        if ch == "'" and not in_double_quote:
+            in_single_quote = not in_single_quote
+            idx += 1
+            continue
+        if ch == '"' and not in_single_quote:
+            in_double_quote = not in_double_quote
+            idx += 1
+            continue
+
+        if in_single_quote or in_double_quote:
+            idx += 1
+            continue
+
+        if ch == "(":
+            nested_parentheses += 1
+        elif ch == ")":
+            if nested_parentheses == 0:
+                return raw_line[start:idx].strip()
+            nested_parentheses -= 1
+        elif ch == "," and nested_parentheses == 0:
+            return raw_line[start:idx].strip()
+
+        idx += 1
+
+    return None
+
+
+def _is_setup_like_php_file(path: Path) -> bool:
+    """判断是否为安装/初始化类脚本（通常为低风险运维命令场景）。"""
+    basename = path.name.lower()
+    return any(basename.startswith(prefix) or basename == f"{prefix}.php" for prefix in _PHP_SETUP_SCRIPT_PREFIXES)
+
+
 def get_default_rules_for_language(
     language: str,
     include_dsl: bool = True,
@@ -355,12 +441,16 @@ def analyze_php(code: str, file_path: Path | str) -> list[dict]:
         # 正则层：PHP RCE 仅当参数为字面量（无 $var / $_GET 等）时不报告，避免常量命令误报
         if vuln_type == "RCE_COMMAND_EXEC" and 1 <= line <= len(lines_of_code):
             raw_line = lines_of_code[line - 1]
-            if re.search(r"\$(_(?:GET|POST|REQUEST|COOKIE)|\w+)", raw_line) is None and re.search(
-                r"\b(system|exec|shell_exec|passthru|popen)\s*\(\s*['\"][^'\"]*['\"]\s*\)",
-                raw_line,
-                re.IGNORECASE,
+            first_arg = _extract_first_php_call_argument(raw_line)
+            if (
+                first_arg is not None
+                and _PHP_SUPERGLOBAL_RE.search(first_arg) is None
+                and _PHP_LITERAL_COMMAND_EXPR_RE.fullmatch(first_arg)
             ):
-                continue
+                # 常量命令默认视为低风险，不补充报告；
+                # 但复杂 shell 管道命令仍保留，除非在 setup/install 等脚本中。
+                if _is_setup_like_php_file(path) or _PHP_SHELL_META_RE.search(first_arg) is None:
+                    continue
         results.append(
             {
                 "type": vuln_type,
