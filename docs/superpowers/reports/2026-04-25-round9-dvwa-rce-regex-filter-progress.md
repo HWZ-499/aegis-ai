@@ -7,6 +7,7 @@
   1. PHP regex RCE false-positive suppression (constant command assignment case).
   2. PHP SQLi recall recovery for `mysqli_real_escape_string` + unquoted numeric interpolation.
   3. PHP AST/Regex near-line de-duplication to reduce duplicate findings that inflate FP.
+  4. PHP SQLi source-type risk gating (`php_server` low-risk source suppression).
 
 ## Baseline (Round 9 Start)
 
@@ -56,6 +57,14 @@
   - Applied to: `SQL_INJECTION`, `RCE_COMMAND_EXEC`, `XSS_RISK`, `PATH_TRAVERSAL`, `OPEN_REDIRECT`, `DESERIALIZATION`.
   - Goal: keep AST precision while retaining regex-only coverage for gaps.
 
+### D) SQLi source-type risk gating
+
+- `aegis-ai-core/src/analysis/rules/sql_injection/php_ast_rule.py`
+  - Added stricter source-risk gate for SQLi:
+    - High-risk source families (`GET/POST/REQUEST/COOKIE/FILES`) keep reporting.
+    - `php_server`-only taint chains are treated as low-risk for SQLi and filtered out.
+  - This specifically removes setup/bootstrap style SQL findings seeded only by server context values.
+
 ## Validation
 
 - `python -m pytest -q tests/rules/test_all_rules.py -k "rce and php"` ✅
@@ -87,11 +96,18 @@
 - F1: 0.49
 - TP/FP/FN/TN: 23 / 47 / 1 / 1
 
+### Checkpoint D (after SQLi source-type gating, current round end)
+
+- Recall: 95.8%
+- Precision: 35.9%
+- F1: 0.52
+- TP/FP/FN/TN: 23 / 41 / 1 / 1
+
 ## Net Effect (Round 9 Start -> End)
 
 - TP: `21 -> 23`
-- FP: `52 -> 47`
+- FP: `52 -> 41`
 - FN: `3 -> 1`
 - Recall: `87.5% -> 95.8%`
-- Precision: `28.8% -> 32.9%`
-- F1: `0.43 -> 0.49`
+- Precision: `28.8% -> 35.9%`
+- F1: `0.43 -> 0.52`

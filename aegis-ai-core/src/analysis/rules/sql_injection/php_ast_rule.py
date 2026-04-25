@@ -20,6 +20,9 @@ except ImportError:
 class PhpSQLInjectionAstRule(SecurityRule):
     """Detect SQL injection in PHP via Tree-sitter AST."""
 
+    _HIGH_RISK_SOURCE_RE = re.compile(r"\$_(?:GET|POST|REQUEST|COOKIE|FILES)\b", re.IGNORECASE)
+    _LOW_RISK_SERVER_SOURCE_RE = re.compile(r"\$_SERVER\b", re.IGNORECASE)
+
     QUERY_METHODS = frozenset(
         {
             "query",
@@ -111,6 +114,8 @@ class PhpSQLInjectionAstRule(SecurityRule):
                                 context.add_finding(finding)
                                 return
                         if _subtree_contains_php_user_input(arg, context):
+                            if not self._contains_high_risk_php_sql_source(arg, context):
+                                continue
                             self._reported.add(line)
                             finding = {
                                 "type": "SQL_INJECTION",
@@ -126,6 +131,8 @@ class PhpSQLInjectionAstRule(SecurityRule):
                         if inner.type == "variable_name":
                             var = self._get_node_text(inner).lstrip("$")
                             if context.is_var_tainted(var) or context.is_var_tainted("$" + var):
+                                if not self._contains_high_risk_php_sql_source(inner, context):
+                                    continue
                                 self._reported.add(line)
                                 finding = {
                                     "type": "SQL_INJECTION",
@@ -157,6 +164,8 @@ class PhpSQLInjectionAstRule(SecurityRule):
                         # Concatenated or interpolated strings with tainted vars
                         if inner.type in ("binary_expression", "encapsed_string"):
                             if self._expr_contains_tainted_var(inner, context):
+                                if not self._contains_high_risk_php_sql_source(inner, context):
+                                    continue
                                 self._reported.add(line)
                                 finding = {
                                     "type": "SQL_INJECTION",
@@ -272,6 +281,56 @@ class PhpSQLInjectionAstRule(SecurityRule):
     @staticmethod
     def _looks_like_sql(text: str) -> bool:
         return re.search(r"\b(select|update|delete|insert|replace|where|from|into)\b", text, re.IGNORECASE) is not None
+
+    def _contains_high_risk_php_sql_source(self, node: Any, context: AnalysisContext) -> bool:
+        """
+        SQLi 规则使用更严格的用户输入门控：
+        - 命中 $_GET/$_POST/$_REQUEST/$_COOKIE/$_FILES 视为高风险
+        - 仅 $_SERVER 派生来源视为低风险，不直接触发 SQLi
+        """
+        text = self._get_node_text(node)
+        if self._HIGH_RISK_SOURCE_RE.search(text):
+            return True
+
+        var_names = self._collect_variable_names(node)
+        if not var_names:
+            return False
+
+        tainted_present = False
+        saw_source = False
+        saw_only_server = True
+        for var_name in var_names:
+            if context.is_var_tainted(var_name) or context.is_var_tainted("$" + var_name):
+                tainted_present = True
+            source = context.get_taint_source(var_name) or context.get_taint_source("$" + var_name)
+            if source is None:
+                saw_only_server = False
+                continue
+            source_type = (getattr(source, "source_type", "") or "").strip().lower()
+            if source_type:
+                saw_source = True
+                if any(token in source_type for token in ("get", "post", "request", "cookie", "files")):
+                    return True
+                if "server" in source_type:
+                    continue
+                saw_only_server = False
+
+            source_expr = (getattr(source, "source_expr", "") or "").strip()
+            if not source_expr:
+                saw_only_server = False
+                continue
+
+            saw_source = True
+            if self._HIGH_RISK_SOURCE_RE.search(source_expr):
+                return True
+            if not self._LOW_RISK_SERVER_SOURCE_RE.search(source_expr):
+                saw_only_server = False
+
+        if saw_source and saw_only_server:
+            return False
+        if tainted_present:
+            return True
+        return False
 
     @staticmethod
     def _find_latest_assignment_expr(var_name: str, sink_line: int, context: AnalysisContext) -> str | None:
