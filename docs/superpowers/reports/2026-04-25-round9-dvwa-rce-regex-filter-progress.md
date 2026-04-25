@@ -6,6 +6,7 @@
 - Round 9 is split into two sub-iterations:
   1. PHP regex RCE false-positive suppression (constant command assignment case).
   2. PHP SQLi recall recovery for `mysqli_real_escape_string` + unquoted numeric interpolation.
+  3. PHP AST/Regex near-line de-duplication to reduce duplicate findings that inflate FP.
 
 ## Baseline (Round 9 Start)
 
@@ -47,6 +48,14 @@
 - New regression fixture:
   - `aegis-ai-core/tests/rules/sql_injection/true_positive/tp_php_mysqli_real_escape_string_unquoted_numeric.php`
 
+### C) Regex duplicate suppression hardening
+
+- `aegis-ai-core/src/analysis/rule_engine.py`
+  - Added near-line de-duplication for PHP regex supplemental findings:
+    - when AST has the same vuln type within ±3 lines, suppress regex duplicate.
+  - Applied to: `SQL_INJECTION`, `RCE_COMMAND_EXEC`, `XSS_RISK`, `PATH_TRAVERSAL`, `OPEN_REDIRECT`, `DESERIALIZATION`.
+  - Goal: keep AST precision while retaining regex-only coverage for gaps.
+
 ## Validation
 
 - `python -m pytest -q tests/rules/test_all_rules.py -k "rce and php"` ✅
@@ -64,18 +73,25 @@
 - F1: 0.44
 - TP/FP/FN/TN: 21 / 50 / 3 / 1
 
-### Checkpoint B (after SQLi recall fix, current round end)
+### Checkpoint B (after SQLi recall fix)
 
 - Recall: 95.8%
 - Precision: 30.7%
 - F1: 0.46
 - TP/FP/FN/TN: 23 / 52 / 1 / 1
 
+### Checkpoint C (after near-line de-duplication, current round end)
+
+- Recall: 95.8%
+- Precision: 32.9%
+- F1: 0.49
+- TP/FP/FN/TN: 23 / 47 / 1 / 1
+
 ## Net Effect (Round 9 Start -> End)
 
 - TP: `21 -> 23`
-- FP: `52 -> 52`
+- FP: `52 -> 47`
 - FN: `3 -> 1`
 - Recall: `87.5% -> 95.8%`
-- Precision: `28.8% -> 30.7%`
-- F1: `0.43 -> 0.46`
+- Precision: `28.8% -> 32.9%`
+- F1: `0.43 -> 0.49`

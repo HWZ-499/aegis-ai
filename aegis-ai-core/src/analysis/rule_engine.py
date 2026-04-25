@@ -102,6 +102,16 @@ _PHP_SETUP_SCRIPT_PREFIXES = (
     "init",
 )
 _PHP_SHELL_META_RE = re.compile(r"[|&;`<>]")
+_PHP_REGEX_NEARLINE_DEDUPE_TYPES = frozenset(
+    {
+        "SQL_INJECTION",
+        "RCE_COMMAND_EXEC",
+        "XSS_RISK",
+        "PATH_TRAVERSAL",
+        "OPEN_REDIRECT",
+        "DESERIALIZATION",
+    }
+)
 
 
 def _extract_first_php_call_argument(raw_line: str) -> str | None:
@@ -417,8 +427,10 @@ def analyze_php(code: str, file_path: Path | str) -> list[dict]:
     # ── 1. AST 精确层 ──
     results = _analyze_with("php", code, path)
     ast_covered: set[tuple[int, str]] = set()
+    ast_lines_by_type: dict[str, list[int]] = {}
     for f in results:
         ast_covered.add((f["line"], f["type"]))
+        ast_lines_by_type.setdefault(f["type"], []).append(f["line"])
 
     # ── 2. Regex 补充层 ──
     try:
@@ -433,6 +445,10 @@ def analyze_php(code: str, file_path: Path | str) -> list[dict]:
         vuln_type = f.get("type", "UNKNOWN")
         if (line, vuln_type) in ast_covered:
             continue
+        if vuln_type in _PHP_REGEX_NEARLINE_DEDUPE_TYPES:
+            near_ast_lines = ast_lines_by_type.get(vuln_type, [])
+            if any(abs(line - ast_line) <= 3 for ast_line in near_ast_lines):
+                continue
         # 正则层：unserialize(..., allowed_classes) 视为安全，不补充报告
         if vuln_type == "DESERIALIZATION" and 1 <= line <= len(lines_of_code):
             raw_line = lines_of_code[line - 1]
