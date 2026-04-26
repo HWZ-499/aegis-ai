@@ -80,6 +80,175 @@ from .rules import (
 logger = logging.getLogger(__name__)
 
 
+_PHP_RCE_SINK_CALL_RE = re.compile(
+    r"\b(?:system|exec|shell_exec|passthru|popen|proc_open|pcntl_exec)\s*\(",
+    re.IGNORECASE,
+)
+_PHP_SUPERGLOBAL_RE = re.compile(r"\$_(?:GET|POST|REQUEST|COOKIE|FILES|SERVER)\b", re.IGNORECASE)
+_PHP_LITERAL_EXPR_PART = r"""(?:'[^'\\]*(?:\\.[^'\\]*)*'|"[^"\\]*(?:\\.[^"\\]*)*"|\d+|__DIR__|__FILE__)"""
+_PHP_LITERAL_COMMAND_EXPR_RE = re.compile(
+    rf"^\s*{_PHP_LITERAL_EXPR_PART}(?:\s*\.\s*{_PHP_LITERAL_EXPR_PART})*\s*$",
+    re.IGNORECASE,
+)
+_PHP_SETUP_SCRIPT_PREFIXES = (
+    "setup",
+    "install",
+    "migrate",
+    "upgrade",
+    "seed",
+    "bootstrap",
+    "fixture",
+    "deploy",
+    "init",
+)
+_PHP_SHELL_META_RE = re.compile(r"[|&;`<>]")
+_PHP_REGEX_NEARLINE_DEDUPE_TYPES = frozenset(
+    {
+        "SQL_INJECTION",
+        "RCE_COMMAND_EXEC",
+        "XSS_RISK",
+        "PATH_TRAVERSAL",
+        "OPEN_REDIRECT",
+        "DESERIALIZATION",
+    }
+)
+_PHP_AST_NEARLINE_DEDUPE_TYPES = frozenset(
+    {
+        "SQL_INJECTION",
+        "RCE_COMMAND_EXEC",
+        "XSS_RISK",
+        "PATH_TRAVERSAL",
+        "OPEN_REDIRECT",
+        "DESERIALIZATION",
+    }
+)
+_JS_NEARLINE_DEDUPE_TYPES = frozenset({"XSS_RISK"})
+
+
+def _extract_first_php_call_argument(raw_line: str) -> str | None:
+    """
+    从 `system(...)` / `shell_exec(...)` 等调用中提取第一个参数表达式。
+
+    仅用于 Regex 补充层 FP 过滤，不做完整 PHP 语法解析。
+    """
+    sink_match = _PHP_RCE_SINK_CALL_RE.search(raw_line)
+    if sink_match is None:
+        return None
+
+    start = sink_match.end()
+    in_single_quote = False
+    in_double_quote = False
+    escaped = False
+    nested_parentheses = 0
+    idx = start
+
+    while idx < len(raw_line):
+        ch = raw_line[idx]
+
+        if escaped:
+            escaped = False
+            idx += 1
+            continue
+        if ch == "\\" and (in_single_quote or in_double_quote):
+            escaped = True
+            idx += 1
+            continue
+
+        if ch == "'" and not in_double_quote:
+            in_single_quote = not in_single_quote
+            idx += 1
+            continue
+        if ch == '"' and not in_single_quote:
+            in_double_quote = not in_double_quote
+            idx += 1
+            continue
+
+        if in_single_quote or in_double_quote:
+            idx += 1
+            continue
+
+        if ch == "(":
+            nested_parentheses += 1
+        elif ch == ")":
+            if nested_parentheses == 0:
+                return raw_line[start:idx].strip()
+            nested_parentheses -= 1
+        elif ch == "," and nested_parentheses == 0:
+            return raw_line[start:idx].strip()
+
+        idx += 1
+
+    return None
+
+
+def _is_setup_like_php_file(path: Path) -> bool:
+    """判断是否为安装/初始化类脚本（通常为低风险运维命令场景）。"""
+    basename = path.name.lower()
+    return any(basename.startswith(prefix) or basename == f"{prefix}.php" for prefix in _PHP_SETUP_SCRIPT_PREFIXES)
+
+
+def _dedupe_php_nearby_findings(findings: list[dict]) -> list[dict]:
+    """
+    PHP 结果后处理：合并 AST/Regex 在近邻行重复产生的同类 finding。
+
+    规则：同 (type, rule_id/source, details) 在 4 行内仅保留首条。
+    """
+    deduped: list[dict] = []
+    last_line_by_key: dict[tuple[str, str, str], int] = {}
+
+    for finding in sorted(findings, key=lambda item: int(item.get("line", 0))):
+        vuln_type = finding.get("type", "")
+        if vuln_type not in _PHP_AST_NEARLINE_DEDUPE_TYPES:
+            deduped.append(finding)
+            continue
+
+        line = int(finding.get("line", 0))
+        identity = str(finding.get("rule_id") or finding.get("source") or "")
+        details = str(finding.get("details") or "")
+        key = (vuln_type, identity, details)
+        previous_line = last_line_by_key.get(key)
+
+        if previous_line is not None and abs(line - previous_line) <= 4:
+            continue
+
+        last_line_by_key[key] = line
+        deduped.append(finding)
+
+    # 恢复原有行序，便于下游稳定展示
+    return sorted(deduped, key=lambda item: int(item.get("line", 0)))
+
+
+def _dedupe_nearby_findings(
+    findings: list[dict],
+    target_types: set[str] | frozenset[str],
+    window: int,
+) -> list[dict]:
+    """
+    通用近邻去重：同 (type, rule_id/source, details) 在 window 行内仅保留首条。
+    """
+    deduped: list[dict] = []
+    last_line_by_key: dict[tuple[str, str, str], int] = {}
+
+    for finding in sorted(findings, key=lambda item: int(item.get("line", 0))):
+        vuln_type = str(finding.get("type", ""))
+        if vuln_type not in target_types:
+            deduped.append(finding)
+            continue
+
+        line = int(finding.get("line", 0))
+        identity = str(finding.get("rule_id") or finding.get("source") or "")
+        details = str(finding.get("details") or "")
+        key = (vuln_type, identity, details)
+        previous_line = last_line_by_key.get(key)
+        if previous_line is not None and abs(line - previous_line) <= window:
+            continue
+
+        last_line_by_key[key] = line
+        deduped.append(finding)
+
+    return sorted(deduped, key=lambda item: int(item.get("line", 0)))
+
+
 def get_default_rules_for_language(
     language: str,
     include_dsl: bool = True,
@@ -230,7 +399,10 @@ def _analyze_with(
             raw = analyzer.analyze(code, path, language=language)
         else:
             raw = analyzer.analyze(code, path)
-        return cast(list[dict[str, Any]], filter_suppressed_findings(raw, code))
+        filtered = cast(list[dict[str, Any]], filter_suppressed_findings(raw, code))
+        if language in ("javascript", "typescript"):
+            filtered = _dedupe_nearby_findings(filtered, target_types=_JS_NEARLINE_DEDUPE_TYPES, window=6)
+        return filtered
     except (RuntimeError, ValueError):
         logger.exception("_analyze_with(%s) failed for %s", language, path)
         return []
@@ -331,8 +503,10 @@ def analyze_php(code: str, file_path: Path | str) -> list[dict]:
     # ── 1. AST 精确层 ──
     results = _analyze_with("php", code, path)
     ast_covered: set[tuple[int, str]] = set()
+    ast_lines_by_type: dict[str, list[int]] = {}
     for f in results:
         ast_covered.add((f["line"], f["type"]))
+        ast_lines_by_type.setdefault(f["type"], []).append(f["line"])
 
     # ── 2. Regex 补充层 ──
     try:
@@ -347,6 +521,10 @@ def analyze_php(code: str, file_path: Path | str) -> list[dict]:
         vuln_type = f.get("type", "UNKNOWN")
         if (line, vuln_type) in ast_covered:
             continue
+        if vuln_type in _PHP_REGEX_NEARLINE_DEDUPE_TYPES:
+            near_ast_lines = ast_lines_by_type.get(vuln_type, [])
+            if any(abs(line - ast_line) <= 3 for ast_line in near_ast_lines):
+                continue
         # 正则层：unserialize(..., allowed_classes) 视为安全，不补充报告
         if vuln_type == "DESERIALIZATION" and 1 <= line <= len(lines_of_code):
             raw_line = lines_of_code[line - 1]
@@ -355,12 +533,16 @@ def analyze_php(code: str, file_path: Path | str) -> list[dict]:
         # 正则层：PHP RCE 仅当参数为字面量（无 $var / $_GET 等）时不报告，避免常量命令误报
         if vuln_type == "RCE_COMMAND_EXEC" and 1 <= line <= len(lines_of_code):
             raw_line = lines_of_code[line - 1]
-            if re.search(r"\$(_(?:GET|POST|REQUEST|COOKIE)|\w+)", raw_line) is None and re.search(
-                r"\b(system|exec|shell_exec|passthru|popen)\s*\(\s*['\"][^'\"]*['\"]\s*\)",
-                raw_line,
-                re.IGNORECASE,
+            first_arg = _extract_first_php_call_argument(raw_line)
+            if (
+                first_arg is not None
+                and _PHP_SUPERGLOBAL_RE.search(first_arg) is None
+                and _PHP_LITERAL_COMMAND_EXPR_RE.fullmatch(first_arg)
             ):
-                continue
+                # 常量命令默认视为低风险，不补充报告；
+                # 但复杂 shell 管道命令仍保留，除非在 setup/install 等脚本中。
+                if _is_setup_like_php_file(path) or _PHP_SHELL_META_RE.search(first_arg) is None:
+                    continue
         results.append(
             {
                 "type": vuln_type,
@@ -376,7 +558,7 @@ def analyze_php(code: str, file_path: Path | str) -> list[dict]:
             }
         )
 
-    return results
+    return _dedupe_php_nearby_findings(results)
 
 
 __all__ = [

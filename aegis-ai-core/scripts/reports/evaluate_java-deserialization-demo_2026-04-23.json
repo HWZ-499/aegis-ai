@@ -1,0 +1,23 @@
+{
+  "target": "java-deserialization-demo",
+  "date": "2026-04-23",
+  "metrics": {
+    "tp": 0,
+    "fp": 0,
+    "fn": 1,
+    "tn": 1,
+    "recall": 0.0,
+    "precision": 0.0,
+    "fpr": 0.0,
+    "f1": 0.0
+  },
+  "by_category": {
+    "DESERIALIZATION": {
+      "tp": 0,
+      "tn": 1,
+      "fp": 0,
+      "fn": 1
+    }
+  },
+  "details": []
+}

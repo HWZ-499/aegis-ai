@@ -338,6 +338,7 @@ def evaluate_project_against_ground_truth(
     阶段四：对真实项目扫描结果与 ground-truth 对比，得到 Recall/Precision/F1。
 
     Ground-truth 格式：列表，每项 {"file": str, "line": int, "type": str}。
+    可选字段 ``line_candidates`` 支持多候选行号（分支差异时可用）。
     file 可为路径后缀或 glob（如 "login.js"、"*route*"）。
 
     Args:
@@ -373,18 +374,52 @@ def evaluate_project_against_ground_truth(
     # 行号容差：±LINE_TOLERANCE 内视为匹配
     LINE_TOLERANCE = 3
 
+    def _expected_lines(exp: dict) -> list[int]:
+        candidates: list[int] = []
+        line_candidates = exp.get("line_candidates")
+        if isinstance(line_candidates, list):
+            for item in line_candidates:
+                try:
+                    candidates.append(int(item))
+                except (TypeError, ValueError):
+                    continue
+        elif line_candidates is not None:
+            try:
+                candidates.append(int(line_candidates))
+            except (TypeError, ValueError):
+                pass
+
+        line = exp.get("line")
+        if line is not None:
+            try:
+                candidates.append(int(line))
+            except (TypeError, ValueError):
+                pass
+
+        deduped: list[int] = []
+        seen: set[int] = set()
+        for value in candidates:
+            if value in seen:
+                continue
+            seen.add(value)
+            deduped.append(value)
+        return deduped
+
     def _match(exp: dict, finding: dict) -> bool:
         if finding.get("type", "") != exp.get("type", ""):
             return False
         if not _file_matches(finding.get("_file", ""), exp.get("file", "")):
             return False
-        exp_line = exp.get("line")
         f_line = finding.get("line")
-        if exp_line is not None and f_line is not None:
+        exp_lines = _expected_lines(exp)
+        if exp_lines:
+            if f_line is None:
+                return False
             try:
-                return abs(int(f_line) - int(exp_line)) <= LINE_TOLERANCE
+                f_line_num = int(f_line)
             except (TypeError, ValueError):
                 return False
+            return any(abs(f_line_num - exp_line) <= LINE_TOLERANCE for exp_line in exp_lines)
         return True
 
     for k, (_, exp) in enumerate(positives):

@@ -1068,27 +1068,25 @@ class TaintAnalyzer:
         if not TREE_SITTER_AVAILABLE or not isinstance(node, Node):
             return
 
-        # 短变量声明：identifier_list ':=' expression_list
+        # 短变量声明：expression_list ':=' expression_list（如 `a := f()` / `a, b := g()`）
         if node.type == "short_var_declaration":
-            names: list[str] = []
-            expr_text: str | None = None
-            for child in node.children:
-                if child.type == "identifier_list":
-                    for ident in child.children:
-                        if ident.type == "identifier":
-                            name = self._get_node_text(ident) or ""
-                            if name:
-                                names.append(name)
-                elif child.type == "expression_list":
-                    # 仅处理单表达式场景
-                    for expr in child.children:
-                        if expr.type in (",",):
-                            continue
-                        expr_text = self._get_node_text(expr)
-                        break
-            if len(names) == 1 and expr_text:
-                line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                self._register_variable(names[0], expr_text, line)
+            expr_lists = [c for c in node.children if c.type == "expression_list"]
+            if len(expr_lists) < 2:
+                return
+
+            left_nodes = [c for c in expr_lists[0].children if c.type == "identifier"]
+            right_nodes = [c for c in expr_lists[1].children if c.type != ","]
+            if not left_nodes or not right_nodes:
+                return
+
+            line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+            for idx, left in enumerate(left_nodes):
+                if idx >= len(right_nodes):
+                    break
+                name = self._get_node_text(left) or ""
+                right_text = self._get_node_text(right_nodes[idx]) or ""
+                if name and right_text:
+                    self._register_variable(name, right_text, line)
             return
 
         # 一般赋值语句：expression_list op expression_list
@@ -1469,7 +1467,9 @@ class TaintAnalyzer:
             if "." in callee_text:
                 tail = callee_text.rsplit(".", 1)[-1]
                 candidates.append("." + tail + "(")  # .execute(
-        candidates.append(call_text)  # 兜底：完整调用文本
+        # Go 语言中 call_text 可能包含回调函数体，使用完整文本会把嵌套调用误识别为当前 sink。
+        if self.language != "go" or not callee_text:
+            candidates.append(call_text)  # 兜底：完整调用文本
 
         # 逐个候选尝试匹配 Sink
         sink_pattern = None

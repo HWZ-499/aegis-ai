@@ -7,7 +7,6 @@ Detection targets:
 1. Tree-sitter AST node-level analysis (visit):
    - os.Open(userInput), os.OpenFile(userInput, ...), os.Create(userInput)
    - os.ReadFile(userInput), ioutil.ReadFile(userInput)
-   - filepath.Join(userInput) when fed user-controlled segments
    - os.Stat(userInput), os.Remove(userInput)
    - os.MkdirAll(userInput, ...), os.RemoveAll(userInput), os.Rename(userInput, ...)
    - ioutil.WriteFile(userInput, ...), ioutil.ReadDir(userInput)
@@ -57,8 +56,6 @@ _PATH_SINK_FUNCS: dict[str, frozenset[str]] = {
     # ioutil (deprecated but still common)
     "ReadDir": frozenset(["ioutil", "os"]),
     "WriteFile": frozenset(["ioutil", "os"]),
-    # filepath
-    "Join": frozenset(["filepath"]),
 }
 
 # Union of all recognised function names (for quick pre-check)
