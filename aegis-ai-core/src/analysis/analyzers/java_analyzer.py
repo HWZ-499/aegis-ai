@@ -1,4 +1,4 @@
-﻿"""
+"""
 java_analyzer.py - Java 专用分析器（统一污点系统版）
 
 说明：
@@ -120,4 +120,3 @@ class JavaAnalyzer:
 
 
 __all__ = ["JavaAnalyzer"]
-

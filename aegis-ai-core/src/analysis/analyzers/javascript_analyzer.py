@@ -1,4 +1,4 @@
-﻿"""
+"""
 javascript_analyzer.py - JavaScript/TypeScript 分析器（新规则架构）
 
 说明：
@@ -45,16 +45,25 @@ class JavaScriptAnalyzer:
             r for r in rules if r.supports("javascript") or r.supports("typescript") or not r.languages
         ]
 
-        # 初始化 Tree-sitter parser（如果可用）
-        self._parser: Parser | None = None
+        # 初始化 Tree-sitter parsers（如果可用）
+        self._js_parser: Parser | None = None
+        self._ts_parser: Parser | None = None
         if TREE_SITTER_AVAILABLE:
             try:
                 js_lang = get_language("javascript")
-                self._parser = Parser()
-                self._parser.set_language(js_lang)
+                self._js_parser = Parser()
+                self._js_parser.set_language(js_lang)
             except (ImportError, RuntimeError, OSError):
                 # Tree-sitter 不可用时，规则仍然可以工作（例如行级规则）
-                self._parser = None
+                self._js_parser = None
+
+            try:
+                ts_lang = get_language("typescript")
+                self._ts_parser = Parser()
+                self._ts_parser.set_language(ts_lang)
+            except (ImportError, RuntimeError, OSError):
+                # Tree-sitter 不可用时，规则仍然可以工作（例如行级规则）
+                self._ts_parser = None
 
     def analyze(self, code: str, file_path: Path, language: str = "javascript") -> list[dict]:
         """
@@ -82,9 +91,10 @@ class JavaScriptAnalyzer:
             rule.before_file(context)
 
         # 3. 解析 Tree-sitter AST（如果可用）
-        if self._parser:
+        parser = self._parser_for_language(lang)
+        if parser:
             try:
-                tree = self._parser.parse(bytes(code, "utf8"))
+                tree = parser.parse(bytes(code, "utf8"))
                 root = tree.root_node
 
                 # 3.1 先运行 TaintAnalyzer 构建污点图（2.1 统一污点系统），规则层通过 context.taint_graph 查询
@@ -110,6 +120,12 @@ class JavaScriptAnalyzer:
             rule.after_file(context)
 
         return context.findings
+
+    def _parser_for_language(self, language: str) -> Parser | None:
+        """Return the parser that matches the requested JavaScript-family language."""
+        if language == "typescript":
+            return self._ts_parser or self._js_parser
+        return self._js_parser
 
     def _traverse_tree(self, node: Node, context: AnalysisContext) -> None:
         """

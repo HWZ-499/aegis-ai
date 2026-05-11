@@ -1,4 +1,4 @@
-﻿"""
+"""
 taint_analyzer.py - 污点分析器
 
 实现完整的 Source → Sink 污点分析：

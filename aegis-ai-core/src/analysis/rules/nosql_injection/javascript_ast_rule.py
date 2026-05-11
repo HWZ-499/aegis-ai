@@ -1,4 +1,4 @@
-﻿"""
+"""
 nosql_injection.javascript_ast_rule
 
 JavaScript/TypeScript NoSQL 注入 AST 规则（优化版 + 数据流分析）。
@@ -434,7 +434,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                     # 【降低误报】简单 _id/id 查询（如 findOne({ _id: id })）常见于合法 ById 查找
                     # 对于 update 类方法，跳过情况 B 但继续检查情况 D（第二个参数可能有风险）
                     _UPDATE_METHODS = ("update", "updateOne", "updateMany", "findOneAndUpdate")
-                    if self._is_simple_id_query(first_arg):
+                    if self._is_simple_id_query(first_arg, context):
                         if method_name not in _UPDATE_METHODS:
                             return
                         # update 类方法：跳过情况 B，直接到情况 D 检查第二个参数
@@ -625,11 +625,12 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
 
         return False
 
-    def _is_simple_id_query(self, node: Node) -> bool:
+    def _is_simple_id_query(self, node: Node, context: AnalysisContext | None = None) -> bool:
         """
         判断是否为“仅按 _id/id 查询”的对象字面量，用于降低 DAO 层 findByUserId 等误报。
 
         例如 findOne({ _id: id })、find({ id: userId }) 等单键 id 查询多为合法 ById 查找。
+        但若 id 值已被污点图确认来自用户输入，则不能按安全查询跳过。
         """
         if node.type != "object":
             return False
@@ -646,7 +647,16 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
                 value_node = sub
         if not key_text or key_text not in ("_id", "id"):
             return False
-        return value_node is not None and value_node.type == "identifier"
+        if value_node is None:
+            return False
+        if value_node.type == "identifier" and context is not None:
+            var_name = self._get_node_text(value_node) or ""
+            if var_name and context.is_var_tainted(var_name):
+                return False
+        if value_node.type == "member_expression" and context is not None:
+            if self._looks_like_user_input(value_node, context):
+                return False
+        return value_node.type == "identifier"
 
     def _has_dangerous_key_or_value(self, node: Node, context: AnalysisContext) -> bool:
         """

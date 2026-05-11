@@ -1,4 +1,4 @@
-﻿"""
+"""
 rce.javascript_ast_rule
 
 JavaScript/TypeScript RCE（远程代码执行 / 命令执行）AST 规则。
@@ -14,6 +14,7 @@ JavaScript/TypeScript RCE（远程代码执行 / 命令执行）AST 规则。
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ...base import (
@@ -45,6 +46,13 @@ class JavaScriptRCEAstRule(SecurityRule):
             severity="Critical",
             languages=["javascript", "typescript"],
         )
+        self._child_process_object_aliases: set[str] = {"child_process"}
+        self._child_process_function_aliases: set[str] = set()
+
+    def before_file(self, context: AnalysisContext) -> None:
+        """Reset per-file child_process alias tracking."""
+        self._child_process_object_aliases = {"child_process"}
+        self._child_process_function_aliases = set()
 
     def visit(self, node: Any, context: AnalysisContext) -> None:
         """
@@ -52,6 +60,9 @@ class JavaScriptRCEAstRule(SecurityRule):
         """
         if not TREE_SITTER_AVAILABLE:
             return
+
+        if isinstance(node, Node) and node.type in ("variable_declaration", "lexical_declaration", "import_statement"):
+            self._collect_child_process_aliases(node)
 
         # 只关心函数调用节点
         if not isinstance(node, Node) or node.type != "call_expression":
@@ -94,17 +105,30 @@ class JavaScriptRCEAstRule(SecurityRule):
             return
 
         # 2. child_process.exec() 等命令执行
-        if object_name == "child_process" and method_name in ("exec", "spawn", "execFile"):
+        if object_name in self._child_process_object_aliases and method_name in ("exec", "spawn", "execFile"):
             line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
             finding: dict[str, Any] = {
                 "type": "RCE_COMMAND_EXEC",
                 "rule_id": self.rule_id,
                 "severity": self.severity,
                 "line": line_no,
-                "details": f"JavaScript AST: 发现命令执行调用 child_process.{method_name}()，存在命令注入风险。",
+                "details": f"JavaScript AST: 发现命令执行调用 {object_name}.{method_name}()，存在命令注入风险。",
             }
             finding.update(tree_sitter_node_to_range(node))
             context.add_finding(finding)
+            return
+
+        if function_name in self._child_process_function_aliases:
+            line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+            alias_finding: dict[str, Any] = {
+                "type": "RCE_COMMAND_EXEC",
+                "rule_id": self.rule_id,
+                "severity": self.severity,
+                "line": line_no,
+                "details": f"JavaScript AST: 发现 child_process.{function_name}() 别名调用，存在命令注入风险。",
+            }
+            alias_finding.update(tree_sitter_node_to_range(node))
+            context.add_finding(alias_finding)
             return
 
         # 3. vm.runInNewContext() - Node.js VM 模块（代码执行）
@@ -162,20 +186,23 @@ class JavaScriptRCEAstRule(SecurityRule):
         1. 无参数 → 跳过
         2. 第一个参数是字符串字面量（string 节点）→ 跳过
         3. 第一个参数来自用户输入（结构化匹配 req.*）→ Critical
-        4. 第一个参数含变量引用但来源不明 → Medium（降级）
+        4. 第一个参数是变量引用但来源不明 → Medium（降级）
+        5. 函数调用表达式只有在子树中含用户输入或 taint 时才上报
         """
         first_arg = self._get_first_arg(node)
         if first_arg is None:
             return
 
-        # 字符串字面量参数 → 静态代码，安全
-        if first_arg.type in ("string", "template_string", "number"):
+        # 字符串/数字字面量参数 → 静态代码，安全
+        if first_arg.type in ("string", "number"):
+            return
+        if first_arg.type == "template_string" and not self._template_string_has_interpolation(first_arg):
             return
 
         line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
 
         # 用户输入直接流入
-        if self._looks_like_user_input_for_unserialize(first_arg):
+        if self._subtree_contains_user_input(first_arg, context):
             finding: dict[str, Any] = {
                 "type": "RCE_COMMAND_EXEC",
                 "rule_id": self.rule_id,
@@ -189,8 +216,11 @@ class JavaScriptRCEAstRule(SecurityRule):
 
         # 也检查 context.taint_graph（如果有污点图）
         if context.taint_graph is not None:
+            tainted_identifiers = [
+                name for name in self._collect_identifiers(first_arg) if context.is_var_tainted(name)
+            ]
             arg_text = self._get_node_text(first_arg) or ""
-            if arg_text and context.is_var_tainted(arg_text):
+            if (arg_text and context.is_var_tainted(arg_text)) or tainted_identifiers:
                 finding = {
                     "type": "RCE_COMMAND_EXEC",
                     "rule_id": self.rule_id,
@@ -202,11 +232,11 @@ class JavaScriptRCEAstRule(SecurityRule):
                 context.add_finding(finding)
                 return
 
-        # 参数含变量但来源不明 → 降级为 Medium
+        # 参数含变量但来源不明 → 降级为 Medium。函数调用表达式可能是本地
+        # 静态 bundle/deobfuscation helper，只有前面的 source/taint 分支命中时才报告。
         if first_arg.type in (
             "identifier",
             "member_expression",
-            "call_expression",
             "binary_expression",
             "template_string",
         ):
@@ -220,6 +250,52 @@ class JavaScriptRCEAstRule(SecurityRule):
             finding.update(tree_sitter_node_to_range(node))
             context.add_finding(finding)
 
+    # ------------------------------------------------------------------
+    # child_process import/require alias tracking
+    # ------------------------------------------------------------------
+    def _collect_child_process_aliases(self, node: Node) -> None:
+        """Collect aliases such as const cp = require("child_process") and const { exec } = require(...)."""
+        text = self._get_node_text(node) or ""
+        if "child_process" not in text:
+            return
+
+        for match in re.finditer(
+            r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*require\(\s*['\"]child_process['\"]\s*\)",
+            text,
+        ):
+            self._child_process_object_aliases.add(match.group(1))
+
+        destructured = re.search(
+            r"\b(?:const|let|var)\s*\{(?P<names>[^}]+)\}\s*=\s*require\(\s*['\"]child_process['\"]\s*\)",
+            text,
+        )
+        if destructured:
+            for raw_part in destructured.group("names").split(","):
+                part = raw_part.strip()
+                if not part:
+                    continue
+                local_name = part.split(":", 1)[-1].strip()
+                local_name = local_name.split("=", 1)[0].strip()
+                if local_name in ("exec", "spawn", "execFile"):
+                    self._child_process_function_aliases.add(local_name)
+
+        import_namespace = re.search(
+            r"\bimport\s+\*\s+as\s+([A-Za-z_$][\w$]*)\s+from\s+['\"]child_process['\"]",
+            text,
+        )
+        if import_namespace:
+            self._child_process_object_aliases.add(import_namespace.group(1))
+
+        import_named = re.search(r"\bimport\s*\{(?P<names>[^}]+)\}\s*from\s*['\"]child_process['\"]", text)
+        if import_named:
+            for raw_part in import_named.group("names").split(","):
+                part = raw_part.strip()
+                if not part:
+                    continue
+                local_name = part.split(" as ", 1)[-1].strip()
+                if local_name in ("exec", "spawn", "execFile"):
+                    self._child_process_function_aliases.add(local_name)
+
     @staticmethod
     def _get_first_arg(node: Any) -> Any:
         """提取函数调用的第一个实参节点。"""
@@ -229,6 +305,37 @@ class JavaScriptRCEAstRule(SecurityRule):
                     if arg.type not in ("(", ")", ","):
                         return arg
         return None
+
+    @staticmethod
+    def _template_string_has_interpolation(node: Any) -> bool:
+        """Return True when a template string contains ${...} interpolation."""
+        text = JavaScriptRCEAstRule._get_node_text(node) or ""
+        return "${" in text
+
+    @staticmethod
+    def _collect_identifiers(node: Any) -> list[str]:
+        """Collect identifier names from a subtree."""
+        if not TREE_SITTER_AVAILABLE or not isinstance(node, Node):
+            return []
+        if node.type == "identifier":
+            text = JavaScriptRCEAstRule._get_node_text(node)
+            return [text] if text else []
+        out: list[str] = []
+        for child in getattr(node, "children", []) or []:
+            out.extend(JavaScriptRCEAstRule._collect_identifiers(child))
+        return out
+
+    @staticmethod
+    def _subtree_contains_user_input(node: Any, context: AnalysisContext | None = None) -> bool:
+        """Recursively check whether a subtree contains req.body/query/etc. or tainted identifiers."""
+        if not TREE_SITTER_AVAILABLE or not isinstance(node, Node):
+            return False
+        if is_user_input_node(node, context, language="javascript"):
+            return True
+        for child in getattr(node, "children", []) or []:
+            if JavaScriptRCEAstRule._subtree_contains_user_input(child, context):
+                return True
+        return False
 
     # ------------------------------------------------------------------
     # 辅助方法（复用 multi_language_ast 的逻辑）

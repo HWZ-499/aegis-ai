@@ -1,4 +1,4 @@
-﻿# security_rules.py
+# security_rules.py
 """
 .. deprecated:: 1.2.0
     此模块为旧版正则规则引擎，已被 ``rule_engine.py`` + ``rules/`` 目录取代。
@@ -299,10 +299,174 @@ _RE_JS_REGEX_EXEC = re.compile(r"/.*/\.exec\s*\(", re.IGNORECASE)
 _RE_ARRAY_DEF = re.compile(r"var\s+\w+\s*=\s*\[", re.IGNORECASE)
 _RE_HTML_TAG_RCE = re.compile(r"<[^>]*>.*(shutdown|system|exec|shell_exec)", re.IGNORECASE)
 _RE_ECHO_PRINT_RCE = re.compile(r'(echo|print)\s*["\'].*(shutdown|system|exec|shell_exec)', re.IGNORECASE)
+_RE_JS_DOM_XSS_IN_PHP_STRING = re.compile(
+    r"\binnerHTML\b|\bouterHTML\b|\bdocument\.write\s*\(|\.html\s*\(|dangerouslySetInnerHTML|__html\s*:|v-html\s*=",
+    re.IGNORECASE,
+)
+_RE_PHP_STRING_INTERPOLATION_OR_INPUT = re.compile(
+    r"\{\s*\$|\$_(GET|POST|REQUEST|COOKIE|FILES|SERVER)\s*\[",
+    re.IGNORECASE,
+)
 # PHP RCE：调用前存在通用输入校验函数（is_numeric / intval / preg_match 等），用于降级 Medium
 _RE_PHP_VALIDATION = re.compile(
     r"\b(is_numeric|intval|ctype_digit|preg_match|filter_var|in_array|array_search|strip_tags)\s*\(", re.IGNORECASE
 )
+
+
+def _php_multiline_string_line_indexes(lines: list[str]) -> set[int]:
+    """Return line indexes inside explicit PHP multiline template string assignments."""
+    indexes: set[int] = set()
+    in_template = False
+    quote = ""
+    start_re = re.compile(
+        r"^\s*\$[A-Za-z_]\w*(?:\s*\[[^\]]+\])?\s*\.?=\s*([\"'])\s*$",
+        re.IGNORECASE,
+    )
+
+    for line_idx, line in enumerate(lines):
+        stripped = line.strip()
+        if in_template:
+            indexes.add(line_idx)
+            if stripped.startswith(f"{quote};") or stripped == f"{quote};":
+                in_template = False
+                quote = ""
+            continue
+
+        matched = start_re.match(stripped)
+        if matched is not None:
+            in_template = True
+            quote = matched.group(1)
+            indexes.add(line_idx)
+
+    return indexes
+
+
+def _php_is_numeric_ip_rebuild_command(lines: list[str], line_idx: int, raw_line: str) -> bool:
+    """
+    Return True for guarded IP rebuilds used in shell commands.
+
+    Pattern:
+    $target = $_REQUEST['ip'];
+    $octet = explode('.', $target);
+    if (is_numeric($octet[0]) && ... && sizeof($octet) == 4) {
+        $target = $octet[0] . '.' . $octet[1] . '.' . $octet[2] . '.' . $octet[3];
+        shell_exec('ping ' . $target);
+    }
+    """
+    command_vars = [name.lstrip("$") for name in re.findall(r"\$[A-Za-z_]\w*", raw_line)]
+    for command_var in command_vars:
+        assignment = _php_find_latest_assignment_expr(command_var, line_idx, lines)
+        if assignment is None:
+            continue
+        assignment_idx, assignment_expr = assignment
+
+        array_var = _php_extract_ip_rebuild_array_var(assignment_expr)
+        if array_var is None:
+            continue
+        if not _php_has_explode_assignment(lines, array_var, command_var, assignment_idx):
+            continue
+        if _php_has_complete_numeric_ip_guard(lines, array_var, assignment_idx, line_idx):
+            return True
+    return False
+
+
+def _php_find_latest_assignment_expr(var_name: str, before_idx: int, lines: list[str]) -> tuple[int, str] | None:
+    assign_re = re.compile(rf"\${re.escape(var_name)}\s*=\s*(.+?)\s*;?\s*$")
+    for index in range(before_idx - 1, -1, -1):
+        matched = assign_re.search(lines[index])
+        if matched is not None:
+            return index, matched.group(1).strip()
+    return None
+
+
+def _php_echoes_static_local_value(raw_line: str, lines: list[str], line_idx: int) -> bool:
+    matched = re.search(r"\b(?:echo|print)\s+(\$[A-Za-z_]\w*)\b", raw_line, re.IGNORECASE)
+    if matched is None:
+        return False
+
+    var_name = matched.group(1).lstrip("$")
+    assignment = _php_find_latest_assignment_expr(var_name, line_idx, lines)
+    if assignment is None:
+        return False
+
+    _, expr = assignment
+    return _php_is_static_literal_expr(expr)
+
+
+def _php_is_static_literal_expr(expr: str) -> bool:
+    if "$" in expr or "->" in expr or "::" in expr:
+        return False
+    return bool(
+        re.fullmatch(
+            r"\s*(?:['\"][^'\"]*['\"]|\d+(?:\.\d+)?|\.)+(?:\s*(?:\.)\s*(?:['\"][^'\"]*['\"]|\d+(?:\.\d+)?))*\s*", expr
+        )
+    )
+
+
+def _php_extract_ip_rebuild_array_var(expr: str) -> str | None:
+    matches = re.findall(r"\$([A-Za-z_]\w*)\s*\[\s*([0-3])\s*\]", expr)
+    if not matches:
+        return None
+    array_names = {name for name, _ in matches}
+    indexes = {index for _, index in matches}
+    if len(array_names) != 1 or indexes != {"0", "1", "2", "3"}:
+        return None
+    if len(re.findall(r"['\"]\.['\"]", expr)) < 3:
+        return None
+    return next(iter(array_names))
+
+
+def _php_has_explode_assignment(lines: list[str], array_var: str, source_var: str, before_idx: int) -> bool:
+    explode_re = re.compile(
+        rf"\${re.escape(array_var)}\s*=\s*explode\s*\(\s*['\"]\.['\"]\s*,\s*\${re.escape(source_var)}\s*\)",
+        re.IGNORECASE,
+    )
+    return any(explode_re.search(lines[index]) for index in range(before_idx - 1, -1, -1))
+
+
+def _php_has_complete_numeric_ip_guard(lines: list[str], array_var: str, assignment_idx: int, sink_idx: int) -> bool:
+    start = max(0, assignment_idx - 25)
+    for guard_idx in range(assignment_idx - 1, start - 1, -1):
+        if "if" not in lines[guard_idx]:
+            continue
+        condition_text = "\n".join(lines[guard_idx:assignment_idx])
+        if not _php_condition_checks_four_numeric_octets(condition_text, array_var):
+            continue
+        if _php_guard_block_contains_line(lines, guard_idx, sink_idx):
+            return True
+    return False
+
+
+def _php_condition_checks_four_numeric_octets(condition_text: str, array_var: str) -> bool:
+    if re.search(r"!\s*is_numeric", condition_text, re.IGNORECASE):
+        return False
+    for index in range(4):
+        if not re.search(
+            rf"\bis_numeric\s*\(\s*\${re.escape(array_var)}\s*\[\s*{index}\s*\]\s*\)",
+            condition_text,
+            re.IGNORECASE,
+        ):
+            return False
+    size_expr = rf"(?:sizeof|count)\s*\(\s*\${re.escape(array_var)}\s*\)"
+    return bool(
+        re.search(rf"{size_expr}\s*={{2,3}}\s*4", condition_text, re.IGNORECASE)
+        or re.search(rf"4\s*={{2,3}}\s*{size_expr}", condition_text, re.IGNORECASE)
+    )
+
+
+def _php_guard_block_contains_line(lines: list[str], guard_idx: int, sink_idx: int) -> bool:
+    depth = 0
+    seen_open = False
+    for index in range(guard_idx, min(len(lines), sink_idx + 1)):
+        if index == sink_idx:
+            return seen_open and depth > 0
+        current = lines[index]
+        if "{" in current:
+            seen_open = True
+        depth += current.count("{") - current.count("}")
+        if seen_open and depth <= 0:
+            return False
+    return False
 
 
 def _strip_comments_and_strings(line: str, language: str = "python") -> str:
@@ -1123,6 +1287,7 @@ def scan_code_locally(code_content, file_path=None):
 
     # 按行扫描，这样能拿到行号
     lines = code_content.split("\n")
+    php_multiline_string_lines = _php_multiline_string_line_indexes(lines) if language == "php" else set()
 
     for line_idx, line in enumerate(lines):
         line_num = line_idx + 1
@@ -1404,6 +1569,13 @@ def scan_code_locally(code_content, file_path=None):
                     # 【优化案例B】XSS 特殊处理：检查上下文（json_encode、header() 设置等）
                     if vuln_type == "XSS_RISK":
                         if language == "php":
+                            if (
+                                line_idx in php_multiline_string_lines
+                                and _RE_JS_DOM_XSS_IN_PHP_STRING.search(line)
+                                and not _RE_PHP_STRING_INTERPOLATION_OR_INPUT.search(line)
+                            ):
+                                continue
+
                             # header("location:") 是 Open Redirect（CWE-601），不归 XSS
                             if _RE_OPEN_REDIRECT_HDR.search(line):
                                 continue
@@ -1421,6 +1593,9 @@ def scan_code_locally(code_content, file_path=None):
                                 continue  # filter_var(FILTER_SANITIZE)，安全
                             if _RE_PHP_CONTENT_JSON.search(context_lines):
                                 continue  # Content-Type: application/json，安全
+
+                            if _php_echoes_static_local_value(line, lines, line_idx):
+                                continue  # 最近赋值为静态字面量，不是用户可控输出
 
                             # echo $response['...']：$response 由内部方法构造，扫全文件确认
                             if re.search(r"\becho\s+\$response\s*\[", line, re.IGNORECASE):
@@ -1468,6 +1643,8 @@ def scan_code_locally(code_content, file_path=None):
                         # 替代原来 DVWA 硬编码的 3 个模式，改为检测调用前是否存在任意
                         # 数值/格式校验函数，泛化到真实项目中常见的防御写法。
                         if language == "php" and _RE_PHP_SHELL_EXEC.search(code_only_line):
+                            if _php_is_numeric_ip_rebuild_command(lines, line_idx, code_only_line):
+                                continue
                             ctx_start = max(0, line_idx - 30)
                             ctx = "\n".join(lines[ctx_start:line_idx])
                             if _RE_PHP_VALIDATION.search(ctx):
@@ -1537,23 +1714,27 @@ def scan_code_locally(code_content, file_path=None):
                             continue
 
                     # OPEN_REDIRECT 后处理：
-                    # 若 header("location: " . $localVar) 中的变量不是 $_GET/$_POST 等超全局变量，
-                    # 检查上下文中该变量是否从用户输入派生。若上下文只有硬编码赋值（switch/case 等），
-                    # 则视为安全（如 impossible.php 中的 $target）。
+                    # 若 header("location: " . $localVar) 或 header("location: {$localVar}") 中的变量
+                    # 不是 $_GET/$_POST 等超全局变量，检查上下文中该变量是否从用户输入派生。
+                    # 若上下文只有硬编码赋值或函数参数，则不让 regex 补充层单独上报。
                     if vuln_type == "OPEN_REDIRECT" and language == "php":
                         raw = line.strip()
                         # 若行中直接含超全局变量，肯定是开放重定向，保留
                         if _RE_PHP_USER_INPUT.search(raw):
                             pass  # 直接来自用户输入，保留
                         else:
-                            # 提取 header 调用里最后一个 $ 变量名
-                            _var_m = re.search(r"\.\s*(\$\w+)\s*[;)]", raw)
-                            if _var_m:
-                                _var = re.escape(_var_m.group(1))
-                                # 在前 20 行查该变量是否被赋予用户输入
+                            # 提取 header 调用里的局部变量，覆盖拼接与 "{$var}" 插值写法。
+                            _vars = {name for name in re.findall(r"\$[A-Za-z_]\w*", raw) if not name.startswith("$_")}
+                            if _vars:
+                                # 在前 20 行查这些变量是否被赋予用户输入
                                 _ctx = "\n".join(lines[max(0, line_idx - 20) : line_idx])
-                                _user_assign = re.search(
-                                    rf"{_var}\s*=\s*.*\$_(GET|POST|REQUEST|COOKIE)", _ctx, re.IGNORECASE
+                                _user_assign = any(
+                                    re.search(
+                                        rf"{re.escape(var)}\s*=\s*.*\$_(GET|POST|REQUEST|COOKIE)",
+                                        _ctx,
+                                        re.IGNORECASE,
+                                    )
+                                    for var in _vars
                                 )
                                 if not _user_assign:
                                     continue  # 变量无用户输入来源，跳过

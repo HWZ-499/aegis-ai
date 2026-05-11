@@ -1,4 +1,4 @@
-﻿"""PHP Open Redirect AST rule — Tree-sitter based."""
+"""PHP Open Redirect AST rule — Tree-sitter based."""
 
 from __future__ import annotations
 
@@ -46,8 +46,8 @@ class PhpOpenRedirectAstRule(SecurityRule):
                 for arg in child.children:
                     if arg.type == "argument":
                         arg_text = self._text(arg).lower()
-                        if "location" not in arg_text:
-                            return
+                        if not self._arg_represents_location_header(arg, context, line):
+                            continue
                         if _subtree_contains_php_user_input(arg, context):
                             self._reported.add(line)
                             finding = {
@@ -74,6 +74,17 @@ class PhpOpenRedirectAstRule(SecurityRule):
                             context.add_finding(finding)
                             return
 
+    def _arg_represents_location_header(self, node: Any, context: AnalysisContext, sink_line: int) -> bool:
+        text = self._text(node).lower()
+        if "location" in text:
+            return True
+        inner = self._unwrap(node)
+        if getattr(inner, "type", "") != "variable_name":
+            return False
+        var = self._text(inner).lstrip("$")
+        assignment = self._find_latest_assignment_expr(var, sink_line, context)
+        return assignment is not None and "location" in assignment.lower()
+
     def _arg_has_tainted_var(self, node: Any, context: AnalysisContext) -> bool:
         if node.type == "variable_name":
             var = self._text(node).lstrip("$")
@@ -84,6 +95,31 @@ class PhpOpenRedirectAstRule(SecurityRule):
                 if self._arg_has_tainted_var(child, context):
                     return True
         return False
+
+    @staticmethod
+    def _unwrap(arg: Any) -> Any:
+        if arg.type == "argument":
+            for child in arg.children:
+                if child.type not in (",", "(", ")"):
+                    return child
+        return arg
+
+    @staticmethod
+    def _find_latest_assignment_expr(var_name: str, sink_line: int, context: AnalysisContext) -> str | None:
+        source = context.extras.get("source")
+        if not isinstance(source, str) or not source:
+            return None
+
+        import re
+
+        lines = source.splitlines()
+        upper_bound = min(max(sink_line - 1, 0), len(lines))
+        assign_re = re.compile(rf"\${re.escape(var_name)}\s*=\s*(.+?)\s*;?\s*$")
+        for idx in range(upper_bound - 1, -1, -1):
+            matched = assign_re.search(lines[idx])
+            if matched is not None:
+                return matched.group(1).strip()
+        return None
 
     @staticmethod
     def _get_func_name(node: Any) -> str | None:

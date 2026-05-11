@@ -1,4 +1,4 @@
-﻿"""
+"""
 taint_enhancer.py - 污点分析增强器
 
 将完整的 Source → Sink 污点分析集成到扫描流程中。

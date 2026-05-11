@@ -270,7 +270,12 @@ class InlineSuppressor:
         - 独立注释行（仅含注释，可有前导空白）：抑制下一行
         """
         for i, line in enumerate(self._lines, start=1):
-            m = self._PATTERN.search(line)
+            comment = self._extract_line_comment(line)
+            if comment is None:
+                continue
+
+            comment_start, comment_text = comment
+            m = self._PATTERN.search(comment_text)
             if m is None:
                 continue
             vuln_type = m.group(1)
@@ -279,7 +284,7 @@ class InlineSuppressor:
 
             # 判断是独立注释行还是行内注释
             # 独立注释行：注释标记前仅有空白字符
-            before_comment = line[: m.start()]
+            before_comment = line[:comment_start]
             is_standalone = before_comment.strip() == ""
 
             target_lines = (i + 1,) if is_standalone else (i,)
@@ -296,6 +301,39 @@ class InlineSuppressor:
                         self._suppressed[target_line] = set()
                     if self._suppressed[target_line] is not None:
                         self._suppressed[target_line].add(vuln_type)  # type: ignore[union-attr]
+
+    @staticmethod
+    def _extract_line_comment(line: str) -> tuple[int, str] | None:
+        """Return the first line-comment segment outside simple string literals."""
+        quote: str | None = None
+        escaped = False
+        i = 0
+        while i < len(line):
+            char = line[i]
+
+            if quote is not None:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    quote = None
+                i += 1
+                continue
+
+            if char in {"'", '"', "`"}:
+                quote = char
+                i += 1
+                continue
+
+            if char == "#":
+                return i, line[i:]
+            if char == "/" and i + 1 < len(line) and line[i + 1] == "/":
+                return i, line[i:]
+
+            i += 1
+
+        return None
 
     def is_suppressed(self, line: int, vuln_type: str) -> bool:
         """

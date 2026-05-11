@@ -1,4 +1,4 @@
-﻿"""PHP XSS AST rule — Tree-sitter based."""
+"""PHP XSS AST rule — Tree-sitter based."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ except ImportError:
 class PhpXSSAstRule(SecurityRule):
     """Detect XSS (unescaped output) in PHP."""
 
-    SANITIZERS = frozenset({"htmlspecialchars", "htmlentities", "strip_tags"})
+    SANITIZERS = frozenset({"htmlspecialchars", "htmlentities"})
     HTML_OUTPUT_VARS = frozenset({"html", "body", "output", "content", "response", "page"})
     DIRECT_SUPERGLOBALS = frozenset({"_GET", "_POST", "_REQUEST", "_COOKIE", "_FILES"})
     HIGH_RISK_SOURCE_PREFIXES = (
@@ -157,10 +157,7 @@ class PhpXSSAstRule(SecurityRule):
                 "rule_id": self.rule_id,
                 "severity": self.severity,
                 "line": line,
-                "details": (
-                    f"PHP: ${left_name} 拼接 HTML 片段时包含未转义用户输入，"
-                    "可能在后续输出阶段触发 XSS。"
-                ),
+                "details": (f"PHP: ${left_name} 拼接 HTML 片段时包含未转义用户输入，可能在后续输出阶段触发 XSS。"),
             }
             finding.update(tree_sitter_node_to_range(node))
             context.add_finding(finding)

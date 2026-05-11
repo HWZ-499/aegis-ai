@@ -1,4 +1,4 @@
-﻿# cli.py - 命令行工具
+# cli.py - 命令行工具
 """
 Aegis 安全扫描命令行工具
 """
@@ -401,8 +401,17 @@ def main():
             print(f"扫描文件数: {stats['scanned_files']}")
             print(f"有问题文件数: {stats['files_with_issues']}")
             print(f"总问题数: {stats['total_issues']}")
+            print(f"扫描状态: {'Partial' if stats.get('partial') else 'Complete'}")
+            print(f"扫描错误数: {stats.get('error_count', 0)}")
             scan_time = stats.get("scan_time_seconds", stats.get("scan_time", 0))
             print(f"扫描耗时: {scan_time:.2f} 秒")
+            errors = stats.get("errors", [])
+            if errors:
+                print("\n扫描错误:")
+                for error in errors[:10]:
+                    print(f"  - {error.get('file', '<unknown>')}: {error.get('message', '')}")
+                if len(errors) > 10:
+                    print(f"  ... 及其他 {len(errors) - 10} 个错误")
 
             severity_stats = stats.get("severity_stats", {})
             if severity_stats:
@@ -413,7 +422,11 @@ def main():
                         emoji = {"Critical": "🔴", "High": "🟠", "Medium": "🟡", "Low": "🟢"}.get(severity, "⚪")
                         print(f"  {emoji} {severity}: {count}")
 
-        # 根据问题数量设置退出码（--no-fail-on-findings 时始终返回 0）
+        # 扫描错误表示结果不完整；--no-fail-on-findings 只影响 finding，不隐藏扫描失败。
+        if stats.get("error_count", 0) > 0:
+            sys.exit(2)
+
+        # 根据问题数量设置退出码（--no-fail-on-findings 时 findings 不导致失败）
         if getattr(args, "no_fail_on_findings", False):
             sys.exit(0)
         if stats["total_issues"] > 0:

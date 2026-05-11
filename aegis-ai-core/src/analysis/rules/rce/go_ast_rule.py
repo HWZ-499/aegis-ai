@@ -235,15 +235,11 @@ class GoRCEAstRule(SecurityRule):
         if not text:
             return False
         lowered = text.lower()
-        return (
-            ".string(" in lowered
-            or "sprintf(" in lowered
-            or "+" in lowered
-        )
+        return ".string(" in lowered or "sprintf(" in lowered or "+" in lowered
 
     def _is_shell_name(self, node: Any) -> bool:
         text = (self._get_node_text(node) or "").strip()
-        unquoted = text.strip("`\"")
+        unquoted = text.strip('`"')
         return unquoted in _GO_SHELL_NAMES
 
     @staticmethod

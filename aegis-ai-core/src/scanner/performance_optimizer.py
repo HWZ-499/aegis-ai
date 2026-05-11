@@ -343,6 +343,7 @@ class PerformanceOptimizer:
         supported_extensions: dict[str, str],
         progress_callback: Callable | None = None,
         engine: str = "new",
+        should_cache_result: Callable[[Path, list[dict]], bool] | None = None,
     ) -> dict[Path, list[dict]]:
         """
         优化的文件扫描（使用缓存和并行处理）
@@ -389,7 +390,8 @@ class PerformanceOptimizer:
                 # 保存到缓存
                 if self.use_cache and self.cache:
                     for file_path, findings in scanned_results.items():
-                        self.cache.save_result(file_path, findings)
+                        if should_cache_result is None or should_cache_result(file_path, findings):
+                            self.cache.save_result(file_path, findings)
             else:
                 # 顺序扫描
                 scanned_results = {}
@@ -399,7 +401,11 @@ class PerformanceOptimizer:
                     scanned_results[file_path] = findings
 
                     # 保存到缓存
-                    if self.use_cache and self.cache:
+                    if (
+                        self.use_cache
+                        and self.cache
+                        and (should_cache_result is None or should_cache_result(file_path, findings))
+                    ):
                         self.cache.save_result(file_path, findings)
 
                     if progress_callback:

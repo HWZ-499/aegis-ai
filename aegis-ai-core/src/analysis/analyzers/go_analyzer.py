@@ -1,4 +1,4 @@
-﻿"""
+"""
 go_analyzer.py - Go 专用分析器（统一污点系统版）
 
 说明：
@@ -118,4 +118,3 @@ class GoAnalyzer:
 
 
 __all__ = ["GoAnalyzer"]
-

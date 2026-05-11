@@ -1,4 +1,4 @@
-﻿"""
+"""
 sql_injection.javascript_ast_rule
 
 JavaScript/TypeScript SQL 注入 AST 规则（新规则架构）。

@@ -1,4 +1,4 @@
-﻿"""PHP SQL Injection AST rule — Tree-sitter based."""
+"""PHP SQL Injection AST rule — Tree-sitter based."""
 
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ class PhpSQLInjectionAstRule(SecurityRule):
             "query",
             "exec",
             "execute",
+            "prepare",
             "multi_query",
             "pg_query",
             "pg_query_params",
@@ -67,8 +68,9 @@ class PhpSQLInjectionAstRule(SecurityRule):
             method_name = self._get_method_name(node)
             receiver_var = self._get_receiver_var(node)
             if method_name and method_name in self.QUERY_METHODS:
-                # Skip if this is prepare() — parameterized query
-                if method_name == "prepare":
+                # prepare() is safe only for static SQL. It does not protect
+                # dynamic table/column/query fragments already in the SQL text.
+                if method_name == "prepare" and self._is_static_prepare_call(node):
                     return
                 # Skip safe prepared statement execute flow:
                 # $stmt = $pdo->prepare("... ?"); $stmt->execute([$id]);
@@ -269,7 +271,9 @@ class PhpSQLInjectionAstRule(SecurityRule):
             if context.is_var_tainted(var_name) or context.is_var_tainted("$" + var_name):
                 continue
 
-            sanitizer = (context.get_sanitizer_name(var_name) or context.get_sanitizer_name("$" + var_name) or "").lower()
+            sanitizer = (
+                context.get_sanitizer_name(var_name) or context.get_sanitizer_name("$" + var_name) or ""
+            ).lower()
             if "mysqli_real_escape_string" not in sanitizer and "addslashes" not in sanitizer:
                 continue
             if self._is_var_wrapped_by_quotes(sql_text, var_name):

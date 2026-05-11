@@ -8,7 +8,6 @@
  * - Graceful shutdown on deactivate
  */
 
-import * as path from "path";
 import {
   workspace,
   ExtensionContext,
@@ -25,6 +24,9 @@ import {
   WorkspaceEdit,
   Range,
   ConfigurationTarget,
+  Diagnostic,
+  TextDocument,
+  WorkspaceConfiguration,
 } from "vscode";
 import { FindingsTreeProvider } from "./findingsTreeProvider";
 import { getAiConfigurationError } from "./aiPreflight";
@@ -33,6 +35,7 @@ import {
   BaselineEntryNode,
   BaselineTreeProvider,
   removeBaselineEntryFromDisk,
+  resolveBaselineEntryPath,
 } from "./baselineTreeProvider";
 import { findAegisCommentBlock } from "./commentCommands";
 import { showReport } from "./reportWebview";
@@ -72,10 +75,59 @@ let diagnosticsListener: Disposable | undefined;
 let workspaceProgressReporter: { report: (p: { message?: string; increment?: number }) => void } | null = null;
 let workspaceScanResolve: (() => void) | null = null;
 
+interface PreviewFixCommandArgs {
+  uri?: string;
+  rule_id?: string;
+  start_line?: number;
+  end_line?: number;
+  message?: string;
+}
+
 // ─── Status Bar state enum ─────────────────────────────────────────────────
 
 /** Status Bar display states */
 type AegisStatus = "ready" | "scanning" | "issues" | "safe" | "disconnected" | "error";
+
+function getGlobalConfigurationValue<T>(
+  config: WorkspaceConfiguration,
+  key: string,
+  defaultValue: T,
+): T {
+  const inspected = config.inspect<T>(key);
+  return inspected?.globalValue ?? inspected?.defaultValue ?? defaultValue;
+}
+
+function getDiagnosticRuleId(diagnostic: Diagnostic): string {
+  if (typeof diagnostic.code === "string") {
+    return diagnostic.code;
+  }
+  return (diagnostic.code as { value?: string } | undefined)?.value ?? "UNKNOWN";
+}
+
+function buildLineReplacementRange(
+  document: TextDocument,
+  startLineZeroBased: number,
+  endLineExclusive: number,
+): Range {
+  const lastLine = Math.max(0, document.lineCount - 1);
+  const startLine = Math.min(Math.max(0, startLineZeroBased), lastLine);
+  const safeEndExclusive = Math.min(Math.max(endLineExclusive, startLine + 1), document.lineCount);
+  if (safeEndExclusive >= document.lineCount) {
+    return new Range(startLine, 0, lastLine, document.lineAt(lastLine).text.length);
+  }
+  return new Range(startLine, 0, safeEndExclusive, 0);
+}
+
+function codeForLineReplacement(
+  fixedCode: string,
+  endLineExclusive: number,
+  document: TextDocument,
+): string {
+  if (endLineExclusive < document.lineCount && !fixedCode.endsWith("\n")) {
+    return `${fixedCode}\n`;
+  }
+  return fixedCode;
+}
 
 /**
  * Update Status Bar display.
@@ -164,12 +216,17 @@ export async function activate(context: ExtensionContext): Promise<void> {
     return;
   }
 
-  const pythonPath = config.get<string>("pythonPath", "python");
-  const serverModule = config.get<string>("serverModule", "src.lsp");
-  const explicitCwd = config.get<string>("serverCwd", "").trim();
+  const pythonPath = getGlobalConfigurationValue(config, "pythonPath", "python");
+  const serverModule = getGlobalConfigurationValue(config, "serverModule", "src.lsp");
+  const explicitCwd = getGlobalConfigurationValue(config, "serverCwd", "").trim();
 
   const outputChannel = window.createOutputChannel("Aegis AI Security Scanner");
   outputChannel.appendLine("[Aegis] Extension activated, starting LSP Server…");
+  if (!workspace.isTrusted) {
+    outputChannel.appendLine(
+      "[Aegis] Workspace is untrusted. Workspace-controlled backend discovery is disabled.",
+    );
+  }
 
   // ── Status Bar initialization ──────────────────────────────────────────
   statusBar = window.createStatusBarItem(StatusBarAlignment.Left, 100);
@@ -249,10 +306,15 @@ export async function activate(context: ExtensionContext): Promise<void> {
       window.showInformationMessage(
         `Aegis: Removed baseline entry for ${node.entry.rule_id} at ${node.entry.file_path}:${node.entry.line}`
       );
-      await commands.executeCommand(
-        "aegisAI.scanCurrentFile",
-        Uri.file(path.join(activeRoot, ...node.entry.file_path.split("/")))
-      );
+      const targetPath = resolveBaselineEntryPath(activeRoot, node.entry.file_path);
+      if (!targetPath) {
+        outputChannel.appendLine(
+          `[Aegis] Refusing to rescan baseline entry outside workspace: ${node.entry.file_path}`,
+        );
+        window.showWarningMessage("Aegis: Baseline entry path is outside the workspace; rescan skipped.");
+        return;
+      }
+      await commands.executeCommand("aegisAI.scanCurrentFile", Uri.file(targetPath));
     }),
     commands.registerCommand("aegisAI.removeRemediationComments", async () => {
       const editor = window.activeTextEditor;
@@ -334,38 +396,61 @@ export async function activate(context: ExtensionContext): Promise<void> {
 
   // ── O2: Preview AI Fix — Diff Editor command ──────────────────────────
   context.subscriptions.push(
-    commands.registerCommand("aegisAI.previewFix", async () => {
-      const editor = window.activeTextEditor;
-      if (!editor || !client) {
-        window.showWarningMessage("Aegis: No active editor or LSP not connected.");
+    commands.registerCommand("aegisAI.previewFix", async (args?: PreviewFixCommandArgs) => {
+      if (!client) {
+        window.showWarningMessage("Aegis: LSP not connected.");
         return;
       }
 
-      const aiProvider = config.get<string>("ai.provider", "deepseek");
-      const aiEnabled = config.get<boolean>("ai.enabled", true);
+      let editor = window.activeTextEditor;
+      const requestedUri = args?.uri ? Uri.parse(args.uri) : editor?.document.uri;
+      if (!requestedUri) {
+        window.showWarningMessage("Aegis: No active editor.");
+        return;
+      }
+
+      if (!editor || editor.document.uri.toString() !== requestedUri.toString()) {
+        const document = await workspace.openTextDocument(requestedUri);
+        editor = await window.showTextDocument(document);
+      }
+
+      const runtimeConfig = workspace.getConfiguration("aegisAI");
+      const aiProvider = runtimeConfig.get<string>("ai.provider", "deepseek");
+      const aiEnabled = runtimeConfig.get<boolean>("ai.enabled", true);
       const aiConfigError = getAiConfigurationError(aiProvider, process.env, aiEnabled);
       if (aiConfigError) {
         window.showWarningMessage(`Aegis: ${aiConfigError}`);
         return;
       }
 
-      // Find the first Aegis diagnostic at the cursor position
-      const cursorPos = editor.selection.active;
+      // Find the requested Aegis diagnostic, or fall back to the cursor position.
       const allDiags = languages.getDiagnostics(editor.document.uri);
-      const aegisDiag = allDiags.find(
-        (d) =>
-          d.source === "Aegis AI" &&
-          d.range.contains(cursorPos)
-      );
+      const requestedRuleId = args?.rule_id;
+      const requestedLine = args?.start_line;
+      const aegisDiag = requestedLine
+        ? allDiags.find(
+            (d) =>
+              d.source === "Aegis AI" &&
+              d.range.start.line === requestedLine - 1 &&
+              (!requestedRuleId || getDiagnosticRuleId(d) === requestedRuleId),
+          )
+        : allDiags.find(
+            (d) =>
+              d.source === "Aegis AI" &&
+              d.range.contains(editor.selection.active),
+          );
       if (!aegisDiag) {
         window.showInformationMessage("Aegis: No finding at cursor position.");
         return;
       }
 
-      const ruleId =
-        typeof aegisDiag.code === "string"
-          ? aegisDiag.code
-          : (aegisDiag.code as { value: string })?.value ?? "UNKNOWN";
+      const ruleId = requestedRuleId ?? getDiagnosticRuleId(aegisDiag);
+      const requestStartLine = args?.start_line ?? aegisDiag.range.start.line + 1;
+      const requestEndLine = args?.end_line ?? aegisDiag.range.end.line + 1;
+      const requestMessage = args?.message ?? aegisDiag.message.substring(0, 500);
+      const targetDocument = editor.document;
+      const originalSource = targetDocument.getText();
+      const originalVersion = targetDocument.version;
 
       // Request AI fix from LSP server
       const result = await window.withProgress(
@@ -373,11 +458,11 @@ export async function activate(context: ExtensionContext): Promise<void> {
         async () => {
           try {
             return await client!.sendRequest<GenerateFixResponse>("aegis/generateFix", {
-              uri: editor.document.uri.toString(),
+              uri: targetDocument.uri.toString(),
               rule_id: ruleId,
-              start_line: aegisDiag.range.start.line + 1,
-              end_line: aegisDiag.range.end.line + 1,
-              message: aegisDiag.message.substring(0, 500),
+              start_line: requestStartLine,
+              end_line: requestEndLine,
+              message: requestMessage,
             });
           } catch (e) {
             outputChannel.appendLine(`[Aegis] generateFix request failed: ${e}`);
@@ -403,13 +488,19 @@ export async function activate(context: ExtensionContext): Promise<void> {
       }
 
       // Build the full fixed version of the file
-      const originalSource = editor.document.getText();
       const lines = originalSource.split("\n");
-      const fixStart = Math.max(0, (result.start_line || aegisDiag.range.start.line + 1) - 1);
-      const fixEnd = Math.min(lines.length, result.end_line || aegisDiag.range.end.line + 1);
+      const fixedCode = result.fixed_code.replace(/\r\n/g, "\n");
+      const fixStart = Math.min(
+        Math.max(0, lines.length - 1),
+        Math.max(0, (result.start_line || requestStartLine) - 1),
+      );
+      const fixEnd = Math.min(
+        lines.length,
+        Math.max(fixStart + 1, result.end_line || requestEndLine),
+      );
       const fixedLines = [
         ...lines.slice(0, fixStart),
-        ...result.fixed_code.split("\n"),
+        ...fixedCode.split("\n"),
         ...lines.slice(fixEnd),
       ];
       const fixedSource = fixedLines.join("\n");
@@ -423,7 +514,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       const reviewTag = result.requires_review ? " ⚠ Review" : "";
       await commands.executeCommand(
         "vscode.diff",
-        editor.document.uri,
+        targetDocument.uri,
         previewUri,
         `AI Fix Preview (${ruleId} ${confidenceLabel}${reviewTag})`,
         { preview: true }
@@ -437,12 +528,15 @@ export async function activate(context: ExtensionContext): Promise<void> {
       );
 
       if (action === "Apply Fix") {
+        if (targetDocument.version !== originalVersion || targetDocument.getText() !== originalSource) {
+          window.showWarningMessage("Aegis: Document changed after the preview was generated. Re-run the fix preview.");
+          outputChannel.appendLine("[Aegis] Refused stale AI fix because the document changed after preview.");
+          fixPreviewProvider.removeFix(fixId);
+          return;
+        }
         const edit = new WorkspaceEdit();
-        const replaceRange = new Range(
-          fixStart, 0,
-          fixEnd, lines[fixEnd - 1]?.length ?? 0
-        );
-        edit.replace(editor.document.uri, replaceRange, result.fixed_code);
+        const replaceRange = buildLineReplacementRange(targetDocument, fixStart, fixEnd);
+        edit.replace(targetDocument.uri, replaceRange, codeForLineReplacement(fixedCode, fixEnd, targetDocument));
         await workspace.applyEdit(edit);
         outputChannel.appendLine(`[Aegis] Applied AI fix for ${ruleId} at L${fixStart + 1}-${fixEnd}`);
       }
@@ -594,10 +688,12 @@ export async function activate(context: ExtensionContext): Promise<void> {
           explicitCwd,
           extensionPath: context.extensionPath,
           globalStoragePath: context.globalStorageUri.fsPath,
-          preferBundledBackend: context.extensionMode === ExtensionMode.Production,
+          preferBundledBackend: context.extensionMode === ExtensionMode.Production || !workspace.isTrusted,
           pythonPath,
           serverModule,
-          workspaceFolders: workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [],
+          workspaceFolders: workspace.isTrusted
+            ? workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? []
+            : [],
         }),
     );
   } catch (error: unknown) {

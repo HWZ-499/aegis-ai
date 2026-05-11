@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from src.scanner.project_scanner import ProjectScanner
 
 
@@ -66,3 +68,31 @@ def test_scan_project_resets_state_and_returns_stable_snapshots(tmp_path: Path) 
     assert second_stats["scanned_files"] == 1
     assert second_stats["files_with_issues"] == 1
     assert second_stats["total_issues"] == 1
+
+
+def test_scan_project_reports_partial_scan_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Analyzer failures must be visible in scan stats, not reported as a clean scan."""
+    file_path = tmp_path / "app.py"
+    file_path.write_text("print('ok')\n", encoding="utf-8")
+
+    def fail_analyzer(*args, **kwargs):
+        raise RuntimeError("parser unavailable")
+
+    monkeypatch.setattr("src.scanner.project_scanner.analyze_python_new", fail_analyzer)
+
+    scanner = ProjectScanner(str(tmp_path), use_cache=False, use_parallel=False)
+    results = scanner.scan_project()
+    stats = scanner.get_stats()
+
+    assert results == {}
+    assert stats["scanned_files"] == 1
+    assert stats["total_issues"] == 0
+    assert stats["partial"] is True
+    assert stats["error_count"] == 1
+    assert stats["errors"] == [
+        {
+            "file": "app.py",
+            "phase": "scan",
+            "message": "parser unavailable",
+        }
+    ]

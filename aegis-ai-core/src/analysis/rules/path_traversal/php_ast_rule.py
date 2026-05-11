@@ -1,7 +1,8 @@
-﻿"""PHP Path Traversal AST rule — Tree-sitter based."""
+"""PHP Path Traversal AST rule — Tree-sitter based."""
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ...base import AnalysisContext, SecurityRule, tree_sitter_node_to_range
@@ -95,9 +96,16 @@ class PhpPathTraversalAstRule(SecurityRule):
             return
         for child in node.children:
             if child.type == "arguments":
-                # Check first argument (the file path)
+                path_arg_indexes = self._path_arg_indexes(func)
+                arg_index = 0
                 for arg in child.children:
                     if arg.type == "argument":
+                        if arg_index not in path_arg_indexes:
+                            arg_index += 1
+                            continue
+                        if self._path_arg_uses_only_safe_randomized_upload_vars(arg, context, line):
+                            arg_index += 1
+                            continue
                         if _subtree_contains_php_user_input(arg, context):
                             self._reported.add(line)
                             finding = {
@@ -125,8 +133,91 @@ class PhpPathTraversalAstRule(SecurityRule):
                                 finding.update(tree_sitter_node_to_range(node))
                                 context.add_finding(finding)
                                 return
-                        # Only check first argument
-                        break
+                        arg_index += 1
+
+    def _path_arg_uses_only_safe_randomized_upload_vars(
+        self,
+        arg: Any,
+        context: AnalysisContext,
+        line: int,
+    ) -> bool:
+        expr = self._text(arg)
+        var_names = {name for name in re.findall(r"\$([A-Za-z_]\w*)", expr)}
+        tainted_vars = [
+            name for name in var_names if context.is_var_tainted(name) or context.is_var_tainted("$" + name)
+        ]
+        if not tainted_vars:
+            return False
+
+        lines = str(context.extras.get("source", "")).splitlines()
+        return all(
+            self._is_uploaded_tmp_path_var(name, lines, line)
+            or self._is_safe_randomized_upload_filename(name, lines, line)
+            for name in tainted_vars
+        )
+
+    def _is_uploaded_tmp_path_var(self, var_name: str, lines: list[str], sink_line: int) -> bool:
+        assignment = self._find_latest_assignment_expr(var_name, lines, sink_line)
+        if assignment is None:
+            return False
+        _, expr = assignment
+        return bool(
+            re.search(
+                r"\$_FILES\s*\[[^\]]+\]\s*\[\s*['\"]tmp_name['\"]\s*\]",
+                expr,
+                re.IGNORECASE,
+            )
+        )
+
+    def _is_safe_randomized_upload_filename(self, var_name: str, lines: list[str], sink_line: int) -> bool:
+        assignment = self._find_latest_assignment_expr(var_name, lines, sink_line)
+        if assignment is None:
+            return False
+
+        assign_idx, expr = assignment
+        if not re.search(r"\b(md5|sha1|hash|uniqid|bin2hex|random_bytes)\s*\(", expr, re.IGNORECASE):
+            return False
+
+        extension_vars = set(
+            re.findall(
+                r"\.\s*['\"]\.['\"]\s*\.\s*\$([A-Za-z_]\w*)",
+                expr,
+                re.IGNORECASE,
+            )
+        )
+        if not extension_vars:
+            return True
+
+        return all(self._has_extension_allowlist(name, lines, assign_idx, sink_line) for name in extension_vars)
+
+    @staticmethod
+    def _find_latest_assignment_expr(var_name: str, lines: list[str], before_line: int) -> tuple[int, str] | None:
+        assign_re = re.compile(rf"\${re.escape(var_name)}\s*=\s*(.+?)\s*;?\s*$")
+        for index in range(min(before_line - 1, len(lines) - 1), -1, -1):
+            matched = assign_re.search(lines[index])
+            if matched is not None:
+                return index, matched.group(1).strip()
+        return None
+
+    @staticmethod
+    def _has_extension_allowlist(ext_var: str, lines: list[str], assign_idx: int, sink_line: int) -> bool:
+        window = "\n".join(lines[assign_idx : min(sink_line, len(lines))])
+        escaped = re.escape(ext_var)
+        comparison_re = re.compile(
+            rf"strtolower\s*\(\s*\${escaped}\s*\)\s*={{2,3}}\s*['\"][A-Za-z0-9]+['\"]",
+            re.IGNORECASE,
+        )
+        in_array_re = re.compile(
+            rf"in_array\s*\(\s*strtolower\s*\(\s*\${escaped}\s*\)\s*,",
+            re.IGNORECASE,
+        )
+        return bool(comparison_re.search(window) or in_array_re.search(window))
+
+    @staticmethod
+    def _path_arg_indexes(func: str) -> set[int]:
+        if func in {"copy", "rename"}:
+            return {0, 1}
+        return {0}
 
     @staticmethod
     def _unwrap(arg: Any) -> Any:

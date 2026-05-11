@@ -33,6 +33,16 @@ _DIRECT_OUTPUT_FUNCS = frozenset(
     ]
 )
 
+_HTTP_RESPONSE_CONSTRUCTORS = frozenset(
+    [
+        "HttpResponse",
+        "JsonResponse",
+        "StreamingHttpResponse",
+        "FileResponse",
+        "make_response",
+    ]
+)
+
 # XSS Sink 方法名（obj.method 形式）
 _OUTPUT_METHODS = frozenset(
     [
@@ -61,16 +71,25 @@ _HTTP_RESPONSE_NAMES = frozenset(
     ]
 )
 
-# XSS 安全净化函数（调用后视为已净化）
-_SANITIZE_FUNCS = frozenset(
+_HTML_SANITIZER_QUALNAMES = frozenset(
     [
-        "escape",  # html.escape / markupsafe.escape
-        "quote",  # urllib.parse.quote
-        "htmlspecialchars",  # 若有 Python 实现
-        "bleach_clean",
+        "html.escape",
+        "markupsafe.escape",
+        "bleach.clean",
+        "cgi.escape",
     ]
 )
-_SANITIZE_MODULES = frozenset(["html", "markupsafe", "bleach"])
+_HTML_SANITIZER_TAINT_NAMES = frozenset(
+    [
+        "html_escape_py",
+        "markupsafe_escape",
+        "bleach_clean",
+        "html.escape",
+        "markupsafe.escape",
+        "bleach.clean",
+        "cgi.escape",
+    ]
+)
 
 # Python 用户输入访问模式
 _USER_INPUT_ATTRS = frozenset(
@@ -97,27 +116,87 @@ def _collect_names(node: ast.AST) -> list[str]:
     return [n.id for n in ast.walk(node) if isinstance(n, ast.Name)]
 
 
-def _is_sanitized_node(node: ast.AST) -> bool:
+def _collect_import_aliases(tree: ast.AST) -> tuple[dict[str, str], dict[str, str]]:
+    """收集当前文件导入别名，用于区分真实 sanitizer 和同名业务函数。"""
+    module_aliases: dict[str, str] = {}
+    function_aliases: dict[str, str] = {}
+
+    for child in ast.walk(tree):
+        if isinstance(child, ast.Import):
+            for alias in child.names:
+                local_name = alias.asname or alias.name.split(".", 1)[0]
+                module_aliases[local_name] = alias.name
+        elif isinstance(child, ast.ImportFrom) and child.module:
+            for alias in child.names:
+                if alias.name == "*":
+                    continue
+                local_name = alias.asname or alias.name
+                function_aliases[local_name] = f"{child.module}.{alias.name}"
+
+    return module_aliases, function_aliases
+
+
+def _resolve_name_qualname(name: str, context: AnalysisContext | None = None) -> str:
+    if context is None:
+        return name
+    module_aliases = context.extras.get("python_xss_module_aliases", {})
+    return module_aliases.get(name, name)
+
+
+def _resolve_call_qualname(func: ast.AST, context: AnalysisContext | None = None) -> str | None:
+    """解析调用目标的限定名，并应用 import alias。"""
+    if isinstance(func, ast.Name):
+        function_aliases = {}
+        if context is not None:
+            function_aliases = context.extras.get("python_xss_function_aliases", {})
+        return function_aliases.get(func.id, func.id)
+
+    if isinstance(func, ast.Attribute):
+        base = _resolve_call_qualname(func.value, context)
+        if base is None:
+            return func.attr
+        return f"{base}.{func.attr}"
+
+    return None
+
+
+def _is_html_sanitized_node(node: ast.AST, context: AnalysisContext | None = None) -> bool:
     """
     检查节点是否经过 HTML 净化函数包裹。
 
-    例如 ``html.escape(user_input)`` 或 ``escape(user_input)``。
+    仅信任明确来自 HTML 安全库的 sanitizer；URL quoting 或任意同名业务方法
+    不能证明 HTML 输出上下文安全。
     """
     if not isinstance(node, ast.Call):
         return False
-    func = node.func
-    # html.escape / markupsafe.escape
-    if isinstance(func, ast.Attribute):
-        if func.attr == "escape":
-            obj = func.value
-            if isinstance(obj, ast.Name) and obj.id in _SANITIZE_MODULES:
-                return True
-        if func.attr in _SANITIZE_FUNCS:
-            return True
-    # escape(...)
-    if isinstance(func, ast.Name) and func.id in _SANITIZE_FUNCS:
-        return True
-    return False
+    qualname = _resolve_call_qualname(node.func, context)
+    if qualname is None:
+        return False
+
+    parts = qualname.split(".")
+    if parts:
+        parts[0] = _resolve_name_qualname(parts[0], context)
+    return ".".join(parts) in _HTML_SANITIZER_QUALNAMES
+
+
+def _is_context_html_sanitized(node: ast.AST, context: AnalysisContext | None = None) -> bool:
+    if context is None or not isinstance(node, ast.Name):
+        return False
+    if not context.is_var_sanitized(node.id):
+        return False
+    sanitizer_name = context.get_sanitizer_name(node.id)
+    return sanitizer_name in _HTML_SANITIZER_TAINT_NAMES
+
+
+def _is_http_response_constructor(func: ast.AST, context: AnalysisContext | None = None) -> bool:
+    qualname = _resolve_call_qualname(func, context)
+    if qualname is None:
+        return False
+    parts = qualname.split(".")
+    if parts:
+        parts[0] = _resolve_name_qualname(parts[0], context)
+    resolved = ".".join(parts)
+    return resolved.rsplit(".", 1)[-1] in _HTTP_RESPONSE_CONSTRUCTORS
 
 
 def _is_user_input_node(node: ast.AST, context: AnalysisContext | None = None) -> bool:
@@ -141,7 +220,11 @@ def _is_user_input_node(node: ast.AST, context: AnalysisContext | None = None) -
     if isinstance(node, ast.Subscript):
         return _is_user_input_node(node.value, context)
     if isinstance(node, ast.Call):
-        return _is_user_input_node(node.func, context)
+        if _is_user_input_node(node.func, context):
+            return True
+        return any(_is_user_input_node(arg, context) for arg in node.args) or any(
+            _is_user_input_node(kw.value, context) for kw in node.keywords
+        )
 
     # 退化启发式（仅在 TaintGraph 未追踪到该变量时兜底）
     # 收紧关键词，避免 "formatted_data" / "queryBuilder" / "formConfig" 误报：
@@ -177,22 +260,29 @@ class PythonXSSAstRule(SecurityRule):
 
     def before_file(self, context: AnalysisContext) -> None:
         """预扫描赋值，标记用户输入 Source 变量到 DataFlowTracker（降级路径）。"""
+        source = context.extras.get("source", "")
+        parsed_tree: ast.AST | None = None
+        module_aliases: dict[str, str] = {}
+        function_aliases: dict[str, str] = {}
+        if source:
+            try:
+                parsed_tree = ast.parse(source)
+                module_aliases, function_aliases = _collect_import_aliases(parsed_tree)
+            except SyntaxError:
+                return
+
+        context.extras["python_xss_module_aliases"] = module_aliases
+        context.extras["python_xss_function_aliases"] = function_aliases
+
         if context.taint_graph is not None:
             return
-        source = context.extras.get("source", "")
-        if not source or not context.dataflow_tracker:
-            return
-        try:
-            import ast as _ast
-
-            tree = _ast.parse(source)
-        except SyntaxError:
+        if parsed_tree is None or not context.dataflow_tracker:
             return
         tracker = context.dataflow_tracker
-        for n in _ast.walk(tree):
-            if isinstance(n, _ast.Assign) and _is_user_input_node(n.value):
+        for n in ast.walk(parsed_tree):
+            if isinstance(n, ast.Assign) and _is_user_input_node(n.value, context):
                 for target in n.targets:
-                    if isinstance(target, _ast.Name):
+                    if isinstance(target, ast.Name):
                         tracker.mark_as_source(
                             target.id,
                             getattr(n, "lineno", 0),
@@ -208,7 +298,7 @@ class PythonXSSAstRule(SecurityRule):
 
         # 1. 直接函数调用：render_template_string / mark_safe / print
         if isinstance(func, ast.Name):
-            if func.id in _DIRECT_OUTPUT_FUNCS:
+            if func.id in _DIRECT_OUTPUT_FUNCS or _is_http_response_constructor(func, context):
                 self._check_args(node, context, func.id)
             return
 
@@ -250,12 +340,11 @@ class PythonXSSAstRule(SecurityRule):
 
         for arg in all_args:
             # 已净化 → 跳过
-            if _is_sanitized_node(arg):
+            if _is_html_sanitized_node(arg, context):
                 continue
 
             # Sanitizer 感知（TaintGraph）
-            names = _collect_names(arg)
-            if names and context is not None and all(context.is_var_sanitized(n) for n in names):
+            if _is_context_html_sanitized(arg, context):
                 continue
 
             if _is_user_input_node(arg, context):

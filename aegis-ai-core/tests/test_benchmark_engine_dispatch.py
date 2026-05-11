@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from src.analysis.analyzers.javascript_analyzer import JavaScriptAnalyzer
 from src.scanner.benchmark import evaluate_project_against_ground_truth, run_benchmark
-from src.scanner.benchmark_cases import BENCH_CASES_TP
+from src.scanner.benchmark_cases import BENCH_CASES_TP, BenchCase
 
 
 def _tp_case(case_id: str):
@@ -18,6 +19,56 @@ def test_run_benchmark_dispatches_python_open_redirect_case() -> None:
     result = run_benchmark([case])
     assert result.tp == 1
     assert result.fn == 0
+
+
+def test_run_benchmark_dispatches_typescript_case_with_ts_context(monkeypatch) -> None:
+    """
+    TypeScript benchmark cases must keep TypeScript language and filename context.
+    """
+    captured: dict[str, object] = {}
+
+    def fake_analyze_javascript(
+        code: str,
+        file_path: Path | str,
+        language: str = "javascript",
+        include_dsl: bool = True,
+        extra_rule_dirs: list[Path] | None = None,
+        rules_allowed_root: Path | None = None,
+    ) -> list[dict]:
+        captured["code"] = code
+        captured["file_path"] = str(file_path)
+        captured["language"] = language
+        if language == "typescript" and str(file_path).endswith(".ts") and "interface User" in code:
+            return [{"type": "SQL_INJECTION"}]
+        return []
+
+    import src.analysis.rule_engine as rule_engine_module
+
+    monkeypatch.setattr(rule_engine_module, "analyze_javascript", fake_analyze_javascript)
+
+    case = BenchCase(
+        id="TP-TS-SQL-01",
+        category="SQL_INJECTION",
+        pattern="typescript_sql_concat",
+        description="TypeScript syntax with SQL string concatenation",
+        code='interface User { id: string }\nconst q: string = "SELECT " + req.query.id;\n',
+        expect_finding=True,
+        language="typescript",
+    )
+
+    result = run_benchmark([case])
+
+    assert result.tp == 1
+    assert result.fn == 0
+    assert captured["file_path"] == "benchmark.ts"
+    assert captured["language"] == "typescript"
+
+
+def test_javascript_analyzer_uses_typescript_parser_for_typescript() -> None:
+    analyzer = JavaScriptAnalyzer([])
+
+    expected_parser = analyzer._ts_parser or analyzer._js_parser
+    assert analyzer._parser_for_language("typescript") is expected_parser
 
 
 def test_phase_metrics_render_summary_prints_language_recall(capsys) -> None:

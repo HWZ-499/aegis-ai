@@ -18,6 +18,8 @@ from pygls.protocol.language_server import _prepare_command_arguments
 from src.lsp import server as lsp_server
 from src.lsp.server import (
     SEVERITY_MAP,
+    WorkspaceContext,
+    _discover_workspace_scan_files,
     _find_aegis_comment_block,
     _get_remediation_for_rule,
     _is_path_excluded,
@@ -418,6 +420,30 @@ class TestPathExcludeMatching:
             )
             is False
         )
+
+
+class TestWorkspaceScanDiscovery:
+    """M3：workspace scan 应发现未打开的 workspace 源码文件。"""
+
+    def test_discovers_unopened_workspace_source_files(self, tmp_path: Path):
+        src_file = tmp_path / "src" / "app.js"
+        src_file.parent.mkdir(parents=True)
+        src_file.write_text("eval(req.body.code);\n", encoding="utf-8")
+        ignored_file = tmp_path / "node_modules" / "pkg" / "index.js"
+        ignored_file.parent.mkdir(parents=True)
+        ignored_file.write_text("eval(req.body.code);\n", encoding="utf-8")
+
+        files = _discover_workspace_scan_files(str(tmp_path), ["**/node_modules/**"])
+
+        assert files == [src_file.resolve()]
+
+    def test_workspace_context_records_root_even_without_cross_file(self, tmp_path: Path):
+        ctx = WorkspaceContext()
+        ctx.configure({"experimental_cross_file": False})
+
+        ctx.build_graph_async(str(tmp_path))
+
+        assert ctx._project_path == str(tmp_path.resolve())
 
 
 class TestInsertedCommentRemoval:

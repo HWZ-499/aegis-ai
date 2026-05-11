@@ -8,6 +8,7 @@ import {
   BaselineTreeProvider,
   readBaselineEntries,
   removeBaselineEntryFromDisk,
+  resolveBaselineEntryPath,
 } from "../../baselineTreeProvider";
 
 suite("baselineTreeProvider", () => {
@@ -68,5 +69,17 @@ suite("baselineTreeProvider", () => {
 
     assert.strictEqual(removeBaselineEntryFromDisk(tempDir, "fp-1"), true);
     assert.deepStrictEqual(readBaselineEntries(tempDir).map((entry) => entry.fingerprint), ["fp-2"]);
+  });
+
+  test("resolveBaselineEntryPath rejects paths outside the workspace", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-baseline-"));
+
+    assert.strictEqual(
+      resolveBaselineEntryPath(tempDir, "src/app.js"),
+      path.resolve(tempDir, "src", "app.js"),
+    );
+    assert.strictEqual(resolveBaselineEntryPath(tempDir, "../secrets.txt"), undefined);
+    assert.strictEqual(resolveBaselineEntryPath(tempDir, "src/../../secrets.txt"), undefined);
+    assert.strictEqual(resolveBaselineEntryPath(tempDir, path.resolve(os.tmpdir(), "secrets.txt")), undefined);
   });
 });

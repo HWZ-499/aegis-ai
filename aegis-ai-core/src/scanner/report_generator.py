@@ -22,6 +22,24 @@ def _esc(value: Any) -> str:
     return html.escape(str(value)) if value is not None else ""
 
 
+def _scan_errors(stats: dict) -> list[dict[str, Any]]:
+    errors = stats.get("errors", [])
+    if not isinstance(errors, list):
+        return []
+    return [error for error in errors if isinstance(error, dict)]
+
+
+def _scan_error_count(stats: dict) -> int:
+    raw_count = stats.get("error_count", 0)
+    if isinstance(raw_count, int):
+        return raw_count
+    return len(_scan_errors(stats))
+
+
+def _scan_is_partial(stats: dict) -> bool:
+    return bool(stats.get("partial", False) or _scan_error_count(stats) > 0 or _scan_errors(stats))
+
+
 class ReportGenerator:
     """
     报告生成器
@@ -50,6 +68,7 @@ class ReportGenerator:
         Returns:
             JSON 格式的报告字符串
         """
+        errors = _scan_errors(stats)
         report = {
             "project_name": self.project_name,
             "scan_time": self.scan_time,
@@ -59,8 +78,11 @@ class ReportGenerator:
                 "files_with_issues": stats.get("files_with_issues", 0),
                 "total_issues": stats.get("total_issues", 0),
                 "scan_time_seconds": stats.get("scan_time", 0),
+                "partial": _scan_is_partial(stats),
+                "error_count": _scan_error_count(stats),
             },
             "severity_stats": stats.get("severity_stats", {}),
+            "errors": errors,
             "results": results,
         }
 
@@ -94,12 +116,24 @@ class ReportGenerator:
         lines.append(f"| 扫描文件数 | {stats.get('scanned_files', 0)} |")
         lines.append(f"| 有问题文件数 | {stats.get('files_with_issues', 0)} |")
         lines.append(f"| 总问题数 | {stats.get('total_issues', 0)} |")
+        lines.append(f"| 扫描状态 | {'Partial' if _scan_is_partial(stats) else 'Complete'} |")
+        lines.append(f"| 扫描错误数 | {_scan_error_count(stats)} |")
         scan_time = stats.get("scan_time", 0)
         if isinstance(scan_time, (int, float)):
             lines.append(f"| 扫描耗时 | {scan_time:.2f} 秒 |")
         else:
             lines.append(f"| 扫描耗时 | {scan_time} |")
         lines.append("")
+
+        errors = _scan_errors(stats)
+        if errors:
+            lines.append("## ⚠️ 扫描错误")
+            lines.append("")
+            for error in errors[:20]:
+                lines.append(f"- `{error.get('file', '<unknown>')}`: {error.get('message', '')}")
+            if len(errors) > 20:
+                lines.append(f"- ... 及其他 {len(errors) - 20} 个错误")
+            lines.append("")
 
         # 严重程度统计
         severity_stats = stats.get("severity_stats", {})
@@ -279,10 +313,36 @@ class ReportGenerator:
                 <td>{_esc(stats.get("total_issues", 0))}</td>
             </tr>
             <tr>
+                <td>扫描状态</td>
+                <td>{_esc("Partial" if _scan_is_partial(stats) else "Complete")}</td>
+            </tr>
+            <tr>
+                <td>扫描错误数</td>
+                <td>{_esc(_scan_error_count(stats))}</td>
+            </tr>
+            <tr>
                 <td>扫描耗时</td>
                 <td>{_esc(scan_time_display)}</td>
             </tr>
         </table>
+"""
+
+        errors = _scan_errors(stats)
+        if errors:
+            html += """
+        <h2>⚠️ 扫描错误</h2>
+        <ul>
+"""
+            for error in errors[:20]:
+                html += f"""
+            <li><code>{_esc(error.get("file", "<unknown>"))}</code>: {_esc(error.get("message", ""))}</li>
+"""
+            if len(errors) > 20:
+                html += f"""
+            <li>… 及其他 {len(errors) - 20} 个错误</li>
+"""
+            html += """
+        </ul>
 """
 
         # 严重程度统计
@@ -446,6 +506,25 @@ class ReportGenerator:
         """
         rules_map: dict[str, dict] = {}
         sarif_results = self._convert_to_sarif_results(results, rules_map)
+        errors = _scan_errors(stats)
+        notifications = [
+            {
+                "level": "error",
+                "message": {"text": f"{error.get('file', '<unknown>')}: {error.get('message', '')}"},
+                "descriptor": {"id": f"aegis.{error.get('phase', 'scan')}_error"},
+                "locations": [
+                    {
+                        "physicalLocation": {
+                            "artifactLocation": {
+                                "uri": error.get("file", "<unknown>"),
+                                "uriBaseId": "%SRCROOT%",
+                            }
+                        }
+                    }
+                ],
+            }
+            for error in errors
+        ]
 
         sarif = {
             "version": "2.1.0",
@@ -460,6 +539,12 @@ class ReportGenerator:
                             "rules": list(rules_map.values()),
                         }
                     },
+                    "invocations": [
+                        {
+                            "executionSuccessful": not _scan_is_partial(stats),
+                            "toolExecutionNotifications": notifications,
+                        }
+                    ],
                     "results": sarif_results,
                 }
             ],
@@ -728,10 +813,36 @@ class ReportGenerator:
                 <td>{_esc(stats.get("total_issues", 0))}</td>
             </tr>
             <tr>
+                <td>扫描状态</td>
+                <td>{_esc("Partial" if _scan_is_partial(stats) else "Complete")}</td>
+            </tr>
+            <tr>
+                <td>扫描错误数</td>
+                <td>{_esc(_scan_error_count(stats))}</td>
+            </tr>
+            <tr>
                 <td>扫描耗时</td>
                 <td>{_esc(scan_time_display)}</td>
             </tr>
         </table>
+"""
+
+        errors = _scan_errors(stats)
+        if errors:
+            html += """
+        <h2>⚠️ 扫描错误</h2>
+        <ul>
+"""
+            for error in errors[:20]:
+                html += f"""
+            <li><code>{_esc(error.get("file", "<unknown>"))}</code>: {_esc(error.get("message", ""))}</li>
+"""
+            if len(errors) > 20:
+                html += f"""
+            <li>… 及其他 {len(errors) - 20} 个错误</li>
+"""
+            html += """
+        </ul>
 """
 
         # 严重程度统计

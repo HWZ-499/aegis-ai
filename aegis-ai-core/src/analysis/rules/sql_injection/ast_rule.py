@@ -66,6 +66,7 @@ _USER_INPUT_ATTRS = frozenset(
     ]
 )
 _USER_INPUT_OBJS = frozenset(["request", "req"])
+_UNSAFE_QUERY_VARS_EXTRA = "sql_injection_unsafe_query_vars"
 
 
 def _get_str_value(node: ast.AST) -> str | None:
@@ -86,7 +87,7 @@ def _is_sql_str(node: ast.AST) -> bool:
     return False
 
 
-def _is_parameterized(call_node: ast.Call) -> bool:
+def _is_parameterized(call_node: ast.Call, context: AnalysisContext | None = None) -> bool:
     """
     判断 cursor.execute(...) 是否使用参数化查询（安全）。
 
@@ -94,7 +95,7 @@ def _is_parameterized(call_node: ast.Call) -> bool:
     - ``execute("SELECT...?", (uid,))``   # sqlite3 / PyMySQL
     - ``execute("SELECT...%s", [uid])``   # psycopg2
     - ``execute("SELECT...%(name)s", d)`` # psycopg2 named
-    - ``execute(sql, (uid,))``            # 变量引用 + 参数元组
+    - ``execute(sql, (uid,))``            # 未污染的变量引用 + 参数元组
     - 第一个参数是纯字符串字面量（不含拼接/插值）
     """
     args = call_node.args
@@ -113,8 +114,12 @@ def _is_parameterized(call_node: ast.Call) -> bool:
     if first_val is not None and len(args) == 1:
         return True
 
-    # 变量/属性引用 + 第二个参数 → cursor.execute(sql, params) 模式，标准参数化查询
+    # 变量/属性引用 + 第二个参数 → cursor.execute(sql, params) 模式。
+    # 但 params 只保护值占位符；如果 SQL 变量本身已由用户输入拼接，
+    # 动态表名/列名/排序等 SQL 片段仍然可注入，不能视为安全。
     if isinstance(first, (ast.Name, ast.Attribute)) and len(args) >= 2:
+        if _is_known_unsafe_query_reference(first, context):
+            return False
         return True
 
     return False
@@ -147,6 +152,14 @@ def _collect_names(node: ast.AST) -> list[str]:
         if isinstance(n, ast.Name):
             names.append(n.id)
     return names
+
+
+def _is_known_unsafe_query_reference(node: ast.AST, context: AnalysisContext | None) -> bool:
+    """查询变量是否来自本文件中已确认的污染 SQL 构造。"""
+    if context is None:
+        return False
+    unsafe_query_vars = context.extras.get(_UNSAFE_QUERY_VARS_EXTRA, set())
+    return any(name in unsafe_query_vars for name in _collect_names(node))
 
 
 def _is_internal_config_node(node: ast.AST) -> bool:
@@ -224,15 +237,25 @@ class PythonSQLInjectionAstRule(SecurityRule):
         若 taint_graph 已由 PythonAnalyzer 构建，则跳过此步骤
         （TaintAnalyzer 已完成 Source 追踪）。
         """
-        # taint_graph 已就绪，TaintAnalyzer 负责 Source 追踪，无需重复处理
-        if context.taint_graph is not None:
-            return
         source = context.extras.get("source", "")
-        if not source or not context.dataflow_tracker:
+        if not source:
             return
         try:
             tree = ast.parse(source)
         except SyntaxError:
+            return
+
+        unsafe_query_vars: set[str] = set()
+        for n in ast.walk(tree):
+            if isinstance(n, ast.Assign) and self._is_unsafe_sql_assignment_value(n.value, context):
+                for target in n.targets:
+                    if isinstance(target, ast.Name):
+                        unsafe_query_vars.add(target.id)
+        if unsafe_query_vars:
+            context.extras[_UNSAFE_QUERY_VARS_EXTRA] = unsafe_query_vars
+
+        # taint_graph 已就绪，TaintAnalyzer 负责 Source 追踪，无需重复处理
+        if context.taint_graph is not None or not context.dataflow_tracker:
             return
         tracker = context.dataflow_tracker
         for n in ast.walk(tree):
@@ -291,7 +314,7 @@ class PythonSQLInjectionAstRule(SecurityRule):
             return
 
         # 参数化查询 → 安全
-        if _is_parameterized(node):
+        if _is_parameterized(node, context):
             return
 
         if not node.args:
@@ -343,7 +366,9 @@ class PythonSQLInjectionAstRule(SecurityRule):
         # Name：变量引用（query = "SELECT..." % var; cursor.execute(query)）
         elif isinstance(arg, ast.Name):
             var_name = arg.id
-            if context is not None and context.is_var_tainted(var_name):
+            if context is not None and (
+                _is_known_unsafe_query_reference(arg, context) or context.is_var_tainted(var_name)
+            ):
                 if context.is_var_sanitized(var_name):
                     return
                 self._report(
@@ -352,6 +377,25 @@ class PythonSQLInjectionAstRule(SecurityRule):
                     f"检测到 execute() 参数变量 '{var_name}' 已被污点追踪标记为受污染，"
                     "存在 SQL 注入风险，建议使用参数化查询。",
                 )
+
+    def _is_unsafe_sql_assignment_value(self, value: ast.AST, context: AnalysisContext) -> bool:
+        """赋值右侧是否为含用户输入的 SQL 拼接/格式化表达式。"""
+        if isinstance(value, ast.BinOp) and isinstance(value.op, (ast.Add, ast.Mod)):
+            parts = self._flatten_binop(value)
+            has_sql = any(_is_sql_str(part) for part in parts)
+            has_input = any(_is_user_input_node(part, context) for part in parts)
+            if not (has_sql and has_input):
+                return False
+            input_parts = [part for part in parts if _is_user_input_node(part, context)]
+            return not all(_is_internal_config_node(part) for part in input_parts)
+
+        if isinstance(value, ast.JoinedStr):
+            has_sql = any(_is_sql_str(part) for part in value.values)
+            identifiers = [n.id for n in ast.walk(value) if isinstance(n, ast.Name)]
+            has_input = any(_is_user_input_node(ast.Name(id=name, ctx=ast.Load()), context) for name in identifiers)
+            return has_sql and has_input
+
+        return False
 
     def _check_raw_concat(self, node: ast.AST, context: AnalysisContext) -> None:
         """检测裸 BinOp/JoinedStr（不在 execute 调用内），启发式报告。"""

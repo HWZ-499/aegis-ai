@@ -34,7 +34,7 @@ def clean_env(monkeypatch):
     yield
 
 
-from src.scanner.ai_analyzer import AIAnalyzer
+from src.scanner.ai_analyzer import AIAnalysisResult, AIAnalyzer
 
 
 class TestResolveProviderDefaults:
@@ -167,6 +167,56 @@ class TestAnalyzerInit:
         with caplog.at_level(logging.INFO, logger="src.scanner.ai_analyzer"):
             AIAnalyzer(enabled=True)
         assert "ollama" in caplog.text.lower()
+
+
+class TestAiAnalysisCache:
+    def test_cache_is_bound_to_file_and_source_context(self, monkeypatch):
+        analyzer = AIAnalyzer(api_key="test-key", enabled=True)
+        calls: list[tuple[str, str]] = []
+
+        def fake_call_ai_analysis(finding, rich_ctx=None, language=None):
+            calls.append((finding.get("file", ""), (rich_ctx or {}).get("vuln_snippet", "")))
+            return AIAnalysisResult(
+                is_true_positive=True,
+                confidence=0.91,
+                risk_level="High",
+                explanation=f"analysis {len(calls)} for {finding.get('file')}",
+                fix_suggestion="Use a parameterized query",
+                requires_review=False,
+                fixed_code=f"fixed {len(calls)}",
+                fix_start_line=finding.get("line"),
+                fix_end_line=finding.get("line"),
+            )
+
+        monkeypatch.setattr(analyzer, "_call_ai_analysis", fake_call_ai_analysis)
+
+        finding = {
+            "type": "SQL_INJECTION",
+            "severity": "High",
+            "line": 2,
+            "details": "Potential SQL injection in query execution",
+        }
+
+        first = analyzer.analyze_finding(
+            {**finding, "file": "users.py", "language": "python"},
+            language="python",
+            source_code='name = request.args["name"]\nquery = "SELECT " + name\n',
+        )
+        second = analyzer.analyze_finding(
+            {**finding, "file": "orders.py", "language": "python"},
+            language="python",
+            source_code='order = request.args["order"]\nquery = "SELECT " + order\n',
+        )
+        repeated_second = analyzer.analyze_finding(
+            {**finding, "file": "orders.py", "language": "python"},
+            language="python",
+            source_code='order = request.args["order"]\nquery = "SELECT " + order\n',
+        )
+
+        assert first.fixed_code == "fixed 1"
+        assert second.fixed_code == "fixed 2"
+        assert repeated_second is second
+        assert len(calls) == 2
 
 
 class TestAiResponseErrors:

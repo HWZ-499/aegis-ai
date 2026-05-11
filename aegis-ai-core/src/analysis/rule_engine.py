@@ -380,7 +380,7 @@ def _analyze_with(
     extra_rule_dirs: list[Path] | None = None,
     rules_allowed_root: Path | None = None,
 ) -> list[dict]:
-    """统一入口：按语言选择分析器并执行分析，异常时记录日志并返回空列表。"""
+    """统一入口：按语言选择分析器并执行分析，分析器失败时抛出 RuntimeError。"""
     from src.scanner.baseline import filter_suppressed_findings
 
     path = Path(file_path)
@@ -403,9 +403,9 @@ def _analyze_with(
         if language in ("javascript", "typescript"):
             filtered = _dedupe_nearby_findings(filtered, target_types=_JS_NEARLINE_DEDUPE_TYPES, window=6)
         return filtered
-    except (RuntimeError, ValueError):
+    except (RuntimeError, ValueError) as exc:
         logger.exception("_analyze_with(%s) failed for %s", language, path)
-        return []
+        raise RuntimeError(f"{language} analyzer failed for {path}: {exc}") from exc
 
 
 def analyze_python(
@@ -415,7 +415,7 @@ def analyze_python(
     extra_rule_dirs: list[Path] | None = None,
     rules_allowed_root: Path | None = None,
 ) -> list[dict]:
-    """使用新规则引擎分析单个 Python 文件。TDD 10.1：异常时返回空列表。"""
+    """使用新规则引擎分析单个 Python 文件。分析器失败时抛出 RuntimeError。"""
     return _analyze_with(
         "python",
         code,
@@ -434,7 +434,7 @@ def analyze_javascript(
     extra_rule_dirs: list[Path] | None = None,
     rules_allowed_root: Path | None = None,
 ) -> list[dict]:
-    """使用新规则引擎分析单个 JavaScript/TypeScript 文件。TDD 10.1：异常时返回空列表。"""
+    """使用新规则引擎分析单个 JavaScript/TypeScript 文件。分析器失败时抛出 RuntimeError。"""
     return _analyze_with(
         language,
         code,
@@ -452,7 +452,7 @@ def analyze_java(
     extra_rule_dirs: list[Path] | None = None,
     rules_allowed_root: Path | None = None,
 ) -> list[dict]:
-    """使用新规则引擎分析单个 Java 文件。TDD 10.1：异常时返回空列表。"""
+    """使用新规则引擎分析单个 Java 文件。分析器失败时抛出 RuntimeError。"""
     return _analyze_with(
         "java",
         code,
@@ -470,7 +470,7 @@ def analyze_go(
     extra_rule_dirs: list[Path] | None = None,
     rules_allowed_root: Path | None = None,
 ) -> list[dict]:
-    """使用新规则引擎分析单个 Go 文件。异常时返回空列表。"""
+    """使用新规则引擎分析单个 Go 文件。分析器失败时抛出 RuntimeError。"""
     return _analyze_with(
         "go",
         code,

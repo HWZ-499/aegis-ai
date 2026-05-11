@@ -1,4 +1,4 @@
-﻿"""PHP Hardcoded Credentials AST rule — Tree-sitter based."""
+"""PHP Hardcoded Credentials AST rule — Tree-sitter based."""
 
 from __future__ import annotations
 
@@ -19,7 +19,25 @@ _CREDENTIAL_RE = re.compile(
     r"(password|passwd|pwd|secret|api_?key|token|auth|credential|private_?key)",
     re.IGNORECASE,
 )
-_SAFE_VALUES = frozenset({"", "null", "none", "false", "true", "test", "example", "xxx", "changeme"})
+_OPAQUE_SECRET_NAME_RE = re.compile(r"(api_?key|token|auth|credential)", re.IGNORECASE)
+_OPAQUE_SECRET_VALUE_RE = re.compile(
+    r"^[A-Za-z0-9+/=_\-!@#$%^&*]{16,}$|"
+    r"^[0-9a-fA-F]{32,}$",
+)
+_SAFE_VALUES = frozenset(
+    {
+        "",
+        "null",
+        "none",
+        "false",
+        "true",
+        "test",
+        "example",
+        "xxx",
+        "changeme",
+        "password",
+    }
+)
 
 
 class PhpHardcodedCredentialsAstRule(SecurityRule):
@@ -60,9 +78,7 @@ class PhpHardcodedCredentialsAstRule(SecurityRule):
         inner_val = self._unwrap(args[1])
         if inner_val.type not in ("string", "encapsed_string"):
             return
-        if value_text.lower() in _SAFE_VALUES:
-            return
-        if len(value_text) < 3:
+        if not self._is_reportable_credential_value(name_text, value_text):
             return
         self._reported.add(line)
         finding = {
@@ -97,9 +113,7 @@ class PhpHardcodedCredentialsAstRule(SecurityRule):
         if val_node.type not in ("string", "encapsed_string"):
             return
         val_text = self._text(val_node).strip("\"'")
-        if val_text.lower() in _SAFE_VALUES:
-            return
-        if len(val_text) < 3:
+        if not self._is_reportable_credential_value(var_name, val_text):
             return
         self._reported.add(line)
         finding = {
@@ -111,6 +125,17 @@ class PhpHardcodedCredentialsAstRule(SecurityRule):
         }
         finding.update(tree_sitter_node_to_range(node))
         context.add_finding(finding)
+
+    @staticmethod
+    def _is_reportable_credential_value(name: str, value: str) -> bool:
+        normalized = value.strip()
+        if normalized.lower() in _SAFE_VALUES:
+            return False
+        if len(normalized) < 3:
+            return False
+        if _OPAQUE_SECRET_NAME_RE.search(name):
+            return len(normalized) >= 16 and bool(_OPAQUE_SECRET_VALUE_RE.match(normalized))
+        return True
 
     @staticmethod
     def _get_args(node: Any) -> list[Any]:

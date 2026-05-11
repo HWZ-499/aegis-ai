@@ -1,4 +1,4 @@
-﻿"""
+"""
 hardcoded_credentials.javascript_ast_rule
 
 JavaScript/TypeScript 硬编码凭证 AST 规则。
@@ -107,21 +107,23 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
 
     def _check_variable_declaration(self, node: Node, context: AnalysisContext) -> None:
         """检测变量声明中的硬编码凭证。"""
-        # 提取变量名和值
+        for child in node.children:
+            if child.type != "variable_declarator":
+                continue
+            self._check_variable_declarator(child, context)
+
+    def _check_variable_declarator(self, node: Node, context: AnalysisContext) -> None:
+        """检测单个 variable_declarator，避免多声明语句只检查最后一个变量。"""
         var_name = None
         value_node = None
-
         for child in node.children:
-            if child.type == "variable_declarator":
-                for subchild in child.children:
-                    if subchild.type == "identifier":
-                        var_name = self._get_node_text(subchild)
-                    elif subchild.type in ("string", "number"):
-                        value_node = subchild
+            if child.type == "identifier" and var_name is None:
+                var_name = self._get_node_text(child)
+            elif child.type in ("string", "number"):
+                value_node = child
 
         if not var_name or not value_node:
             return
-
         if not self._looks_like_secret_name(var_name):
             return
 

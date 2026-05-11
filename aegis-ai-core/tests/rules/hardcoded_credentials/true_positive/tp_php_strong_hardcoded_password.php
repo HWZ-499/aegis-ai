@@ -1,0 +1,3 @@
+<?php
+
+$password = "SuperSecretPass123!";

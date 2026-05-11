@@ -83,7 +83,18 @@ def _is_user_input_node(node: ast.AST, context: AnalysisContext | None = None) -
     if isinstance(node, ast.Subscript):
         return _is_user_input_node(node.value, context)
     if isinstance(node, ast.Call):
-        return _is_user_input_node(node.func, context)
+        if _is_user_input_node(node.func, context):
+            return True
+        return any(_is_user_input_node(arg, context) for arg in node.args) or any(
+            _is_user_input_node(kw.value, context) for kw in node.keywords
+        )
+    if isinstance(node, ast.Dict):
+        return any(
+            (key is not None and _is_user_input_node(key, context)) or _is_user_input_node(value, context)
+            for key, value in zip(node.keys, node.values)
+        )
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        return any(_is_user_input_node(element, context) for element in node.elts)
     return False
 
 

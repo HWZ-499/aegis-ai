@@ -26,6 +26,7 @@ class JavaScriptSSRFAstRule(SecurityRule):
     报告条件：存在污点路径，用户可控输入流入 HTTP 请求函数（fetch/axios/http.get 等），
     且路径未被净化（URL 白名单校验、域名过滤等）。
     """
+
     _SUPERTEST_LOCAL_CALL_RE = re.compile(r"request\((?:this\.)?(?:app|server)\d*\)")
 
     def __init__(self) -> None:

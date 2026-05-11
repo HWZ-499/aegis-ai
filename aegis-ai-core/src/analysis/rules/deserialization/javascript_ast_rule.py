@@ -1,4 +1,4 @@
-﻿"""
+"""
 deserialization.javascript_ast_rule
 
 JavaScript/TypeScript 反序列化风险 AST 规则。

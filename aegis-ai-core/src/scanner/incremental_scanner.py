@@ -4,6 +4,7 @@
 支持 Git diff 集成，只扫描变更的文件
 """
 
+import logging
 import re
 import subprocess
 import sys
@@ -17,6 +18,8 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 from src.scanner.project_scanner import ProjectScanner
+
+logger = logging.getLogger(__name__)
 
 
 class IncrementalScanner:
@@ -62,8 +65,8 @@ class IncrementalScanner:
 
         # 检查是否是 Git 仓库
         if not self._is_git_repo():
-            print("⚠️  不是 Git 仓库，将扫描所有文件")
-            return set()  # 返回空集合，让调用者决定如何处理
+            logger.warning("不是 Git 仓库，增量扫描回退为扫描所有发现到的源码文件: %s", self.project_path)
+            return {path.resolve() for path in self.scanner._get_code_files()}
 
         try:
             if self.base_ref:
@@ -98,11 +101,25 @@ class IncrementalScanner:
                         if file_path.exists():
                             changed_files.add(file_path.resolve())
 
+            # 未跟踪源码文件也是“新增风险”的常见来源，不能在增量扫描中漏掉。
+            untracked_result = subprocess.run(
+                ["git", "ls-files", "--others", "--exclude-standard"],
+                cwd=self.project_path,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            for line in untracked_result.stdout.strip().split("\n"):
+                if line.strip():
+                    file_path = self.project_path / line.strip()
+                    if file_path.exists() and file_path.suffix in self.scanner.supported_extensions:
+                        changed_files.add(file_path.resolve())
+
         except subprocess.CalledProcessError as e:
-            print(f"⚠️  Git 命令执行失败: {e}")
+            logger.warning("Git 命令执行失败，增量扫描无法确定变更文件: %s", e)
             return set()
         except FileNotFoundError:
-            print("⚠️  Git 未安装或不在 PATH 中")
+            logger.warning("Git 未安装或不在 PATH 中，增量扫描无法确定变更文件")
             return set()
 
         return changed_files
@@ -155,6 +172,8 @@ class IncrementalScanner:
         Returns:
             扫描结果字典
         """
+        self.scanner._reset_scan_state()
+
         # 获取修改的文件
         changed_files = self.get_changed_files()
 
@@ -190,6 +209,8 @@ class IncrementalScanner:
                     results[rel_path] = findings
 
             except (OSError, UnicodeDecodeError, RuntimeError) as e:
+                rel_path = str(file_path.relative_to(self.project_path)).replace("\\", "/")
+                self.scanner.scan_stats.execution.note_scan_error(rel_path, str(e))
                 if verbose:
                     print(f"⚠️  扫描文件失败 {file_path}: {e}")
 
@@ -220,11 +241,15 @@ class IncrementalScanner:
                 "files_with_issues": 0,
                 "total_issues": 0,
                 "scan_time_seconds": 0.0,
+                "partial": False,
+                "error_count": 0,
+                "errors": [],
             }
             return {}, stats
 
         # 执行扫描
         results = self.scan_incremental(verbose=verbose)
+        scan_stats = self.scanner.get_stats()
 
         # 计算统计信息
         total_issues = sum(len(findings) for findings in results.values())
@@ -240,6 +265,9 @@ class IncrementalScanner:
             "files_with_issues": files_with_issues,
             "total_issues": total_issues,
             "scan_time_seconds": scan_time,
+            "partial": scan_stats.get("partial", False),
+            "error_count": scan_stats.get("error_count", 0),
+            "errors": scan_stats.get("errors", []),
         }
 
         return results, stats

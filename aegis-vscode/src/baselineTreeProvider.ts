@@ -53,6 +53,32 @@ function sortEntries(entries: BaselineEntry[]): BaselineEntry[] {
   });
 }
 
+export function resolveBaselineEntryPath(
+  workspaceRoot: string | undefined,
+  entryPath: string,
+): string | undefined {
+  if (!workspaceRoot || !entryPath) {
+    return undefined;
+  }
+
+  const normalizedEntry = entryPath.replace(/\\/g, "/");
+  if (
+    path.isAbsolute(normalizedEntry)
+    || normalizedEntry.split("/").some((segment) => segment === "..")
+  ) {
+    return undefined;
+  }
+
+  const rootPath = path.resolve(workspaceRoot);
+  const targetPath = path.resolve(rootPath, ...normalizedEntry.split("/").filter(Boolean));
+  const relative = path.relative(rootPath, targetPath);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    return undefined;
+  }
+
+  return targetPath;
+}
+
 export function readBaselineEntries(workspaceRoot: string | undefined): BaselineEntry[] {
   if (!workspaceRoot) {
     return [];
@@ -140,21 +166,28 @@ export class BaselineTreeProvider implements TreeDataProvider<BaselineNode> {
       `L${element.entry.line}: ${element.entry.rule_id}`,
       TreeItemCollapsibleState.None,
     );
-    const targetPath = path.join(element.workspaceRoot, ...element.entry.file_path.split("/"));
-    item.resourceUri = Uri.file(targetPath);
-    item.command = {
-      command: "vscode.open",
-      title: "Open source location",
-      arguments: [
-        Uri.file(targetPath),
-        {
-          selection: {
-            start: { line: Math.max(0, element.entry.line - 1), character: 0 },
-            end: { line: Math.max(0, element.entry.line - 1), character: 0 },
+    const targetPath = resolveBaselineEntryPath(element.workspaceRoot, element.entry.file_path);
+    if (targetPath) {
+      item.resourceUri = Uri.file(targetPath);
+      item.command = {
+        command: "vscode.open",
+        title: "Open source location",
+        arguments: [
+          Uri.file(targetPath),
+          {
+            selection: {
+              start: { line: Math.max(0, element.entry.line - 1), character: 0 },
+              end: { line: Math.max(0, element.entry.line - 1), character: 0 },
+            },
           },
-        },
-      ],
-    };
+        ],
+      };
+      item.contextValue = "aegisBaselineEntry";
+    } else {
+      item.contextValue = "aegisBaselineEntry";
+      item.tooltip = `Invalid baseline path outside workspace: ${element.entry.file_path}`;
+      return item;
+    }
     item.contextValue = "aegisBaselineEntry";
     item.tooltip = `${element.entry.file_path}:${element.entry.line} (${element.entry.fingerprint})`;
     return item;

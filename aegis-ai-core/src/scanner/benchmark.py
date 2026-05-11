@@ -148,8 +148,12 @@ def _analyze_case(case: BenchCase) -> list[dict]:
     )
 
     language = (case.language or "javascript").lower()
-    if language in {"javascript", "js", "typescript", "ts"}:
-        return analyze_javascript(case.code, "benchmark.js")
+    if language in {"javascript", "js", "jsx"}:
+        suffix = "jsx" if language == "jsx" else "js"
+        return analyze_javascript(case.code, f"benchmark.{suffix}", language="javascript")
+    if language in {"typescript", "ts", "tsx"}:
+        suffix = "tsx" if language == "tsx" else "ts"
+        return analyze_javascript(case.code, f"benchmark.{suffix}", language="typescript")
     if language == "python":
         return analyze_python(case.code, "benchmark.py")
     if language == "php":
@@ -159,7 +163,9 @@ def _analyze_case(case: BenchCase) -> list[dict]:
     if language == "go":
         return analyze_go(case.code, "benchmark.go")
 
-    logger.warning("Unknown benchmark case language '%s' in case %s, fallback to JavaScript analyzer", language, case.id)
+    logger.warning(
+        "Unknown benchmark case language '%s' in case %s, fallback to JavaScript analyzer", language, case.id
+    )
     return analyze_javascript(case.code, "benchmark.js")
 
 

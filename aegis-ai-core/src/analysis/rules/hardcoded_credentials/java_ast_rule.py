@@ -1,4 +1,4 @@
-﻿"""
+"""
 hardcoded_credentials.java_ast_rule
 
 Java 硬编码凭证 AST 规则。
@@ -47,8 +47,8 @@ class JavaHardcodedCredentialsAstRule(SecurityRule):
         if not isinstance(node, Node):
             return
 
-        # 局部变量声明：String password = "xxx";
-        if node.type == "local_variable_declaration":
+        # 局部变量/类字段声明：String password = "xxx";
+        if node.type in {"local_variable_declaration", "field_declaration"}:
             self._check_local_variable_declaration(node, context)
 
         # 赋值表达式：config.password = "xxx";
@@ -313,4 +313,3 @@ class JavaHardcodedCredentialsAstRule(SecurityRule):
 
 
 __all__ = ["JavaHardcodedCredentialsAstRule"]
-

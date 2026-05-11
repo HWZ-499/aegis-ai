@@ -15,6 +15,7 @@ ai_analyzer.py - AI 分析模块
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -513,7 +514,12 @@ class AIAnalyzer:
         Returns:
             AI 分析结果
         """
-        cache_key = self._get_cache_key(finding)
+        cache_key = self._get_cache_key(
+            finding,
+            code_context=code_context,
+            language=language,
+            source_code=source_code,
+        )
         if cache_key in self._cache:
             return self._cache[cache_key]
 
@@ -581,13 +587,37 @@ class AIAnalyzer:
 
         return results
 
-    def _get_cache_key(self, finding: dict[str, Any]) -> str:
-        """生成缓存键（使用 hashlib 确保跨进程稳定）"""
-        import hashlib
-
-        vuln_type = finding.get("type", "")
-        details = finding.get("details", "")[:100]
-        digest = hashlib.md5(details.encode("utf-8", errors="replace")).hexdigest()
+    def _get_cache_key(
+        self,
+        finding: dict[str, Any],
+        *,
+        code_context: str | None = None,
+        language: str | None = None,
+        source_code: str | None = None,
+    ) -> str:
+        """生成绑定文件、位置、语言和代码上下文的稳定缓存键。"""
+        context_material = (
+            source_code
+            if source_code is not None
+            else code_context
+            if code_context is not None
+            else finding.get("code") or finding.get("snippet") or finding.get("context") or ""
+        )
+        context_hash = hashlib.sha256(str(context_material).encode("utf-8", errors="replace")).hexdigest()
+        vuln_type = str(finding.get("type", ""))
+        payload = {
+            "column": finding.get("column") or finding.get("start_character") or 0,
+            "context_hash": context_hash,
+            "cwe": str(finding.get("cwe", "")),
+            "details": str(finding.get("details", "")),
+            "end_line": finding.get("end_line") or finding.get("line") or finding.get("start_line") or 0,
+            "file": str(finding.get("file") or finding.get("file_path") or ""),
+            "language": str(language or finding.get("language") or ""),
+            "line": finding.get("line") or finding.get("start_line") or 0,
+            "type": vuln_type,
+        }
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        digest = hashlib.sha256(encoded.encode("utf-8", errors="replace")).hexdigest()
         return f"{vuln_type}:{digest}"
 
     def _default_analysis(self, finding: dict[str, Any]) -> AIAnalysisResult:

@@ -79,6 +79,37 @@ class TestTypedSuppression:
 
 
 # ---------------------------------------------------------------------------
+# 测试：字符串字面量不应触发 suppression
+# ---------------------------------------------------------------------------
+
+
+class TestStringLiteralMarkers:
+    def test_python_string_literal_aegis_ignore_does_not_suppress_finding(self):
+        code = 'query = "# aegis-ignore: SQL_INJECTION" + request.args["id"]\n'
+        sup = InlineSuppressor(code)
+        assert not sup.is_suppressed(1, "SQL_INJECTION")
+
+    def test_javascript_string_literal_aegis_ignore_does_not_suppress_finding(self):
+        code = 'const html = "// aegis-ignore: XSS_RISK" + req.query.name;\n'
+        sup = InlineSuppressor(code)
+        assert not sup.is_suppressed(1, "XSS_RISK")
+
+    def test_filter_keeps_findings_when_marker_is_inside_string_literal(self):
+        code = "\n".join(
+            [
+                'query = "# aegis-ignore: SQL_INJECTION" + request.args["id"]',
+                'html = "// aegis-ignore: XSS_RISK" + req.query.name',
+            ]
+        )
+        findings = [
+            {"line": 1, "type": "SQL_INJECTION", "details": "dynamic query"},
+            {"line": 2, "type": "XSS_RISK", "details": "dynamic HTML"},
+        ]
+
+        assert InlineSuppressor(code).filter_findings(findings) == findings
+
+
+# ---------------------------------------------------------------------------
 # 测试：行上方前缀注释
 # ---------------------------------------------------------------------------
 

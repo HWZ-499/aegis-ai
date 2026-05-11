@@ -214,11 +214,13 @@
         "aegisAI.pythonPath": {
           "type": "string",
           "default": "python",
+          "scope": "application",
           "description": "Path to Python 3.10+ used to create and run the Aegis backend environment. Examples: python, python3, /usr/bin/python3, C:\\\\Python311\\\\python.exe"
         },
         "aegisAI.serverModule": {
           "type": "string",
           "default": "src.lsp",
+          "scope": "application",
           "description": "Python module path for the Aegis AI LSP Server (e.g., src.lsp)."
         },
         "aegisAI.enabled": {
@@ -229,6 +231,7 @@
         "aegisAI.serverCwd": {
           "type": "string",
           "default": "",
+          "scope": "application",
           "description": "Advanced/development override: force an aegis-ai-core working directory. Leave blank to use the bundled backend."
         },
         "aegisAI.severity.minimum": {

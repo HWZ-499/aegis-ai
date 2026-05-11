@@ -1,4 +1,4 @@
-﻿"""
+"""
 xss.javascript_ast_rule
 
 JavaScript/TypeScript XSS 风险 AST 规则（新规则架构）。
@@ -73,20 +73,18 @@ class JavaScriptXSSAstRule(SecurityRule):
     # ------------------------------------------------------------------
     # 检测方法
     # ------------------------------------------------------------------
-    # 已知可信的 HTML 净化函数名（调用后视为已净化）
-    _HTML_SANITIZERS = frozenset(
-        [
-            "sanitize",  # DOMPurify.sanitize / sanitize(x)
-            "escapeHtml",  # 自定义转义函数（常见命名）
-            "escape",  # 通用 escape
-            "encode",  # html-entities encode
-            "htmlEncode",
+    # 明确命名的 HTML escaping helper。避免把 encode()/escape()/sanitize()
+    # 这类通用本地函数误当成可信 HTML sanitizer。
+    _TRUSTED_DIRECT_HTML_SANITIZERS = frozenset(
+        {
+            "escapeHtml",
             "htmlEscape",
+            "htmlEncode",
             "encodeHtml",
-            "purify",  # DOMPurify.purify
-            "createHTML",  # Trusted Types API
-        ]
+            "sanitizeHtml",
+        }
     )
+    _TRUSTED_SANITIZER_OBJECTS = frozenset({"DOMPurify", "dompurify"})
 
     def _check_inner_html_assignment(self, node: Node, context: AnalysisContext) -> None:
         """
@@ -156,26 +154,30 @@ class JavaScriptXSSAstRule(SecurityRule):
 
     def _is_sanitizer_call(self, node: Node) -> bool:
         """
-        判断节点是否是 HTML 净化函数调用（如 DOMPurify.sanitize(x)）。
+        判断节点是否是可信 HTML 净化函数调用（如 DOMPurify.sanitize(x)）。
 
         支持：
-        - ``sanitize(x)``（直接调用）
         - ``DOMPurify.sanitize(x)``（成员调用）
-        - ``someLib.escape(x)`` 等
+        - ``escapeHtml(x)`` / ``htmlEscape(x)`` 等明确 HTML escaping helper
         """
         if node.type != "call_expression":
             return False
         for child in node.children:
             if child.type == "member_expression":
-                for sub in reversed(child.children):
-                    if sub.type == "property_identifier":
-                        fname = self._get_node_text(sub) or ""
-                        if fname in self._HTML_SANITIZERS:
-                            return True
-                        break
+                object_name = None
+                method_name = None
+                for sub in child.children:
+                    if sub.type == "identifier" and object_name is None:
+                        object_name = self._get_node_text(sub)
+                    elif sub.type == "property_identifier":
+                        method_name = self._get_node_text(sub)
+                if object_name in self._TRUSTED_SANITIZER_OBJECTS and method_name == "sanitize":
+                    return True
+                if method_name in self._TRUSTED_DIRECT_HTML_SANITIZERS:
+                    return True
             elif child.type == "identifier":
                 fname = self._get_node_text(child) or ""
-                if fname in self._HTML_SANITIZERS:
+                if fname in self._TRUSTED_DIRECT_HTML_SANITIZERS:
                     return True
         return False
 

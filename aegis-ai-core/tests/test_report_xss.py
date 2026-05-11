@@ -168,3 +168,65 @@ class TestJSONReport:
         data = json.loads(output)
         assert data["project_name"] == "Test Project"
         assert data["results"]["test.py"][0]["type"] == "TEST"
+
+    def test_json_includes_partial_scan_errors(self, generator) -> None:
+        """JSON report must make partial scans machine-readable."""
+        import json
+
+        stats = {
+            "total_files": 1,
+            "scanned_files": 1,
+            "files_with_issues": 0,
+            "total_issues": 0,
+            "scan_time": 0.1,
+            "partial": True,
+            "error_count": 1,
+            "errors": [{"file": "app.py", "phase": "scan", "message": "parser unavailable"}],
+        }
+        output = generator.generate_json({}, stats)
+        data = json.loads(output)
+
+        assert data["summary"]["partial"] is True
+        assert data["summary"]["error_count"] == 1
+        assert data["errors"] == stats["errors"]
+
+
+class TestSARIFReport:
+    """验证 SARIF 报告中的扫描执行状态。"""
+
+    def test_sarif_includes_partial_scan_notifications(self, generator) -> None:
+        """SARIF report must expose scan errors via invocations."""
+        import json
+
+        stats = {
+            "total_files": 1,
+            "scanned_files": 1,
+            "files_with_issues": 0,
+            "total_issues": 0,
+            "partial": True,
+            "error_count": 1,
+            "errors": [{"file": "app.py", "phase": "scan", "message": "parser unavailable"}],
+        }
+        output = generator.generate_sarif({}, stats)
+        data = json.loads(output)
+        invocation = data["runs"][0]["invocations"][0]
+
+        assert invocation["executionSuccessful"] is False
+        assert invocation["toolExecutionNotifications"][0]["message"]["text"] == "app.py: parser unavailable"
+
+
+def test_rule_engine_analyzer_failure_is_not_silent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Analyzer failures must propagate so callers can report partial scans."""
+    from src.analysis import rule_engine
+
+    class FailingAnalyzer:
+        def __init__(self, rules):
+            pass
+
+        def analyze(self, code, path):
+            raise ValueError("parser unavailable")
+
+    monkeypatch.setitem(rule_engine._LANGUAGE_ANALYZER_MAP, "python", FailingAnalyzer)
+
+    with pytest.raises(RuntimeError, match="python analyzer failed"):
+        rule_engine.analyze_python("print('ok')\n", "app.py")

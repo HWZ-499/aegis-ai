@@ -1,4 +1,4 @@
-﻿"""
+"""
 cross_file_analyzer.py - 跨文件依赖图分析器
 
 实现跨文件的模块依赖关系解析：
@@ -129,6 +129,7 @@ class CrossFileAnalyzer:
 
         # Tree-sitter 解析器
         self._js_parser: Parser | None = None
+        self._ts_parser: Parser | None = None
         self._py_parser: Parser | None = None
 
         if TREE_SITTER_AVAILABLE:
@@ -136,20 +137,30 @@ class CrossFileAnalyzer:
                 js_lang = get_language("javascript")
                 self._js_parser = Parser()
                 self._js_parser.set_language(js_lang)
+            except (ImportError, RuntimeError, OSError) as e:
+                logger.debug("Failed to init JavaScript parser for cross-file analysis: %s", e)
 
+            try:
+                ts_lang = get_language("typescript")
+                self._ts_parser = Parser()
+                self._ts_parser.set_language(ts_lang)
+            except (ImportError, RuntimeError, OSError) as e:
+                logger.debug("Failed to init TypeScript parser for cross-file analysis: %s", e)
+
+            try:
                 py_lang = get_language("python")
                 self._py_parser = Parser()
                 self._py_parser.set_language(py_lang)
             except (ImportError, RuntimeError, OSError) as e:
-                logger.debug("Failed to init Tree-sitter parsers for cross-file analysis: %s", e)
+                logger.debug("Failed to init Python parser for cross-file analysis: %s", e)
 
     def scan_project(self) -> None:
         """
         扫描整个项目，收集导入/导出信息。
         """
         # 查找所有代码文件
-        js_files = list(self.project_path.rglob("*.js"))
-        ts_files = list(self.project_path.rglob("*.ts"))
+        js_files = list(self.project_path.rglob("*.js")) + list(self.project_path.rglob("*.jsx"))
+        ts_files = list(self.project_path.rglob("*.ts")) + list(self.project_path.rglob("*.tsx"))
         py_files = list(self.project_path.rglob("*.py"))
 
         # 过滤 node_modules 等目录
@@ -178,12 +189,13 @@ class CrossFileAnalyzer:
 
     def _analyze_js_file(self, file_path: Path) -> None:
         """分析 JavaScript/TypeScript 文件"""
-        if not self._js_parser:
+        parser = self._parser_for_js_family_file(file_path)
+        if not parser:
             return
 
         try:
             code = file_path.read_text(encoding="utf-8", errors="ignore")
-            tree = self._js_parser.parse(bytes(code, "utf8"))
+            tree = parser.parse(bytes(code, "utf8"))
 
             file_str = str(file_path)
             self._exports[file_str] = []
@@ -195,8 +207,14 @@ class CrossFileAnalyzer:
         except (OSError, RuntimeError, ValueError) as e:
             logger.warning("分析失败 %s: %s", file_path, e)
 
+    def _parser_for_js_family_file(self, file_path: Path) -> Parser | None:
+        """Return the parser matching a JavaScript-family source file."""
+        if file_path.suffix.lower() in {".ts", ".tsx"}:
+            return self._ts_parser or self._js_parser
+        return self._js_parser
+
     def _traverse_js_ast(self, node: Any, file_path: str) -> None:
-        """遍历 JavaScript AST"""
+        """遍历 JavaScript/TypeScript AST"""
         if not TREE_SITTER_AVAILABLE:
             return
 
@@ -506,7 +524,7 @@ class CrossFileAnalyzer:
                 current = current / part
 
         # 尝试不同的扩展名
-        extensions = [".js", ".ts", ".jsx", ".tsx", "/index.js", "/index.ts", ".py"]
+        extensions = [".js", ".jsx", ".ts", ".tsx", "/index.js", "/index.jsx", "/index.ts", "/index.tsx", ".py"]
         for ext in extensions:
             candidate = Path(str(current) + ext)
             if candidate.exists():
@@ -527,7 +545,18 @@ class CrossFileAnalyzer:
             self.project_path / "app" / module_path,
         ]
 
-        extensions = [".js", ".ts", ".py", "/index.js", "/index.ts", "/__init__.py"]
+        extensions = [
+            ".js",
+            ".jsx",
+            ".ts",
+            ".tsx",
+            ".py",
+            "/index.js",
+            "/index.jsx",
+            "/index.ts",
+            "/index.tsx",
+            "/__init__.py",
+        ]
 
         for base in candidates:
             for ext in extensions:

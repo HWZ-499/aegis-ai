@@ -46,6 +46,7 @@ from src.scanner.performance_optimizer import PerformanceOptimizer
 Finding = dict[str, Any]
 ScanResults = dict[str, list[Finding]]
 SkippedFileEntry = tuple[str, str]
+ScanErrorEntry = dict[str, str]
 
 
 @dataclass
@@ -61,6 +62,7 @@ class ScanExecutionSummary:
     files_with_issues: int = 0
     total_issues: int = 0
     scan_time: float | None = None
+    errors: list[ScanErrorEntry] = field(default_factory=list)
 
     def note_scanned_file(self, findings: list[Finding]) -> None:
         self.scanned_files += 1
@@ -71,6 +73,15 @@ class ScanExecutionSummary:
     def note_cross_file_finding(self) -> None:
         self.total_issues += 1
 
+    def note_scan_error(self, file_path: str, message: str, phase: str = "scan") -> None:
+        self.errors.append(
+            {
+                "file": file_path,
+                "phase": phase,
+                "message": message,
+            }
+        )
+
 
 @dataclass
 class ScanStats:
@@ -78,6 +89,7 @@ class ScanStats:
     execution: ScanExecutionSummary = field(default_factory=ScanExecutionSummary)
 
     def to_dict(self, severity_stats: dict[str, int]) -> dict[str, Any]:
+        error_count = len(self.execution.errors)
         return {
             "total_files": self.discovery.total_files,
             "discovered_files": list(self.discovery.discovered_files),
@@ -87,6 +99,9 @@ class ScanStats:
             "total_issues": self.execution.total_issues,
             "scan_time": self.execution.scan_time,
             "severity_stats": severity_stats,
+            "partial": error_count > 0,
+            "error_count": error_count,
+            "errors": list(self.execution.errors),
         }
 
 
@@ -145,6 +160,7 @@ class ProjectScanner:
         self.max_workers = max_workers
         self.scan_results: ScanResults = {}
         self.scan_stats: ScanStats = ScanStats()
+        self._failed_scan_files: set[Path] = set()
 
         # 初始化性能优化器
         self.optimizer: PerformanceOptimizer | None
@@ -193,6 +209,7 @@ class ProjectScanner:
         """重置单次扫描的结果与统计，避免重复调用时状态泄漏。"""
         self.scan_results = {}
         self.scan_stats = ScanStats()
+        self._failed_scan_files = set()
 
     def get_support_level(self, ext: str) -> str | None:
         """
@@ -515,6 +532,8 @@ class ProjectScanner:
 
         except (OSError, UnicodeDecodeError, RuntimeError) as e:
             logger.warning("扫描文件失败 %s: %s", file_path, e)
+            self._failed_scan_files.add(file_path.resolve())
+            self.scan_stats.execution.note_scan_error(self._to_relative(str(file_path)), str(e))
             return []
 
     def scan_project(self, verbose: bool = False) -> ScanResults:
@@ -569,6 +588,7 @@ class ProjectScanner:
                 supported_extensions=self.supported_extensions,
                 progress_callback=progress_callback if verbose else None,
                 engine=self.engine,  # 【修复】传递引擎类型
+                should_cache_result=lambda file_path, _findings: not self._scan_file_failed(file_path),
             )
 
             # 处理优化后的结果
@@ -609,11 +629,12 @@ class ProjectScanner:
 
         if verbose:
             logger.info(
-                "扫描完成！总文件: %d | 已扫描: %d | 有问题: %d | 总问题数: %d | 耗时: %.2fs",
+                "扫描完成！总文件: %d | 已扫描: %d | 有问题: %d | 总问题数: %d | 扫描错误: %d | 耗时: %.2fs",
                 self.scan_stats.discovery.total_files,
                 self.scan_stats.execution.scanned_files,
                 self.scan_stats.execution.files_with_issues,
                 self.scan_stats.execution.total_issues,
+                len(self.scan_stats.execution.errors),
                 self.scan_stats.execution.scan_time or 0.0,
             )
 
@@ -666,6 +687,9 @@ class ProjectScanner:
             return str(Path(file_path).relative_to(self.project_path))
         except ValueError:
             return file_path
+
+    def _scan_file_failed(self, file_path: Path) -> bool:
+        return file_path.resolve() in self._failed_scan_files
 
     def get_stats(self) -> dict[str, Any]:
         """

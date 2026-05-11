@@ -1,4 +1,4 @@
-﻿"""PHP Deserialization AST rule — Tree-sitter based."""
+"""PHP Deserialization AST rule — Tree-sitter based."""
 
 from __future__ import annotations
 
@@ -45,8 +45,8 @@ class PhpDeserializationAstRule(SecurityRule):
         args = self._get_args(node)
         if len(args) >= 2:
             second_text = self._text(args[1]).lower()
-            if "allowed_classes" in second_text:
-                return  # Has restriction, skip
+            if "allowed_classes" in second_text and self._allowed_classes_is_restrictive(second_text):
+                return  # Restricted to false or a concrete allowlist.
 
         # Check first argument for user input
         if args:
@@ -101,6 +101,24 @@ class PhpDeserializationAstRule(SecurityRule):
             raw = node.text
             return raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
         return ""
+
+    @staticmethod
+    def _allowed_classes_is_restrictive(option_text: str) -> bool:
+        """allowed_classes=true is unsafe; false or an explicit array is restrictive."""
+        compact = option_text.replace(" ", "").replace("\t", "").replace("\n", "").replace("\r", "")
+        if "allowed_classes" not in compact:
+            return False
+        if "allowed_classes'=>true" in compact or '"allowed_classes"=>true' in compact:
+            return False
+        if "allowed_classes'=>1" in compact or '"allowed_classes"=>1' in compact:
+            return False
+        if "allowed_classes'=>false" in compact or '"allowed_classes"=>false' in compact:
+            return True
+        if "allowed_classes'=>[" in compact or '"allowed_classes"=>[' in compact:
+            return True
+        if "allowed_classes'=>array(" in compact or '"allowed_classes"=>array(' in compact:
+            return True
+        return False
 
 
 __all__ = ["PhpDeserializationAstRule"]

@@ -13,7 +13,7 @@ Python 路径遍历（Path Traversal）AST 规则。
 净化器（Sanitizer）：
 - os.path.basename(x)  — 移除目录部分，只保留文件名
 - pathlib.Path.name     — 同上
-- os.path.abspath(x) + 白名单校验（引擎暂不感知逻辑校验，保留作文档说明）
+- os.path.abspath(x) / realpath(x) 只能解析路径；必须配合白名单目录校验
 
 参考 CVE：
 - CVE-2021-31542：Django FileField 文件名未净化导致路径遍历
@@ -76,8 +76,6 @@ _PATH_CONSTRUCT_CLASSES = frozenset(
 _SANITIZE_ATTR_METHODS = frozenset(
     [
         "basename",  # os.path.basename
-        "abspath",  # os.path.abspath（仍需白名单校验，引擎仅降级）
-        "realpath",  # os.path.realpath
     ]
 )
 _SANITIZE_ATTRS = frozenset(
@@ -181,7 +179,13 @@ def _is_user_input_node(node: ast.AST, context: AnalysisContext | None = None) -
         return _is_user_input_node(node.value, context)
     if isinstance(node, ast.Call):
         # request.args.get('x') → func = request.args.get
-        return _is_user_input_node(node.func, context)
+        if _is_user_input_node(node.func, context):
+            return True
+        if any(_is_user_input_node(arg, context) for arg in node.args):
+            return True
+        return any(
+            keyword.value is not None and _is_user_input_node(keyword.value, context) for keyword in node.keywords
+        )
 
     # 退化启发式：变量名含文件路径语义关键词
     if isinstance(node, ast.Name):
@@ -246,7 +250,9 @@ class PythonPathTraversalAstRule(SecurityRule):
 
         # 1. 直接函数调用：open() / send_file() / Path()
         if isinstance(func, ast.Name):
-            if func.id in _DIRECT_SINK_FUNCS or func.id in _PATH_CONSTRUCT_CLASSES:
+            if func.id == "send_from_directory":
+                self._check_send_from_directory_args(node, context)
+            elif func.id in _DIRECT_SINK_FUNCS or func.id in _PATH_CONSTRUCT_CLASSES:
                 self._check_path_args(node, context, func.id, arg_index=0)
             return
 
@@ -265,6 +271,15 @@ class PythonPathTraversalAstRule(SecurityRule):
     # ------------------------------------------------------------------
     # 参数检查
     # ------------------------------------------------------------------
+    def _check_send_from_directory_args(self, node: ast.Call, context: AnalysisContext) -> None:
+        """Flask send_from_directory(directory, path) can be unsafe in either path-bearing argument."""
+        for arg_index in (0, 1):
+            self._check_path_args(node, context, "send_from_directory", arg_index=arg_index)
+
+        for keyword in node.keywords:
+            if keyword.arg in {"directory", "path", "filename"} and keyword.value is not None:
+                self._check_single_arg(keyword.value, node, context, "send_from_directory")
+
     def _check_path_args(
         self,
         node: ast.Call,

@@ -70,19 +70,28 @@ class MultiLanguageASTAnalyzer:
         try:
             # 使用 tree-sitter-languages 预编译的语言库
             if TREE_SITTER_LANGUAGES_AVAILABLE:
-                # JavaScript/TypeScript
+                # JavaScript
                 try:
                     js_lang = get_language("javascript")
                     js_parser = Parser()
                     js_parser.set_language(js_lang)
                     self.parsers["javascript"] = js_parser
-                    self.parsers["typescript"] = js_parser  # TypeScript 使用 JavaScript 解析器
-                    logger.info("JavaScript/TypeScript parser 初始化成功")
+                    logger.info("JavaScript parser 初始化成功")
                 except (ImportError, RuntimeError, OSError) as e:
                     logger.warning("JavaScript parser 初始化失败: %s", e)
                     import traceback
 
                     traceback.print_exc()
+
+                # TypeScript
+                try:
+                    ts_lang = get_language("typescript")
+                    ts_parser = Parser()
+                    ts_parser.set_language(ts_lang)
+                    self.parsers["typescript"] = ts_parser
+                    logger.info("TypeScript parser 初始化成功")
+                except (ImportError, RuntimeError, OSError) as e:
+                    logger.warning("TypeScript parser 初始化失败，将在需要时回退到 JavaScript parser: %s", e)
 
                 # Java
                 try:
@@ -206,7 +215,7 @@ class MultiLanguageASTAnalyzer:
         if language == "python":
             return cast(list[dict[str, Any]], analyze_python_ast(code_content))
         elif language in ["javascript", "typescript"]:
-            return self._analyze_javascript(code_content, file_path=file_path)
+            return self._analyze_javascript(code_content, language=language, file_path=file_path)
         elif language == "java":
             return self._analyze_java(code_content)
         elif language in ["c", "cpp"]:
@@ -234,7 +243,12 @@ class MultiLanguageASTAnalyzer:
                 )
             return findings
 
-    def _analyze_javascript(self, code_content: str, file_path: str | None = None) -> list[dict]:
+    def _analyze_javascript(
+        self,
+        code_content: str,
+        language: str = "javascript",
+        file_path: str | None = None,
+    ) -> list[dict]:
         """
         分析 JavaScript/TypeScript 代码
 
@@ -261,9 +275,9 @@ class MultiLanguageASTAnalyzer:
             )
 
         # 使用 Tree-sitter 进行 AST 分析
-        if TREE_SITTER_AVAILABLE and "javascript" in self.parsers:
+        parser = self._parser_for_javascript_family(language, file_path)
+        if TREE_SITTER_AVAILABLE and parser:
             try:
-                parser = self.parsers["javascript"]
                 tree = parser.parse(bytes(code_content, "utf8"))
                 ast_findings = self._traverse_javascript_tree(tree.root_node)
                 findings.extend(ast_findings)
@@ -271,6 +285,14 @@ class MultiLanguageASTAnalyzer:
                 logger.debug("JavaScript AST analysis failed, falling back to regex: %s", e)
 
         return findings
+
+    def _parser_for_javascript_family(self, language: str, file_path: str | None = None) -> Parser | None:
+        """Return the parser matching the requested JavaScript-family language."""
+        normalized = language.lower()
+        suffix = Path(file_path).suffix.lower() if file_path else ""
+        if normalized == "typescript" or suffix in {".ts", ".tsx"}:
+            return self.parsers.get("typescript") or self.parsers.get("javascript")
+        return self.parsers.get("javascript")
 
     def _traverse_javascript_tree(self, node: Node) -> list[dict]:
         """

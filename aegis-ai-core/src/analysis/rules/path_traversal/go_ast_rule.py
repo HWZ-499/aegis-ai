@@ -61,18 +61,6 @@ _PATH_SINK_FUNCS: dict[str, frozenset[str]] = {
 # Union of all recognised function names (for quick pre-check)
 _ALL_SINK_FUNC_NAMES: frozenset[str] = frozenset(_PATH_SINK_FUNCS.keys())
 
-# Known sanitizer function names (package.Func patterns)
-_PATH_SANITIZERS: frozenset[str] = frozenset(
-    [
-        "filepath.Clean",
-        "filepath.Abs",
-        "filepath.Base",
-        "filepath.Rel",
-        "path.Clean",
-        "path.Base",
-    ]
-)
-
 
 class GoPathTraversalAstRule(SecurityRule):
     """
@@ -86,9 +74,11 @@ class GoPathTraversalAstRule(SecurityRule):
             languages=["go"],
         )
         self._reported_lines: set[int] = set()
+        self._var_assignments: dict[str, Any] = {}
 
     def before_file(self, context: AnalysisContext) -> None:
         self._reported_lines = set()
+        self._var_assignments = {}
 
     # ------------------------------------------------------------------
     # AST visit
@@ -99,6 +89,11 @@ class GoPathTraversalAstRule(SecurityRule):
         """
         if not TREE_SITTER_AVAILABLE or not isinstance(node, Node):
             return
+
+        if node.type in ("short_var_declaration", "assignment_statement"):
+            self._track_expr_list_assignment(node)
+        elif node.type == "var_spec":
+            self._track_var_spec_assignment(node)
 
         if node.type == "call_expression":
             self._check_call_expression(node, context)
@@ -138,9 +133,6 @@ class GoPathTraversalAstRule(SecurityRule):
             tainted_args = args[:1]
 
         for arg in tainted_args:
-            # Skip if the argument is wrapped in a known sanitizer
-            if self._is_sanitized_call(arg):
-                continue
             if self._subtree_has_user_input(arg, context):
                 qualified = f"{pkg_name}.{func_name}" if pkg_name else func_name
                 self._report(node, context, qualified)
@@ -238,27 +230,65 @@ class GoPathTraversalAstRule(SecurityRule):
                 return [c for c in child.children if c.type not in ("(", ")", ",")]
         return []
 
-    def _is_sanitized_call(self, node: Any) -> bool:
-        """Check whether *node* is a call to a known path sanitizer.
-
-        Matches patterns like ``filepath.Clean(x)`` or ``path.Base(x)``.
-        """
-        if not hasattr(node, "type") or node.type != "call_expression":
-            return False
-        func_name, pkg_name = self._get_qualified_name(node)
-        if func_name is None:
-            return False
-        qualified = f"{pkg_name}.{func_name}" if pkg_name else func_name
-        return qualified in _PATH_SANITIZERS
-
-    def _subtree_has_user_input(self, node: Any, context: AnalysisContext) -> bool:
+    def _subtree_has_user_input(
+        self,
+        node: Any,
+        context: AnalysisContext,
+        seen_vars: set[str] | None = None,
+    ) -> bool:
         """Recursively check whether any node in the subtree is user input."""
+        seen_vars = seen_vars or set()
+
         if is_user_input_node(node, context, language="go"):
             return True
+
+        if getattr(node, "type", "") == "identifier":
+            var_name = self._get_node_text(node) or ""
+            if var_name and var_name not in seen_vars:
+                seen_vars.add(var_name)
+                assigned_expr = self._var_assignments.get(var_name)
+                if assigned_expr is not None and self._subtree_has_user_input(assigned_expr, context, seen_vars):
+                    return True
+
         for child in getattr(node, "children", []) or []:
-            if self._subtree_has_user_input(child, context):
+            if self._subtree_has_user_input(child, context, seen_vars):
                 return True
         return False
+
+    def _track_expr_list_assignment(self, node: Any) -> None:
+        expr_lists = [child for child in node.children if getattr(child, "type", "") == "expression_list"]
+        if len(expr_lists) < 2:
+            return
+
+        left_nodes = [child for child in expr_lists[0].children if getattr(child, "type", "") == "identifier"]
+        right_nodes = [child for child in expr_lists[1].children if getattr(child, "type", "") != ","]
+        for idx, left in enumerate(left_nodes):
+            if idx >= len(right_nodes):
+                break
+            name = self._get_node_text(left) or ""
+            if name:
+                self._var_assignments[name] = right_nodes[idx]
+
+    def _track_var_spec_assignment(self, node: Any) -> None:
+        left_names: list[str] = []
+        right_nodes: list[Any] = []
+        seen_values = False
+
+        for child in node.children:
+            ctype = getattr(child, "type", "")
+            if ctype == "expression_list" and not seen_values:
+                right_nodes = [item for item in child.children if getattr(item, "type", "") != ","]
+                seen_values = True
+                continue
+            if not seen_values and ctype == "identifier":
+                name = self._get_node_text(child) or ""
+                if name:
+                    left_names.append(name)
+
+        for idx, name in enumerate(left_names):
+            if idx >= len(right_nodes):
+                break
+            self._var_assignments[name] = right_nodes[idx]
 
     def _collect_identifiers(self, node: Any) -> list[str]:
         """Collect all identifier / field_identifier names in the subtree."""
@@ -276,13 +306,6 @@ class GoPathTraversalAstRule(SecurityRule):
         if line in self._reported_lines:
             return
 
-        # Sanitizer awareness: if all identifiers in the call are marked as
-        # sanitized by the dataflow tracker, skip the finding.
-        identifiers = self._collect_identifiers(node)
-        if identifiers and (context.taint_graph or context.dataflow_tracker):
-            if all(context.is_var_sanitized(v) for v in identifiers):
-                return
-
         self._reported_lines.add(line)
         finding: dict[str, Any] = {
             "type": "PATH_TRAVERSAL",
@@ -291,8 +314,8 @@ class GoPathTraversalAstRule(SecurityRule):
             "line": line,
             "details": (
                 f"检测到 {func_desc}() 调用中包含用户可控输入，"
-                "且未经 filepath.Clean 等清理，存在路径穿越风险，"
-                "建议使用 filepath.Clean 清理并校验目录白名单。"
+                "仅做 filepath.Clean/path.Clean 等路径清理不能证明路径仍在允许目录内，"
+                "建议解析后校验目录白名单。"
             ),
         }
         finding.update(tree_sitter_node_to_range(node))

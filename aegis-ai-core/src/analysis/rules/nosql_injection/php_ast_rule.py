@@ -1,4 +1,4 @@
-﻿"""PHP NoSQL Injection AST rule — Tree-sitter based."""
+"""PHP NoSQL Injection AST rule — Tree-sitter based."""
 
 from __future__ import annotations
 
@@ -78,8 +78,6 @@ class PhpNoSQLInjectionAstRule(SecurityRule):
                             finding.update(tree_sitter_node_to_range(node))
                             context.add_finding(finding)
                             return
-                        # Only check first argument
-                        break
 
     @staticmethod
     def _get_method_name(node: Any) -> str | None:

@@ -79,6 +79,7 @@ _SINKS: list[_SinkDef] = [
 
 # 按 (module, func) 索引快速查找
 _SINK_INDEX: dict[tuple[str | None, str], _SinkDef] = {(s.module, s.func): s for s in _SINKS}
+_YAML_SAFE_LOADERS = frozenset({"yaml.SafeLoader", "yaml.CSafeLoader", "SafeLoader", "CSafeLoader"})
 
 # Python 用户输入结构化模式
 _USER_INPUT_ATTRS = frozenset(
@@ -152,6 +153,62 @@ def _is_user_input_node(node: ast.AST, context: AnalysisContext | None = None) -
     return False
 
 
+def _collect_import_aliases(tree: ast.AST) -> tuple[dict[str, str], dict[str, str]]:
+    """收集 import alias，用于识别反序列化 sink 的别名调用。"""
+    module_aliases: dict[str, str] = {}
+    function_aliases: dict[str, str] = {}
+
+    for child in ast.walk(tree):
+        if isinstance(child, ast.Import):
+            for alias in child.names:
+                local_name = alias.asname or alias.name.split(".", 1)[0]
+                module_aliases[local_name] = alias.name
+        elif isinstance(child, ast.ImportFrom) and child.module:
+            for alias in child.names:
+                if alias.name == "*":
+                    continue
+                local_name = alias.asname or alias.name
+                function_aliases[local_name] = f"{child.module}.{alias.name}"
+
+    return module_aliases, function_aliases
+
+
+def _resolve_call_qualname(func: ast.AST, context: AnalysisContext | None = None) -> str | None:
+    """解析调用目标限定名，并应用当前文件中的 import alias。"""
+    module_aliases: dict[str, str] = {}
+    function_aliases: dict[str, str] = {}
+    if context is not None:
+        module_aliases = context.extras.get("python_deser_module_aliases", {})
+        function_aliases = context.extras.get("python_deser_function_aliases", {})
+
+    if isinstance(func, ast.Name):
+        return function_aliases.get(func.id) or module_aliases.get(func.id) or func.id
+
+    if isinstance(func, ast.Attribute):
+        base = _resolve_call_qualname(func.value, context)
+        if base is None:
+            return func.attr
+        return f"{base}.{func.attr}"
+
+    return None
+
+
+def _is_yaml_safe_loader_expr(node: ast.AST, context: AnalysisContext | None = None) -> bool:
+    """判断表达式是否明确指向 PyYAML SafeLoader / CSafeLoader。"""
+    qualname = _resolve_call_qualname(node, context)
+    if qualname is None:
+        return False
+    return qualname in _YAML_SAFE_LOADERS or qualname.rsplit(".", 1)[-1] in {"SafeLoader", "CSafeLoader"}
+
+
+def _yaml_load_uses_safe_loader(node: ast.Call, context: AnalysisContext | None = None) -> bool:
+    """yaml.load(data, Loader=yaml.SafeLoader) / yaml.load(data, yaml.SafeLoader)。"""
+    for keyword in node.keywords:
+        if keyword.arg == "Loader" and _is_yaml_safe_loader_expr(keyword.value, context):
+            return True
+    return len(node.args) >= 2 and _is_yaml_safe_loader_expr(node.args[1], context)
+
+
 class PythonDeserializationAstRule(SecurityRule):
     """
     基于 Python AST 的反序列化风险检测规则（污点感知版）。
@@ -166,14 +223,20 @@ class PythonDeserializationAstRule(SecurityRule):
 
     def before_file(self, context: AnalysisContext) -> None:
         """预扫描赋值，标记用户输入 Source 变量到 DataFlowTracker（降级路径）。"""
-        if context.taint_graph is not None:
-            return
         source = context.extras.get("source", "")
-        if not source or not context.dataflow_tracker:
+        if not source:
             return
         try:
             tree = ast.parse(source)
         except SyntaxError:
+            return
+        module_aliases, function_aliases = _collect_import_aliases(tree)
+        context.extras["python_deser_module_aliases"] = module_aliases
+        context.extras["python_deser_function_aliases"] = function_aliases
+
+        if context.taint_graph is not None:
+            return
+        if not context.dataflow_tracker:
             return
         tracker = context.dataflow_tracker
         for n in ast.walk(tree):
@@ -191,7 +254,7 @@ class PythonDeserializationAstRule(SecurityRule):
         if not isinstance(node, ast.Call):
             return
 
-        module, func_name = self._extract_module_func(node)
+        module, func_name = self._extract_module_func(node, context)
         if func_name is None:
             return
 
@@ -206,6 +269,9 @@ class PythonDeserializationAstRule(SecurityRule):
             return
 
         first_arg = node.args[0]
+
+        if module == "yaml" and func_name == "load" and _yaml_load_uses_safe_loader(node, context):
+            return
 
         # 特殊：eval/exec 永远报告（无论参数来源）
         if func_name in ("eval", "exec"):
@@ -231,15 +297,20 @@ class PythonDeserializationAstRule(SecurityRule):
     @staticmethod
     def _extract_module_func(
         node: ast.Call,
+        context: AnalysisContext | None = None,
     ) -> tuple[str | None, str | None]:
         """提取 (module, func_name) 对，例如 pickle.loads → ('pickle', 'loads')。"""
-        func = node.func
-        if isinstance(func, ast.Name):
-            return None, func.id
-        if isinstance(func, ast.Attribute):
-            obj = func.value
-            module = getattr(obj, "id", None)
-            return module, func.attr
+        qualname = _resolve_call_qualname(node.func, context)
+        if qualname is None:
+            return None, None
+        parts = qualname.split(".")
+        if len(parts) == 1:
+            return None, parts[0]
+        module = ".".join(parts[:-1])
+        func_name = parts[-1]
+        if module.startswith("yaml."):
+            module = "yaml"
+        return module, func_name
         return None, None
 
     def _report(

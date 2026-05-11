@@ -109,6 +109,19 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function escapeJsonForHtml(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
+function cssClassName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9_-]/g, "_") || "unknown";
+}
+
 function buildHtml(
   _webview: vscode.Webview,
   data: TaintPathData
@@ -129,24 +142,28 @@ function buildHtml(
 
   const nodesHtml = nodes
     .map((step, i) => {
-      const cls = step.nodeType.toLowerCase();
+      const cls = cssClassName(step.nodeType);
       const badge = step.nodeType;
       const edgeHtml =
         i < nodes.length - 1
           ? `<div class="taint-edge"><span class="arrow">&#8595;</span><span class="edge-label">${esc(edges[i]?.edgeType ?? "PROPAGATION")}</span></div>`
           : "";
       return `
-      <div class="taint-node ${cls}" onclick="jumpTo('${esc(step.filePath)}', ${step.line})">
+      <button class="taint-node ${cls}" data-node-index="${i}" type="button">
         <span class="badge">${esc(badge)}</span>
         <div class="node-body">
           <code class="node-name">${esc(step.name)}</code>
           <span class="node-loc">${esc(step.filePath.split(/[/\\\\]/).pop() ?? "")}:${step.line}</span>
           ${step.codeSnippet ? `<pre class="snippet">${esc(step.codeSnippet)}</pre>` : ""}
         </div>
-      </div>
+      </button>
       ${edgeHtml}`;
     })
     .join("\n");
+  const nodeLocations = nodes.map((step) => ({
+    filePath: step.filePath,
+    line: Number.isFinite(step.line) ? step.line : 0,
+  }));
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -164,6 +181,7 @@ function buildHtml(
       border-radius: 8px; padding: 10px 14px; margin: 4px 0;
       cursor: pointer; display: flex; align-items: flex-start; gap: 10px;
       border-left: 4px solid #666; transition: background 0.15s;
+      width: 100%; color: inherit; font: inherit; text-align: left;
     }
     .taint-node:hover { filter: brightness(1.15); }
     .taint-node.source  { border-left-color: #4caf50; background: rgba(76,175,80,0.08); }
@@ -195,12 +213,24 @@ function buildHtml(
   <div id="path-container">
     ${nodesHtml}
   </div>
+  <script id="taint-node-data" type="application/json">${escapeJsonForHtml(nodeLocations)}</script>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
-    function jumpTo(filePath, line) {
-      vscode.postMessage({ command: 'jumpToCode', filePath, line });
-    }
+    const nodeData = JSON.parse(document.getElementById('taint-node-data')?.textContent || '[]');
+    document.querySelectorAll('[data-node-index]').forEach((node) => {
+      node.addEventListener('click', () => {
+        const index = Number(node.getAttribute('data-node-index'));
+        const target = nodeData[index];
+        if (target && typeof target.filePath === 'string') {
+          vscode.postMessage({ command: 'jumpToCode', filePath: target.filePath, line: target.line });
+        }
+      });
+    });
   </script>
 </body>
 </html>`;
+}
+
+export function buildTaintPathHtmlForTest(data: TaintPathData): string {
+  return buildHtml({} as vscode.Webview, data);
 }

@@ -207,6 +207,46 @@ def _is_compile_call(node: ast.AST) -> bool:
     return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "compile"
 
 
+def _collect_import_aliases(tree: ast.AST) -> tuple[dict[str, str], dict[str, str]]:
+    """收集 import alias，用于识别 subprocess/os 的别名 sink。"""
+    module_aliases: dict[str, str] = {}
+    function_aliases: dict[str, str] = {}
+
+    for child in ast.walk(tree):
+        if isinstance(child, ast.Import):
+            for alias in child.names:
+                local_name = alias.asname or alias.name.split(".", 1)[0]
+                module_aliases[local_name] = alias.name
+        elif isinstance(child, ast.ImportFrom) and child.module:
+            for alias in child.names:
+                if alias.name == "*":
+                    continue
+                local_name = alias.asname or alias.name
+                function_aliases[local_name] = f"{child.module}.{alias.name}"
+
+    return module_aliases, function_aliases
+
+
+def _resolve_call_qualname(func: ast.AST, context: AnalysisContext | None = None) -> str | None:
+    """解析调用目标的限定名，并应用当前文件中的 import alias。"""
+    module_aliases: dict[str, str] = {}
+    function_aliases: dict[str, str] = {}
+    if context is not None:
+        module_aliases = context.extras.get("python_rce_module_aliases", {})
+        function_aliases = context.extras.get("python_rce_function_aliases", {})
+
+    if isinstance(func, ast.Name):
+        return function_aliases.get(func.id) or module_aliases.get(func.id) or func.id
+
+    if isinstance(func, ast.Attribute):
+        base = _resolve_call_qualname(func.value, context)
+        if base is None:
+            return func.attr
+        return f"{base}.{func.attr}"
+
+    return None
+
+
 class PythonRCEAstRule(SecurityRule):
     """
     基于 Python AST 的 RCE 检测规则（污点感知版）。
@@ -225,23 +265,30 @@ class PythonRCEAstRule(SecurityRule):
 
         若 taint_graph 已由 PythonAnalyzer 构建，则跳过此步骤。
         """
+        source = context.extras.get("source", "")
+        parsed_tree: ast.AST | None = None
+        module_aliases: dict[str, str] = {}
+        function_aliases: dict[str, str] = {}
+        if source:
+            try:
+                parsed_tree = ast.parse(source)
+                module_aliases, function_aliases = _collect_import_aliases(parsed_tree)
+            except SyntaxError:
+                return
+
+        context.extras["python_rce_module_aliases"] = module_aliases
+        context.extras["python_rce_function_aliases"] = function_aliases
+
         # taint_graph 已就绪，TaintAnalyzer 负责 Source 追踪
         if context.taint_graph is not None:
             return
-        source = context.extras.get("source", "")
-        if not source or not context.dataflow_tracker:
-            return
-        try:
-            import ast as _ast
-
-            tree = _ast.parse(source)
-        except SyntaxError:
+        if parsed_tree is None or not context.dataflow_tracker:
             return
         tracker = context.dataflow_tracker
-        for n in _ast.walk(tree):
-            if isinstance(n, _ast.Assign) and _is_user_input_node(n.value):
+        for n in ast.walk(parsed_tree):
+            if isinstance(n, ast.Assign) and _is_user_input_node(n.value, context):
                 for target in n.targets:
-                    if isinstance(target, _ast.Name):
+                    if isinstance(target, ast.Name):
                         tracker.mark_as_source(
                             target.id,
                             getattr(n, "lineno", 0),
@@ -253,27 +300,25 @@ class PythonRCEAstRule(SecurityRule):
         if not isinstance(node, ast.Call):
             return
 
-        # 1. eval / exec / compile（污点感知检测）
-        if isinstance(node.func, ast.Name):
-            func_name = node.func.id
-            if func_name in ("eval", "exec", "compile"):
-                self._check_eval_exec(node, context, func_name)
-                return
-
-        if not isinstance(node.func, ast.Attribute):
+        call_qualname = _resolve_call_qualname(node.func, context)
+        if call_qualname is None:
             return
 
-        module = getattr(node.func.value, "id", "") or ""
-        method = node.func.attr
+        method = call_qualname.rsplit(".", 1)[-1]
+
+        # 1. eval / exec / compile（污点感知检测）
+        if call_qualname in ("eval", "exec", "compile"):
+            self._check_eval_exec(node, context, call_qualname)
+            return
 
         # 2. os.system / os.popen 等
-        if module == "os" and method in _OS_DANGEROUS:
-            self._check_call_with_args(node, context, f"os.{method}")
+        if call_qualname.startswith("os.") and method in _OS_DANGEROUS:
+            self._check_call_with_args(node, context, call_qualname)
             return
 
         # 3. subprocess.run / Popen 等
-        if module == "subprocess" and method in _SUBPROCESS_DANGEROUS:
-            self._check_call_with_args(node, context, f"subprocess.{method}")
+        if call_qualname.startswith("subprocess.") and method in _SUBPROCESS_DANGEROUS:
+            self._check_call_with_args(node, context, call_qualname)
             return
 
     # ------------------------------------------------------------------

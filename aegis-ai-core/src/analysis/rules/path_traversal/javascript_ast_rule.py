@@ -1,4 +1,4 @@
-﻿"""
+"""
 path_traversal.javascript_ast_rule
 
 JavaScript/TypeScript 路径遍历 / 不安全文件访问 AST 规则。
