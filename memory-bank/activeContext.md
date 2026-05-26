@@ -1,6 +1,6 @@
 # Active Context
 
-最后更新: 2026-05-09
+最后更新: 2026-05-25
 
 ## 当前任务
 
@@ -10,7 +10,7 @@
 
 - 根目录 README 显示项目定位为 local-first SAST scanner + AI auto-fix。
 - Python core 当前版本为 `1.4.0`。
-- VS Code extension 当前版本为 `0.6.0`。
+- VS Code extension 当前版本为 `0.6.1`。
 - 已支持 JS/TS、Python、PHP、Java、Go。
 - 已有 baseline / suppression、增量扫描、AI provider、多语言 AST + taint 规则、LSP、CLI、VS Code 扩展。
 - 当前仓库已有 `docs/planning`、`docs/superpowers`、`docs/technical` 等历史文档；`memory-bank` 作为下一次 AI 工作的入口和摘要层。
@@ -18,6 +18,13 @@
 ## 最新质量进展
 
 已从历史 `docs/superpowers/reports` 中提炼到 memory bank:
+
+2026-05-25 外部试用准备:
+
+- 删除本地未跟踪的 `aegis-ai-core/.env`，避免工作区继续保留真实 API key；用户仍需在对应 AI provider 控制台轮换/废弃旧 key。
+- VS Code extension 从 `0.6.0` 升为 `0.6.1`，并重新打包 `aegis-vscode/aegis-ai-security-0.6.1.vsix`，该包包含 2026-05 最新 bundled backend。
+- 用户通过 `vsce publish --packagePath aegis-ai-security-0.6.1.vsix` 成功发布 Marketplace 版本 `wen-zai.aegis-ai-security v0.6.1`。
+- 验证通过: `npm run package`。发布后仍需做 Marketplace 安装 smoke test，并确认 provider key 已轮换。
 
 - 2026-04-25 Round 9: DVWA 方向继续优化，F1 从 `0.43` 提升到 `0.60`，Recall `95.8%`，Precision `43.4%`，TP/FP/FN/TN 为 `23 / 30 / 1 / 1`。
 - 2026-04-24 Round 8: Java demo 和 Go `go-insecure-web-app` 达到 Recall / Precision / F1 全部 `100%`。
@@ -175,7 +182,7 @@
 
 ## 短期优先级
 
-1. 处理 M1: 本地 `aegis-ai-core/.env` 仍存在真实 API key，需要用户轮换/废弃后移出工作区；AI 不应输出或打包该文件。
+1. 处理 M1 后续: 本地 `aegis-ai-core/.env` 已删除，但用户仍需要在供应商控制台轮换/废弃旧 API key；AI 不应输出或打包该文件。
 2. 继续 M5-M7/M6: sanitizer 作用域/漏洞类型语义、P1 漏报规则 fixture 驱动修复；benchmark、cross-file 与 legacy TypeScript parser 路径已完成，剩余 TypeScript 一致性重点转向真实项目样本验证。
 3. 继续以真实靶场指标驱动 DVWA / PHP precision 优化，当前 DVWA 剩余 21 个 FP 主要集中在 XSS、SQLi、Path Traversal 与少量未标注 RCE；避免为了指标压掉 ground truth 未标注但真实可疑的弱点。
 4. 收口 legacy 引擎移除计划，保持 LSP 与 CLI 共享核心扫描逻辑。

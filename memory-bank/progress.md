@@ -1,6 +1,6 @@
 # Progress
 
-最后更新: 2026-05-09
+最后更新: 2026-05-25
 
 ## 已完成能力
 
@@ -13,6 +13,12 @@
 - 增量扫描、自定义规则目录、DSL 规则 PoC。
 - 真实靶场 benchmark: NodeGoat、DVWA、Django、Flask、Express、body-parser、Java/Go targets。
 - 规则测试体系: `tests/rules/<vuln>/<true_positive|false_positive>/`。
+
+## 2026-05-25 外部试用准备
+
+- 本地未跟踪的 `aegis-ai-core/.env` 已删除；该操作只移除本机文件，不会让已经创建的 provider API key 失效，仍需用户去供应商控制台轮换或废弃。
+- VS Code extension 版本从 `0.6.0` 升为 `0.6.1`，生成试用包 `aegis-vscode/aegis-ai-security-0.6.1.vsix`，并已发布到 Marketplace: `wen-zai.aegis-ai-security v0.6.1`。
+- 打包脚本确认只复制 `aegis-ai-core/pyproject.toml` 与 `aegis-ai-core/src` 到 `resources/aegis-ai-core`，不复制 `.env`。
 
 ## 2026-04-28 优化进展
 
@@ -380,7 +386,7 @@
 
 ## 当前风险和缺口
 
-- M1 仍未完成: `aegis-ai-core/.env` 是未跟踪且被 ignore 的本地文件，但 review 已确认其中存在真实 API key；需要用户在供应商侧轮换/废弃后再移除本地文件。
+- M1 本地文件已处理: `aegis-ai-core/.env` 已删除；仍需用户在供应商侧轮换/废弃旧 API key。
 - M5-M7 仍需继续做 benchmark 驱动的 FP/FN 优化；M6 的 benchmark、cross-file 与 legacy TypeScript parser 路径已完成，剩余 TypeScript 一致性集中在真实项目样本验证。
 - 全量 `ruff format --check src tests` 已通过；格式债本轮已清理。
 - DVWA / PHP precision 当前为 53.3%，FP 仍是优先优化对象，但不能 suppress 掉 ground truth 未标注却真实可疑的弱点。

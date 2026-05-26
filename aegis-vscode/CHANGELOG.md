@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.1] - 2026-05-25
+
+### Changed
+- Refreshed the bundled backend for external trial builds with the latest scanner, LSP, baseline, report, and rule-quality fixes.
+- Updated package metadata from `0.6.0` to `0.6.1` so trial users can distinguish this build from the older Marketplace package.
+
+### Security
+- Keeps the packaged extension limited to the bundled backend source and metadata; local `.env` files are not included in VSIX packages.
+
 ## [0.6.0] - 2026-04-17
 
 ### Added

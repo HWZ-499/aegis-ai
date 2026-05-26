@@ -6,7 +6,7 @@
 
 - Python: `>=3.10`。
 - Core package: `aegis-ai-core` `1.4.0`。
-- VS Code extension: `aegis-ai-security` `0.6.0`。
+- VS Code extension: `aegis-ai-security` `0.6.1`。
 - TypeScript: `^5.3.0`。
 - VS Code engine: `^1.75.0`。
 - 主要 Python 依赖: `pydantic`, `pydantic-settings`, `python-dotenv`, `tree-sitter==0.21.3`, `tree-sitter-languages`, `pygls`, `lsprotocol`, `pyyaml`。

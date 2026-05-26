@@ -3,7 +3,7 @@
 [![Security Scan](https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml/badge.svg)](https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml)
 [![License: MIT](https://opensource.org/licenses/MIT)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-v0.6.0-brightgreen.svg)](https://marketplace.visualstudio.com/items?itemName=wen-zai.aegis-ai-security)
+[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-v0.6.1-brightgreen.svg)](https://marketplace.visualstudio.com/items?itemName=wen-zai.aegis-ai-security)
 
 **Find and review SQL injection, XSS, RCE, and 7+ more vulnerability types as you code.** Aegis is a local-first SAST stack for VS Code / Cursor with Tree-sitter AST analysis, taint tracking, AI-assisted fixes, and baseline/suppression workflows.
 

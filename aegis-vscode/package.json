@@ -2,7 +2,7 @@
   "name": "aegis-ai-security",
   "displayName": "Aegis AI Security Scanner",
   "description": "Real-time SAST for JS/TS/Python/PHP/Java/Go with a bundled Aegis backend, AST analysis, taint tracking, baseline suppression, and AI-assisted fixes.",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "publisher": "wen-zai",
   "license": "MIT",
   "preview": true,

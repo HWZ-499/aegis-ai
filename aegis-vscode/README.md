@@ -6,7 +6,7 @@ Real-time SAST scanning for VS Code / Cursor using Tree-sitter AST + taint analy
 
 Supports: **JavaScript / TypeScript / Python / PHP / Java / Go**
 
-> **v0.6.0** — Latest packaged build. [See what changed →](CHANGELOG.md)
+> **v0.6.1** — Latest packaged build. [See what changed →](CHANGELOG.md)
 
 ---
 

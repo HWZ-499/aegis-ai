@@ -25,7 +25,7 @@ Aegis AI 是一个 local-first 的实时 SAST 安全扫描工具，面向 VS Cod
 已覆盖:
 
 - Python core package `aegis-ai-core` 版本 `1.4.0`。
-- VS Code 扩展 `aegis-ai-security` 版本 `0.6.0`。
+- VS Code 扩展 `aegis-ai-security` 版本 `0.6.1`。
 - CLI: `aegis-scan`。
 - LSP: `aegis-lsp` / `src.lsp`。
 - 规则测试: `aegis-ai-core/tests/rules/`。
