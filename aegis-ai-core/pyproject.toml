@@ -50,10 +50,14 @@ logging = [
 retry = [
     "tenacity>=8.2.0",
 ]
+agent = [
+    "langgraph>=1.0,<2",
+]
 all = [
-    "aegis-ai-core[ai,rag,logging,retry]",
+    "aegis-ai-core[ai,rag,logging,retry,agent]",
 ]
 dev = [
+    "aegis-ai-core[agent]",
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
     "pytest-asyncio>=0.23.0",
@@ -70,12 +74,16 @@ Repository = "https://github.com/HWZ-499/aegis-ai"
 Issues = "https://github.com/HWZ-499/aegis-ai/issues"
 
 [project.scripts]
+aegis-agent = "src.agent.cli:main"
 aegis-lsp = "src.lsp.__main__:main"
 aegis-scan = "src.scanner.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["src*"]
+
+[tool.setuptools.package-data]
+"src.agent.knowledge_base" = ["*.md"]
 
 # ---------------------------------------------------------------------------
 # pytest
