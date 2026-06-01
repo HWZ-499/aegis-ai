@@ -30,7 +30,7 @@ from pygls.lsp.server import LanguageServer
 
 from ..analysis.dependency_tracker import DependencyTracker
 from ..analysis.incremental_analyzer import IncrementalAnalyzer
-from ..scanner.baseline import Baseline
+from ..scanner.baseline import Baseline, BaselineLoadError
 from ..scanner.project_scanner import ProjectScanner
 from ..scanner.rag_enhancer import BUILTIN_REMEDIATION
 from ..scanner.smart_remediation import generate_smart_remediation
@@ -1214,7 +1214,20 @@ def create_server() -> LanguageServer:
             project_root = Path(file_path).parent
 
         baseline_path = project_root / ".aegis-baseline.json"
-        baseline = Baseline.load(baseline_path)
+        try:
+            baseline = Baseline.load(baseline_path)
+        except BaselineLoadError as exc:
+            logger.warning("Cannot update corrupt baseline: %s", exc)
+            try:
+                server.window_show_message(
+                    lsp.ShowMessageParams(
+                        type=lsp.MessageType.Error,
+                        message=f"Aegis: Cannot update baseline because {baseline_path.name} is invalid.",
+                    )
+                )
+            except Exception as notify_error:  # noqa: BLE001 - notification failure must not mask baseline state
+                logger.debug("Failed to notify corrupt baseline: %s", notify_error)
+            return
 
         finding_like = {
             "type": rule_id,

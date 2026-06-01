@@ -17,6 +17,7 @@ cross_file_analyzer.py - 跨文件依赖图分析器
 
 from __future__ import annotations
 
+import ast
 import logging
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -390,22 +391,84 @@ class CrossFileAnalyzer:
 
     def _analyze_py_file(self, file_path: Path) -> None:
         """分析 Python 文件"""
-        if not self._py_parser:
-            return
-
         try:
             code = file_path.read_text(encoding="utf-8", errors="ignore")
-            tree = self._py_parser.parse(bytes(code, "utf8"))
-
             file_str = str(file_path)
             self._exports[file_str] = []
             self._imports[file_str] = []
             self._calls[file_str] = []
 
-            self._traverse_py_ast(tree.root_node, file_str)
+            try:
+                py_tree = ast.parse(code)
+            except SyntaxError:
+                if not self._py_parser:
+                    return
+                tree = self._py_parser.parse(bytes(code, "utf8"))
+                self._traverse_py_ast(tree.root_node, file_str)
+            else:
+                self._process_python_ast(py_tree, file_str)
 
         except (OSError, RuntimeError, ValueError) as e:
             logger.warning("分析失败 %s: %s", file_path, e)
+
+    def _process_python_ast(self, tree: ast.AST, file_path: str) -> None:
+        """Process Python imports and public exports using the stdlib AST."""
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                self._process_python_import(node, file_path)
+            elif isinstance(node, ast.ImportFrom):
+                self._process_python_from_import(node, file_path)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if not node.name.startswith("_"):
+                    self._exports[file_path].append(
+                        ModuleExport(
+                            name=node.name,
+                            export_type=ExportType.FUNCTION,
+                            file_path=file_path,
+                            line=node.lineno,
+                        )
+                    )
+            elif isinstance(node, ast.ClassDef):
+                if not node.name.startswith("_"):
+                    self._exports[file_path].append(
+                        ModuleExport(
+                            name=node.name,
+                            export_type=ExportType.CLASS,
+                            file_path=file_path,
+                            line=node.lineno,
+                        )
+                    )
+
+    def _process_python_import(self, node: ast.Import, file_path: str) -> None:
+        for alias in node.names:
+            self._imports[file_path].append(
+                ModuleImport(
+                    imported_name=alias.name,
+                    local_name=alias.asname or alias.name.split(".")[-1],
+                    module_path=alias.name,
+                    file_path=file_path,
+                    line=node.lineno,
+                )
+            )
+
+    def _process_python_from_import(self, node: ast.ImportFrom, file_path: str) -> None:
+        module = node.module or ""
+        if module == "__future__":
+            return
+
+        prefix = "." * node.level
+        module_path = f"{prefix}{module}" if module else prefix
+        for alias in node.names:
+            self._imports[file_path].append(
+                ModuleImport(
+                    imported_name=alias.name,
+                    local_name=alias.asname or alias.name,
+                    module_path=module_path,
+                    file_path=file_path,
+                    line=node.lineno,
+                    is_namespace=alias.name == "*",
+                )
+            )
 
     def _traverse_py_ast(self, node: Any, file_path: str) -> None:
         """遍历 Python AST"""
@@ -495,10 +558,15 @@ class CrossFileAnalyzer:
     def _resolve_module_paths(self) -> None:
         """解析相对模块路径为绝对路径"""
         for file_path, imports in self._imports.items():
+            path = Path(file_path)
             file_dir = Path(file_path).parent
 
             for imp in imports:
-                if imp.module_path.startswith("."):
+                if path.suffix == ".py":
+                    resolved = self._resolve_python_import(path, imp)
+                    if resolved:
+                        imp.resolved_path = str(resolved)
+                elif imp.module_path.startswith("."):
                     # 相对路径
                     resolved = self._resolve_relative_path(file_dir, imp.module_path)
                     if resolved:
@@ -530,6 +598,64 @@ class CrossFileAnalyzer:
             if candidate.exists():
                 return candidate
 
+        return None
+
+    def _resolve_python_import(self, importer: Path, imp: ModuleImport) -> Path | None:
+        """Resolve a Python import to the imported module file when possible."""
+        if imp.module_path.startswith("."):
+            return self._resolve_python_relative_import(importer, imp.module_path, imp.imported_name)
+        return self._resolve_python_absolute_import(imp.module_path, imp.imported_name)
+
+    def _resolve_python_relative_import(self, importer: Path, module_path: str, imported_name: str) -> Path | None:
+        level = len(module_path) - len(module_path.lstrip("."))
+        module_tail = module_path[level:]
+
+        base = importer.parent
+        for _ in range(max(level - 1, 0)):
+            base = base.parent
+
+        candidate = base.joinpath(*module_tail.split(".")) if module_tail else base
+        return self._resolve_python_module_candidate(candidate, imported_name, prefer_submodule=not module_tail)
+
+    def _resolve_python_absolute_import(self, module_path: str, imported_name: str) -> Path | None:
+        module_file = self._find_module_in_project(module_path)
+        submodule_file = None
+        if imported_name and imported_name != "*":
+            submodule_file = self._find_module_in_project(f"{module_path}.{imported_name}")
+
+        if module_file and module_file.name != "__init__.py":
+            return module_file
+        return submodule_file or module_file
+
+    def _resolve_python_module_candidate(
+        self,
+        candidate: Path,
+        imported_name: str,
+        *,
+        prefer_submodule: bool,
+    ) -> Path | None:
+        module_file = self._resolve_python_candidate(candidate)
+        submodule_file = None
+        if imported_name and imported_name != "*":
+            submodule_file = self._resolve_python_candidate(candidate / imported_name)
+
+        if prefer_submodule and submodule_file:
+            return submodule_file
+        if module_file and module_file.name != "__init__.py":
+            return module_file
+        return submodule_file or module_file
+
+    @staticmethod
+    def _resolve_python_candidate(candidate: Path) -> Path | None:
+        candidates = []
+        if candidate.suffix == ".py":
+            candidates.append(candidate)
+        else:
+            candidates.extend([candidate.with_suffix(".py"), candidate / "__init__.py"])
+
+        for path in candidates:
+            if path.exists():
+                return path
         return None
 
     def _find_module_in_project(self, module_name: str) -> Path | None:

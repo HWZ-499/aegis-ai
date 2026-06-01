@@ -7,6 +7,8 @@ test_php_sqli_benchmark.py - PHP SQLi 基准用例（防回归）
 
 from pathlib import Path
 
+import pytest
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in __import__("sys").path:
     __import__("sys").path.insert(0, str(PROJECT_ROOT))
@@ -66,3 +68,12 @@ class TestPhpSqliBenchmark:
         """TN：无 SQL 的代码不应报 SQL_INJECTION。"""
         findings = _php_scan(PHP_TN_NO_SQL)
         assert not _has_sqli(findings), "无 SQL 代码不应报 SQL_INJECTION"
+
+    @pytest.mark.parametrize(
+        "file_path",
+        ["helpdesk.php", "app/helpers/user_lookup.php"],
+    )
+    def test_php_sqli_help_named_business_paths_are_scanned(self, file_path: str):
+        """TP：路径里含 help 的业务 PHP 文件不能被 legacy scanner 直接跳过。"""
+        findings = scan_code_locally(PHP_TP_SQLI, file_path=file_path)
+        assert _has_sqli(findings), f"{file_path} 应检出 SQL_INJECTION"

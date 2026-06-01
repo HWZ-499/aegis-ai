@@ -47,6 +47,58 @@ _PLACEHOLDERS = [
 ]
 
 
+def _add_candidate(candidates: list[str], value: str) -> None:
+    candidate = value.strip()
+    if candidate and candidate not in candidates:
+        candidates.append(candidate)
+
+
+def _string_literal_spans(text: str) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
+    quote: str | None = None
+    start = 0
+    escaped = False
+
+    for index, char in enumerate(text):
+        if quote is None:
+            if char in {"'", '"', "`"}:
+                quote = char
+                start = index
+            continue
+
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char == quote:
+            spans.append((start, index + 1))
+            quote = None
+
+    if quote is not None:
+        spans.append((start, len(text)))
+    return spans
+
+
+def _overlaps_spans(start: int, end: int, spans: list[tuple[int, int]]) -> bool:
+    return any(start < span_end and end > span_start for span_start, span_end in spans)
+
+
+def _previous_nonspace(text: str, index: int) -> str:
+    cursor = index - 1
+    while cursor >= 0 and text[cursor].isspace():
+        cursor -= 1
+    return text[cursor] if cursor >= 0 else ""
+
+
+def _next_nonspace(text: str, index: int) -> str:
+    cursor = index
+    while cursor < len(text) and text[cursor].isspace():
+        cursor += 1
+    return text[cursor] if cursor < len(text) else ""
+
+
 def _extract_line_context(source_code: str, line_one_based: int) -> str:
     """提取漏洞行及其前后各 2 行的上下文。"""
     lines = source_code.splitlines()
@@ -66,32 +118,38 @@ def _extract_variable_candidates(context: str) -> list[str]:
           $var, user_id, userId, filename 等。
     """
     candidates: list[str] = []
+    string_spans = _string_literal_spans(context)
+    source_spans: list[tuple[int, int]] = []
+
     # req.body.xxx / req.query.xxx / request.args / request.json
     for m in re.finditer(
-        r"\b(?:req|request)\.(?:body|query|params)\.(\w+)|"
-        r"\b(?:req|request)\.(?:body|query|params)\b|"
-        r"request\.args\.get\s*\(\s*['\"](\w+)['\"]\s*\)|"
+        r"\b(?:req|request)\.(?:body|query|params)"
+        r"(?:\.\w+|\[\s*['\"][^'\"]+['\"]\s*\])*|"
+        r"request\.args\.get\s*\(\s*['\"]\w+['\"]\s*\)|"
         r"request\.(?:json|form|data)\b",
         context,
         re.IGNORECASE,
     ):
-        group = (m.group(1) or m.group(2) or "").strip()
-        if group and group not in candidates:
-            candidates.append(group)
-        if not group and m.group(0) not in [c for c in candidates]:
-            candidates.append(m.group(0).strip())
+        if _overlaps_spans(m.start(), m.end(), string_spans):
+            continue
+        _add_candidate(candidates, m.group(0))
+        source_spans.append((m.start(), m.end()))
+
     # $var (PHP)
     for m in re.finditer(r"\$(\w+)", context):
-        if m.group(1) not in candidates:
-            candidates.append("$" + m.group(1))
+        if _overlaps_spans(m.start(), m.end(), string_spans):
+            continue
+        _add_candidate(candidates, "$" + m.group(1))
+
     # 常见标识符（蛇形/驼峰）
     for m in re.finditer(
         r"\b(user_?id|user_?name|filename|file_?path|path|cmd|command|query|sql|input|data|uid|id)\b",
         context,
         re.IGNORECASE,
     ):
-        if m.group(0) not in candidates:
-            candidates.append(m.group(0))
+        if _overlaps_spans(m.start(), m.end(), string_spans + source_spans):
+            continue
+        _add_candidate(candidates, m.group(0))
     return candidates[:5]
 
 
@@ -136,15 +194,26 @@ def _infer_framework_from_source(source_code: str, file_path: str) -> str | None
 
 def _apply_replacements(text: str, replacements: dict[str, str]) -> str:
     """将模板中的占位符替换为真实变量名（大小写不敏感匹配常见占位符）。"""
-    result = text
-    for placeholder, value in replacements.items():
-        # 单词边界替换，避免误替换
-        pattern = re.compile(
-            r"\b" + re.escape(placeholder) + r"\b",
-            re.IGNORECASE,
-        )
-        result = pattern.sub(value, result)
-    return result
+    if not replacements:
+        return text
+
+    lookup = {placeholder.lower(): value for placeholder, value in replacements.items() if placeholder}
+    placeholders = sorted((re.escape(key) for key in lookup), key=len, reverse=True)
+    pattern = re.compile(r"\b(" + "|".join(placeholders) + r")\b", re.IGNORECASE)
+    string_spans = _string_literal_spans(text)
+
+    def replace(match: re.Match[str]) -> str:
+        if _overlaps_spans(match.start(), match.end(), string_spans):
+            return match.group(0)
+
+        previous_char = _previous_nonspace(text, match.start())
+        next_char = _next_nonspace(text, match.end())
+        if previous_char in {".", "$"} or next_char in {".", ":"}:
+            return match.group(0)
+
+        return lookup.get(match.group(0).lower(), match.group(0))
+
+    return pattern.sub(replace, text)
 
 
 def generate_smart_remediation(
@@ -183,9 +252,6 @@ def generate_smart_remediation(
     candidates = _extract_variable_candidates(context)
     primary = candidates[0] if candidates else "user_input"
     replacements: dict[str, str] = {ph: primary for ph in _PLACEHOLDERS}
-    for i, c in enumerate(candidates):
-        if i < len(_PLACEHOLDERS):
-            replacements[_PLACEHOLDERS[i]] = c
 
     framework = _infer_framework_from_source(source_code, file_path)
     raw_framework_code_map = builtin.get("framework_suggested_code") or {}

@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 
 import {
   BaselineTreeProvider,
+  readBaselineEntriesWithStatus,
   readBaselineEntries,
   removeBaselineEntryFromDisk,
   resolveBaselineEntryPath,
@@ -69,6 +70,23 @@ suite("baselineTreeProvider", () => {
 
     assert.strictEqual(removeBaselineEntryFromDisk(tempDir, "fp-1"), true);
     assert.deepStrictEqual(readBaselineEntries(tempDir).map((entry) => entry.fingerprint), ["fp-2"]);
+  });
+
+  test("surfaces corrupt baseline files instead of showing an empty tree", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-baseline-"));
+    const baselinePath = path.join(tempDir, ".aegis-baseline.json");
+    fs.writeFileSync(baselinePath, "{ not valid json", "utf8");
+
+    const status = readBaselineEntriesWithStatus(tempDir);
+    assert.deepStrictEqual(status.entries, []);
+    assert.ok(status.error?.includes(".aegis-baseline.json"));
+
+    const provider = new BaselineTreeProvider(tempDir);
+    await vscode.workspace.getConfiguration("aegisAI").update("showSuppressedFindings", true, vscode.ConfigurationTarget.Global);
+    const nodes = provider.getChildren();
+    assert.strictEqual(nodes.length, 1);
+    const item = provider.getTreeItem(nodes[0] as any);
+    assert.match(String(item.label), /Cannot read baseline/);
   });
 
   test("resolveBaselineEntryPath rejects paths outside the workspace", () => {

@@ -28,13 +28,23 @@ interface BaselineRuleNode {
   ruleId: string;
 }
 
+interface BaselineErrorNode {
+  kind: "error";
+  message: string;
+}
+
 export interface BaselineEntryNode {
   kind: "entry";
   entry: BaselineEntry;
   workspaceRoot: string;
 }
 
-type BaselineNode = BaselineFileNode | BaselineRuleNode | BaselineEntryNode;
+type BaselineNode = BaselineFileNode | BaselineRuleNode | BaselineErrorNode | BaselineEntryNode;
+
+export interface BaselineReadStatus {
+  entries: BaselineEntry[];
+  error?: string;
+}
 
 function sortEntries(entries: BaselineEntry[]): BaselineEntry[] {
   return [...entries].sort((a, b) => {
@@ -80,16 +90,35 @@ export function resolveBaselineEntryPath(
 }
 
 export function readBaselineEntries(workspaceRoot: string | undefined): BaselineEntry[] {
+  return readBaselineEntriesWithStatus(workspaceRoot).entries;
+}
+
+export function readBaselineEntriesWithStatus(workspaceRoot: string | undefined): BaselineReadStatus {
   if (!workspaceRoot) {
-    return [];
+    return { entries: [] };
   }
   const baselinePath = path.join(workspaceRoot, ".aegis-baseline.json");
   if (!fs.existsSync(baselinePath)) {
-    return [];
+    return { entries: [] };
   }
 
   try {
     const payload = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return {
+        entries: [],
+        error: `Cannot read baseline ${baselinePath}: root value must be an object.`,
+      };
+    }
+    if (
+      "findings" in payload
+      && !Array.isArray(payload.findings)
+    ) {
+      return {
+        entries: [],
+        error: `Cannot read baseline ${baselinePath}: findings must be an array.`,
+      };
+    }
     const findings = Array.isArray(payload?.findings) ? payload.findings : [];
     const entries = findings.filter((item: unknown): item is BaselineEntry => {
       if (!item || typeof item !== "object") {
@@ -101,9 +130,13 @@ export function readBaselineEntries(workspaceRoot: string | undefined): Baseline
         && typeof candidate.line === "number"
         && typeof candidate.fingerprint === "string";
     });
-    return sortEntries(entries);
-  } catch {
-    return [];
+    return { entries: sortEntries(entries) };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return {
+      entries: [],
+      error: `Cannot read baseline ${baselinePath}: ${reason}`,
+    };
   }
 }
 
@@ -162,6 +195,13 @@ export class BaselineTreeProvider implements TreeDataProvider<BaselineNode> {
       return item;
     }
 
+    if (element.kind === "error") {
+      const item = new TreeItem("Cannot read baseline", TreeItemCollapsibleState.None);
+      item.contextValue = "aegisBaselineError";
+      item.tooltip = element.message;
+      return item;
+    }
+
     const item = new TreeItem(
       `L${element.entry.line}: ${element.entry.rule_id}`,
       TreeItemCollapsibleState.None,
@@ -199,7 +239,12 @@ export class BaselineTreeProvider implements TreeDataProvider<BaselineNode> {
       return [];
     }
 
-    const entries = readBaselineEntries(this.workspaceRoot);
+    const baselineStatus = readBaselineEntriesWithStatus(this.workspaceRoot);
+    if (baselineStatus.error) {
+      return [{ kind: "error", message: baselineStatus.error }];
+    }
+
+    const entries = baselineStatus.entries;
     if (!this.workspaceRoot || entries.length === 0) {
       return [];
     }

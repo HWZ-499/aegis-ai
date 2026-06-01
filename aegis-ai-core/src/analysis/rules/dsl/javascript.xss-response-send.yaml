@@ -7,8 +7,8 @@ patterns:
   - pattern: res.send($EXPR)
     metavariables:
       EXPR:
-        not_regex: "^[\"']"
+        regex: '(?i)\b(?:req|request)\.(?:query|body|params|cookies|headers)\b|\b(?:location\.(?:search|hash)|document\.cookie|window\.name)\b'
   - pattern: res.write($EXPR)
     metavariables:
       EXPR:
-        not_regex: "^[\"']"
+        regex: '(?i)\b(?:req|request)\.(?:query|body|params|cookies|headers)\b|\b(?:location\.(?:search|hash)|document\.cookie|window\.name)\b'

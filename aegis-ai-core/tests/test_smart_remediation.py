@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in __import__("sys").path:
 
 from src.scanner.smart_remediation import (
     _apply_replacements,
+    _extract_variable_candidates,
     _infer_framework_from_source,
     generate_smart_remediation,
 )
@@ -73,3 +74,40 @@ def test_apply_replacements():
     out = _apply_replacements(text, replacements)
     assert "req.body.id" in out
     assert "userId" not in out or "req.body.id" in out
+
+
+def test_extract_variable_candidates_preserves_full_request_expression():
+    """req.query.id 应作为完整表达式参与建议代码替换，而不是退化成 id。"""
+    candidates = _extract_variable_candidates("connection.query(sql + req.query.id);")
+    assert candidates[0] == "req.query.id"
+
+
+def test_apply_replacements_does_not_rewrite_literals_or_inserted_values():
+    """替换应是单次操作，不能改 SQL 字符串里的列名或插入值里的属性名。"""
+    text = "'SELECT * FROM users WHERE id = ?', [userId]"
+    replacements = {"userId": "req.query.id", "id": "req.query.id"}
+
+    out = _apply_replacements(text, replacements)
+
+    assert "'SELECT * FROM users WHERE id = ?'" in out
+    assert "[req.query.id]" in out
+    assert "req.query.req.query.id" not in out
+
+
+def test_generate_smart_remediation_preserves_js_request_member_expression():
+    """SQL 修复示例应引用完整 req.query.id，而不是生成未定义的裸 id。"""
+    finding = {"type": "SQL_INJECTION", "line": 5, "rule_id": "SQL_INJECTION"}
+    source_code = """
+const mysql = require('mysql2/promise');
+function getUser(req) {
+  const sql = "SELECT * FROM users WHERE id = " + req.query.id;
+  return connection.query(sql);
+}
+"""
+
+    result = generate_smart_remediation(finding, source_code, "/app/server.js")
+
+    assert result.framework == "mysql2"
+    assert "[req.query.id]" in result.suggested_code
+    assert "[id]" not in result.suggested_code
+    assert "'SELECT * FROM users WHERE id = ?'" in result.suggested_code

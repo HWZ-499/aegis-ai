@@ -485,10 +485,12 @@ def build_cfg_from_ast_if_statements(
             return cfg
 
         prev_id = ENTRY_ID
+        last_guard_end_line = 0
 
         for if_node in if_nodes:
             start_line = if_node.start_point[0] + 1 if hasattr(if_node, "start_point") else 0
             end_line = if_node.end_point[0] + 1 if hasattr(if_node, "end_point") else start_line
+            last_guard_end_line = end_line
 
             # 创建 Guard 块
             guard_block = cfg.add_block(
@@ -504,9 +506,21 @@ def build_cfg_from_ast_if_statements(
             # Guard 的"正常继续"分支将连接到下一个块
             prev_id = guard_block.block_id
 
-        # 最终正常分支连接 Exit
-        # (实际使用时这里应该连接到函数 Sink 所在块)
-        cfg.add_edge(prev_id, EXIT_ID)
+        # 最终正常分支连接到 Guard 之后的延续块，再由延续块出函数。
+        # 这给单 guard clause 提供非 Exit 后继，供 protected range 查询使用。
+        if line_range is not None:
+            function_end = int(line_range[1]) if len(line_range) > 1 else last_guard_end_line
+            normal_start = last_guard_end_line + 1 if last_guard_end_line else function_end
+            normal_end = function_end
+            if normal_start > normal_end:
+                return cfg
+        else:
+            normal_start = last_guard_end_line + 1 if last_guard_end_line else 0
+            normal_end = normal_start
+
+        normal_block = cfg.add_block(start_line=normal_start, end_line=normal_end)
+        cfg.add_edge(prev_id, normal_block.block_id)
+        cfg.add_edge(normal_block.block_id, EXIT_ID)
 
         return cfg
 

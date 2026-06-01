@@ -54,6 +54,8 @@ def _build_regex_from_pattern(pattern: str) -> re.Pattern:
     规则（PoC 简化版）：
     - `$NAME` 被转换为命名捕获组 `(?P<NAME>...)`；
     - 若 `$NAME` 被成对引号包裹（`\"$NAME\"`），捕获组限制为 `[^\"]+`；
+    - 若 `$NAME` 位于字符串字面量内部并紧邻结束引号，捕获到该引号前；
+    - 若 `$NAME` 位于 f-string 表达式或表达式前缀中，捕获到 `{` / `}` 边界；
     - 普通情况下捕获组使用 `\\S+`；
     - 普通文本通过 `re.escape` 转义，并将空格转换为 `\\s*` 以容忍微小格式差异。
 
@@ -78,13 +80,7 @@ def _build_regex_from_pattern(pattern: str) -> re.Pattern:
             escaped = escaped.replace(r"\ ", r"\s*")
             regex_parts.append(escaped)
 
-        prev_char = pattern[start - 1] if start > 0 else ""
-        next_char = pattern[end] if end < len(pattern) else ""
-        if prev_char == '"' and next_char == '"':
-            group_pattern = rf'(?P<{name}>[^"]+)'
-        else:
-            group_pattern = rf"(?P<{name}>\S+)"
-        regex_parts.append(group_pattern)
+        regex_parts.append(_placeholder_regex(pattern, start, end, name))
 
         last_index = end
 
@@ -100,6 +96,26 @@ def _build_regex_from_pattern(pattern: str) -> re.Pattern:
     except re.error:
         compiled = re.compile(r"(?!x)x")
     return compiled
+
+
+def _placeholder_regex(pattern: str, start: int, end: int, name: str) -> str:
+    """Return the regex capture group for one DSL metavariable."""
+    prev_char = pattern[start - 1] if start > 0 else ""
+    next_char = pattern[end] if end < len(pattern) else ""
+
+    if prev_char == '"' and next_char == '"':
+        return rf'(?P<{name}>[^"]+)'
+    if prev_char == "'" and next_char == "'":
+        return rf"(?P<{name}>[^']+)"
+    if next_char == '"':
+        return rf'(?P<{name}>[^"]+)'
+    if next_char == "'":
+        return rf"(?P<{name}>[^']+)"
+    if next_char == "{":
+        return rf"(?P<{name}>[^{{}}\"']+)"
+    if next_char == "}":
+        return rf"(?P<{name}>[^}}]+)"
+    return rf"(?P<{name}>\S+)"
 
 
 def match_source(rule: DslRule, source: str, file_path: Path) -> list[dict]:

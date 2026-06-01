@@ -5,4 +5,10 @@ message: "检测到使用字符串格式化构造 SQL 语句，存在注入风�
 vuln_type: SQL_INJECTION
 patterns:
   - pattern: $CURSOR.execute("SELECT" % $EXPR)
+  - pattern: $CURSOR.execute("SELECT $SQL" % $EXPR)
+  - pattern: $CURSOR.execute('SELECT' % $EXPR)
+  - pattern: $CURSOR.execute('SELECT $SQL' % $EXPR)
   - pattern: $CURSOR.execute(f"SELECT {$EXPR}")
+  - pattern: $CURSOR.execute(f"SELECT $SQL{$EXPR}")
+  - pattern: $CURSOR.execute(f'SELECT {$EXPR}')
+  - pattern: $CURSOR.execute(f'SELECT $SQL{$EXPR}')

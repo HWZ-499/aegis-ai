@@ -98,6 +98,9 @@ class PhpSQLInjectionAstRule(SecurityRule):
                             continue
                         if inner.type == "string" and not self._string_has_variable(inner):
                             continue
+                        sql_expr = self._get_sql_expression_for_arg(inner, line, context)
+                        if self._is_sql_expr_protected_by_strict_digit_guards(sql_expr, line, context):
+                            continue
                         if inner.type in ("string", "encapsed_string", "binary_expression"):
                             weak_var = self._find_weakly_sanitized_unquoted_sql_var(inner, context)
                             if weak_var:
@@ -281,6 +284,120 @@ class PhpSQLInjectionAstRule(SecurityRule):
             if self._is_sql_unquoted_var_usage(sql_text, var_name):
                 return var_name
         return None
+
+    def _get_sql_expression_for_arg(self, inner: Any, sink_line: int, context: AnalysisContext) -> str | None:
+        if getattr(inner, "type", "") == "variable_name":
+            var_name = self._get_node_text(inner).lstrip("$")
+            return self._find_latest_assignment_expr(var_name, sink_line, context)
+        return self._get_node_text(inner)
+
+    def _is_sql_expr_protected_by_strict_digit_guards(
+        self,
+        sql_text: str | None,
+        sink_line: int,
+        context: AnalysisContext,
+    ) -> bool:
+        """
+        Return True when every tainted SQL variable is constrained to digits.
+
+        This covers common PHP guard patterns such as:
+        `if (!preg_match('/^\\d+$/', $_GET['id'])) { ... } else { $id = $_GET['id']; ... }`.
+        A digit-only value cannot alter SQL structure even when placed inside a
+        quoted numeric comparison.
+        """
+        if not sql_text or not self._looks_like_sql(sql_text):
+            return False
+
+        var_names = set(re.findall(r"\$\{\s*([A-Za-z_]\w*)\s*\}|\$([A-Za-z_]\w*)", sql_text))
+        flattened_var_names = {name for pair in var_names for name in pair if name}
+        if not flattened_var_names:
+            return False
+
+        saw_guarded_tainted_var = False
+        for var_name in sorted(flattened_var_names):
+            if self._is_var_strict_digit_guarded(var_name, sink_line, context):
+                saw_guarded_tainted_var = True
+                continue
+            if context.is_var_tainted(var_name) or context.is_var_tainted("$" + var_name):
+                return False
+            source = context.get_taint_source(var_name) or context.get_taint_source("$" + var_name)
+            if source is not None:
+                source_expr = (getattr(source, "source_expr", "") or "").strip()
+                if self._HIGH_RISK_SOURCE_RE.search(source_expr):
+                    return False
+
+        return saw_guarded_tainted_var
+
+    def _is_var_strict_digit_guarded(self, var_name: str, sink_line: int, context: AnalysisContext) -> bool:
+        assigned_expr = self._find_latest_assignment_expr(var_name, sink_line, context)
+        if not assigned_expr:
+            return False
+        if self._is_integer_cast_expr(assigned_expr):
+            return True
+
+        source = context.extras.get("source")
+        if not isinstance(source, str) or not source:
+            return False
+
+        lines = source.splitlines()
+        upper_bound = min(max(sink_line - 1, 0), len(lines))
+        assignment_line = self._find_latest_assignment_line(var_name, sink_line, context)
+        if assignment_line is None:
+            return False
+
+        assigned_norm = self._normalize_php_expr(assigned_expr)
+        var_norm = self._normalize_php_expr("$" + var_name)
+        for idx in range(0, min(assignment_line, upper_bound)):
+            line = lines[idx]
+            if "preg_match" not in line:
+                continue
+            match = re.search(
+                r"preg_match\s*\(\s*(['\"])(?P<pattern>.+?)\1\s*,\s*(?P<expr>.+?)\s*\)",
+                line,
+            )
+            if match is None or not self._is_strict_digit_regex(match.group("pattern")):
+                continue
+            guard_expr_norm = self._normalize_php_expr(match.group("expr"))
+            if guard_expr_norm not in {assigned_norm, var_norm}:
+                continue
+            if self._guard_invalid_branch_flows_to_else(lines, idx, assignment_line - 1):
+                return True
+        return False
+
+    @staticmethod
+    def _find_latest_assignment_line(var_name: str, sink_line: int, context: AnalysisContext) -> int | None:
+        source = context.extras.get("source")
+        if not isinstance(source, str) or not source:
+            return None
+
+        lines = source.splitlines()
+        upper_bound = min(max(sink_line - 1, 0), len(lines))
+        assign_re = re.compile(rf"\${re.escape(var_name)}\s*=\s*.+?;\s*$")
+        for idx in range(upper_bound - 1, -1, -1):
+            if assign_re.search(lines[idx]):
+                return idx + 1
+        return None
+
+    @staticmethod
+    def _is_integer_cast_expr(expr: str) -> bool:
+        return re.search(r"^\s*(?:intval\s*\(|\(\s*int\s*\)|\(\s*integer\s*\))", expr, re.IGNORECASE) is not None
+
+    @staticmethod
+    def _is_strict_digit_regex(pattern: str) -> bool:
+        normalized = pattern.strip()
+        if normalized.startswith("/") and normalized.count("/") >= 2:
+            normalized = normalized[1 : normalized.rfind("/")]
+        normalized = normalized.replace("\\\\", "\\")
+        return normalized in {r"^\d+$", r"^[0-9]+$"}
+
+    @staticmethod
+    def _normalize_php_expr(expr: str) -> str:
+        return re.sub(r"\s+", "", expr.strip().rstrip(";"))
+
+    @staticmethod
+    def _guard_invalid_branch_flows_to_else(lines: list[str], guard_idx: int, assignment_idx: int) -> bool:
+        between = "\n".join(lines[guard_idx : assignment_idx + 1])
+        return re.search(r"}\s*else\b|\belse\s*{", between) is not None
 
     @staticmethod
     def _looks_like_sql(text: str) -> bool:

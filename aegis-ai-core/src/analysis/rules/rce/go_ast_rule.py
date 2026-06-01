@@ -39,6 +39,13 @@ _RCE_FUNCS = frozenset(["Command", "CommandContext", "Exec", "StartProcess"])
 _RCE_PACKAGES = frozenset(["exec", "os", "syscall"])
 
 _GO_SHELL_NAMES = frozenset(["sh", "/bin/sh", "bash", "/bin/bash"])
+_GO_INTERPRETER_EVAL_FLAGS = {
+    "node": frozenset(["-e", "--eval"]),
+    "python": frozenset(["-c"]),
+    "perl": frozenset(["-e"]),
+    "ruby": frozenset(["-e"]),
+    "php": frozenset(["-r"]),
+}
 _GO_USER_INPUT_CALL_RE = re.compile(
     r"\b(?:c|ctx|r|req|request)\.(?:Query|FormValue|PostForm|PostFormValue|Param|DefaultQuery)\s*\(",
     re.IGNORECASE,
@@ -91,11 +98,17 @@ class GoRCEAstRule(SecurityRule):
 
         # exec.CommandContext 第一个参数是 ctx，跳过
         start_idx = 1 if func_name == "CommandContext" and len(args) > 1 else 0
+        if start_idx >= len(args):
+            return
 
-        for arg in args[start_idx:]:
-            if self._subtree_has_user_input(arg, context):
-                self._report(node, context, f"{pkg_name or ''}.{func_name}")
-                return
+        if self._is_interpreter_dynamic_exec(args, start_idx, context):
+            self._report(node, context, f"{pkg_name or ''}.{func_name}")
+            return
+
+        command_arg = args[start_idx]
+        if self._subtree_has_user_input(command_arg, context):
+            self._report(node, context, f"{pkg_name or ''}.{func_name}")
+            return
 
     def after_file(self, context: AnalysisContext) -> None:
         """TaintGraph 兜底。"""
@@ -122,9 +135,11 @@ class GoRCEAstRule(SecurityRule):
             line_no = getattr(sink, "line", 0) or 0
             if line_no in self._reported_lines:
                 continue
-            reported_sinks.add(sink_id)
             src_expr = getattr(source, "name", "") or getattr(source, "code_snippet", "")
             sink_expr = getattr(sink, "name", "") or getattr(sink, "code_snippet", "")
+            if self._is_safe_fixed_command_argv_sink(line_no, sink_expr, context):
+                continue
+            reported_sinks.add(sink_id)
             finding: dict[str, Any] = {
                 "type": "RCE_COMMAND_EXEC",
                 "rule_id": self.rule_id,
@@ -242,6 +257,164 @@ class GoRCEAstRule(SecurityRule):
         unquoted = text.strip('`"')
         return unquoted in _GO_SHELL_NAMES
 
+    def _is_safe_fixed_command_argv_sink(self, line_no: int, sink_expr: str, context: AnalysisContext) -> bool:
+        call_text = self._line_text_for_sink(line_no, context) or sink_expr
+        args = self._extract_text_call_args(call_text, "exec.Command")
+        if not args:
+            return False
+
+        command_arg = args[0].strip()
+        if not self._is_string_literal_text(command_arg):
+            return False
+        if self._text_args_include_interpreter_eval(args):
+            return False
+        if self._is_shell_literal_text(command_arg) and len(args) >= 3 and self._is_dash_c_text(args[1].strip()):
+            return False
+        return True
+
+    def _is_interpreter_dynamic_exec(self, args: list[Any], command_idx: int, context: AnalysisContext) -> bool:
+        command_name = self._canonical_command_name(self._literal_value(args[command_idx]) or "")
+        flags = _GO_INTERPRETER_EVAL_FLAGS.get(command_name)
+        if not flags:
+            return False
+
+        for idx in range(command_idx + 1, len(args) - 1):
+            flag = self._literal_value(args[idx])
+            if flag not in flags:
+                continue
+            code_arg = args[idx + 1]
+            if not self._is_string_literal(code_arg) and self._subtree_has_user_input(code_arg, context):
+                return True
+        return False
+
+    @staticmethod
+    def _line_text_for_sink(line_no: int, context: AnalysisContext) -> str:
+        source_code = context.extras.get("source") or ""
+        if not source_code:
+            return ""
+        lines = source_code.splitlines()
+        if 1 <= line_no <= len(lines):
+            return lines[line_no - 1]
+        return ""
+
+    def _extract_text_call_args(self, text: str, call_name: str) -> list[str]:
+        call_index = text.find(call_name)
+        if call_index < 0:
+            return []
+        open_paren = text.find("(", call_index + len(call_name))
+        if open_paren < 0:
+            return []
+        close_paren = self._find_matching_paren_in_text(text, open_paren)
+        if close_paren is None:
+            return []
+        return self._split_top_level_args(text[open_paren + 1 : close_paren])
+
+    @staticmethod
+    def _find_matching_paren_in_text(text: str, open_paren: int) -> int | None:
+        depth = 0
+        quote: str | None = None
+        escaped = False
+        for index in range(open_paren, len(text)):
+            ch = text[index]
+            if quote is not None:
+                if escaped:
+                    escaped = False
+                    continue
+                if ch == "\\" and quote != "`":
+                    escaped = True
+                    continue
+                if ch == quote:
+                    quote = None
+                continue
+            if ch in ('"', "'", "`"):
+                quote = ch
+                continue
+            if ch == "(":
+                depth += 1
+                continue
+            if ch == ")":
+                depth -= 1
+                if depth == 0:
+                    return index
+        return None
+
+    @staticmethod
+    def _split_top_level_args(text: str) -> list[str]:
+        args: list[str] = []
+        start = 0
+        paren_depth = 0
+        brace_depth = 0
+        bracket_depth = 0
+        quote: str | None = None
+        escaped = False
+
+        for index, ch in enumerate(text):
+            if quote is not None:
+                if escaped:
+                    escaped = False
+                    continue
+                if ch == "\\" and quote != "`":
+                    escaped = True
+                    continue
+                if ch == quote:
+                    quote = None
+                continue
+            if ch in ('"', "'", "`"):
+                quote = ch
+                continue
+            if ch == "(":
+                paren_depth += 1
+                continue
+            if ch == ")":
+                paren_depth -= 1
+                continue
+            if ch == "{":
+                brace_depth += 1
+                continue
+            if ch == "}":
+                brace_depth -= 1
+                continue
+            if ch == "[":
+                bracket_depth += 1
+                continue
+            if ch == "]":
+                bracket_depth -= 1
+                continue
+            if ch == "," and paren_depth == 0 and brace_depth == 0 and bracket_depth == 0:
+                args.append(text[start:index].strip())
+                start = index + 1
+
+        tail = text[start:].strip()
+        if tail:
+            args.append(tail)
+        return args
+
+    @staticmethod
+    def _is_string_literal_text(text: str) -> bool:
+        return (text.startswith('"') and text.endswith('"')) or (text.startswith("`") and text.endswith("`"))
+
+    def _text_args_include_interpreter_eval(self, args: list[str]) -> bool:
+        if not args:
+            return False
+        command_name = self._canonical_command_name(self._literal_value_text(args[0]) or "")
+        flags = _GO_INTERPRETER_EVAL_FLAGS.get(command_name)
+        if not flags:
+            return False
+
+        for idx in range(1, len(args) - 1):
+            flag = self._literal_value_text(args[idx])
+            if flag in flags and not self._is_string_literal_text(args[idx + 1].strip()):
+                return True
+        return False
+
+    @staticmethod
+    def _is_shell_literal_text(text: str) -> bool:
+        return text.strip().strip('`"') in _GO_SHELL_NAMES
+
+    @staticmethod
+    def _is_dash_c_text(text: str) -> bool:
+        return text.strip() in ('"-c"', "`-c`")
+
     @staticmethod
     def _is_dash_c(node: Any) -> bool:
         text = (GoRCEAstRule._get_node_text(node) or "").strip()
@@ -250,6 +423,26 @@ class GoRCEAstRule(SecurityRule):
     @staticmethod
     def _is_string_literal(node: Any) -> bool:
         return getattr(node, "type", "") in ("interpreted_string_literal", "raw_string_literal")
+
+    def _literal_value(self, node: Any) -> str | None:
+        text = (self._get_node_text(node) or "").strip()
+        return self._literal_value_text(text)
+
+    @staticmethod
+    def _literal_value_text(text: str) -> str | None:
+        text = text.strip()
+        if (text.startswith('"') and text.endswith('"')) or (text.startswith("`") and text.endswith("`")):
+            return text[1:-1]
+        return None
+
+    @staticmethod
+    def _canonical_command_name(value: str) -> str:
+        command = value.replace("\\", "/").rsplit("/", 1)[-1].lower()
+        if command.endswith(".exe"):
+            command = command[:-4]
+        if command.startswith("python"):
+            return "python"
+        return command
 
     def _report(self, node: Any, context: AnalysisContext, func_desc: str) -> None:
         line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0

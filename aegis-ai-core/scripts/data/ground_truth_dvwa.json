@@ -194,11 +194,19 @@
   },
   {
     "file": "vulnerabilities/bac/source/medium.php",
+    "line": 22,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": false,
+    "description": "DVWA BAC medium user_id existence query is protected by a strict digit preg_match guard; reporting SQLi here is an FP"
+  },
+  {
+    "file": "vulnerabilities/bac/source/medium.php",
     "line": 28,
     "type": "SQL_INJECTION",
     "severity": "High",
-    "is_true_positive": true,
-    "description": "DVWA Broken Access Control SQL 注入"
+    "is_true_positive": false,
+    "description": "DVWA BAC medium profile query reuses the strict digit-guarded user_id; the access-control weakness is not SQL injection"
   },
   {
     "file": "vulnerabilities/csrf/test_credentials.php",

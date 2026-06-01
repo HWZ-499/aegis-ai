@@ -535,3 +535,37 @@ class TestBaselineCommand:
         assert entries[0].rule_id == "HARDCODED_CREDENTIALS"
         assert entries[0].file_path == "app.js"
         assert entries[0].line == 1
+
+    def test_add_to_baseline_does_not_overwrite_corrupt_baseline(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        project_root = tmp_path
+        target = project_root / "app.js"
+        target.write_text('const apiKey = "sk-test";\n', encoding="utf-8")
+        baseline_path = project_root / ".aegis-baseline.json"
+        baseline_path.write_text("{ not valid json", encoding="utf-8")
+        monkeypatch.setattr(lsp_server._workspace_ctx, "_project_path", str(project_root))
+
+        server = lsp_server.create_server()
+        messages: list[str] = []
+        monkeypatch.setattr(server, "window_show_message", lambda params: messages.append(params.message))
+        handler = server.protocol.fm.commands["aegis.addToBaseline"]
+        params = lsp.ExecuteCommandParams(
+            command="aegis.addToBaseline",
+            arguments=[
+                {
+                    "uri": target.as_uri(),
+                    "rule_id": "HARDCODED_CREDENTIALS",
+                    "line": 1,
+                    "message": "hardcoded credential",
+                }
+            ],
+        )
+
+        args, kwargs = _prepare_command_arguments(handler, params, server.protocol._converter)
+        handler(*args, **kwargs)
+
+        assert baseline_path.read_text(encoding="utf-8") == "{ not valid json"
+        assert any("Cannot update baseline" in message for message in messages)

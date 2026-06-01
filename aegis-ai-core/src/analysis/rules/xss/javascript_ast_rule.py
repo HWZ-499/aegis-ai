@@ -140,6 +140,8 @@ class JavaScriptXSSAstRule(SecurityRule):
             identifiers = self._collect_identifiers_from_node(right_node)
             if identifiers and all(context.is_var_sanitized(v) for v in identifiers):
                 return
+            if self._is_untainted_property_read(right_node, context):
+                return
 
         line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
         finding: dict[str, Any] = {
@@ -180,6 +182,46 @@ class JavaScriptXSSAstRule(SecurityRule):
                 if fname in self._TRUSTED_DIRECT_HTML_SANITIZERS:
                     return True
         return False
+
+    def _is_untainted_property_read(self, node: Node, context: AnalysisContext) -> bool:
+        """
+        Return True for simple property reads with no user-controlled source evidence.
+
+        `innerHTML = obj["answer"]` is dynamic, but without a source or taint
+        edge it is not enough evidence for an XSS finding. We keep reporting
+        direct request/location/cookie reads and tainted object variables.
+        """
+        if node.type not in {"member_expression", "subscript_expression"}:
+            return False
+
+        text = self._get_node_text(node) or ""
+        if self._text_contains_user_controlled_source(text):
+            return False
+
+        identifiers = self._collect_identifiers_from_node(node)
+        if any(context.is_var_tainted(v) for v in identifiers):
+            return False
+
+        return True
+
+    @staticmethod
+    def _text_contains_user_controlled_source(text: str) -> bool:
+        text_lower = text.lower()
+        source_markers = (
+            "req.query",
+            "req.params",
+            "req.body",
+            "request.query",
+            "request.params",
+            "request.body",
+            "location.search",
+            "location.hash",
+            "document.cookie",
+            "window.name",
+            "localstorage",
+            "sessionstorage",
+        )
+        return any(marker in text_lower for marker in source_markers)
 
     def _check_dangerous_function_call(self, node: Node, context: AnalysisContext) -> None:
         """

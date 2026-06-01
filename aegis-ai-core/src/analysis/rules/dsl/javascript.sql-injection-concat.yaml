@@ -5,4 +5,10 @@ message: "检测到 SQL 字符串拼接，存在注入风险。"
 vuln_type: SQL_INJECTION
 patterns:
   - pattern: $DB.query("SELECT" + $EXPR)
+  - pattern: $DB.query("SELECT $SQL" + $EXPR)
+  - pattern: $DB.query('SELECT' + $EXPR)
+  - pattern: $DB.query('SELECT $SQL' + $EXPR)
   - pattern: $DB.query($SQL)
+    metavariables:
+      SQL:
+        regex: '(?i)\b(?:req|request)\.(?:query|body|params)\b|\b(?:location|document\.cookie)\b'

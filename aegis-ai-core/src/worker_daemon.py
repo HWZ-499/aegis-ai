@@ -10,7 +10,7 @@ worker_daemon.py - Aegis 扫描守护进程（TDD 9.1.1 单守护进程 + 任务
   python -m src.worker_daemon [--port 0] [--max-requests 1000] [--max-memory-mb 500]
   --port 0 表示自动选端口，启动后打印端口到 stdout，便于父进程连接。
 
-当前为骨架：仅实现 TCP 接收/发送与请求计数，实际扫描逻辑复用 rule_engine。
+扫描逻辑复用 rule_engine，保持 daemon、LSP 与 CLI 的语言覆盖一致。
 """
 
 from __future__ import annotations
@@ -19,7 +19,9 @@ import argparse
 import json
 import logging
 import os
+import sys
 from pathlib import Path
+from typing import TextIO
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("aegis.worker_daemon")
@@ -27,18 +29,73 @@ logger = logging.getLogger("aegis.worker_daemon")
 # 默认内存/请求上限（TDD 9.1.1）
 DEFAULT_MAX_REQUESTS = 1000
 DEFAULT_MAX_MEMORY_MB = 500
+DEFAULT_HOST = "127.0.0.1"
+
+_LANGUAGE_BY_EXTENSION = {
+    ".py": "python",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".php": "php",
+    ".java": "java",
+    ".go": "go",
+}
+
+_LANGUAGE_ALIASES = {
+    "py": "python",
+    "python": "python",
+    "js": "javascript",
+    "jsx": "javascript",
+    "javascript": "javascript",
+    "ts": "typescript",
+    "tsx": "typescript",
+    "typescript": "typescript",
+    "php": "php",
+    "java": "java",
+    "go": "go",
+    "golang": "go",
+}
+
+
+def _normalize_language(file_path: str, language: str | None) -> str | None:
+    raw = (language or "").strip().lower()
+    if raw in _LANGUAGE_ALIASES:
+        return _LANGUAGE_ALIASES[raw]
+    return _LANGUAGE_BY_EXTENSION.get(Path(file_path).suffix.lower())
 
 
 def run_scan(file_path: str, content: str, language: str) -> list:
     """执行单文件扫描，返回 finding 列表。"""
-    from src.analysis.rule_engine import analyze_javascript, analyze_python
+    from src.analysis.rule_engine import analyze_go, analyze_java, analyze_javascript, analyze_php, analyze_python
 
     path = Path(file_path)
-    if language == "python":
+    normalized_language = _normalize_language(file_path, language)
+    if normalized_language is None:
+        return []
+
+    if normalized_language == "python":
         return analyze_python(content, path)
-    if language in ("javascript", "typescript"):
-        return analyze_javascript(content, path, language=language)
+    if normalized_language in ("javascript", "typescript"):
+        return analyze_javascript(content, path, language=normalized_language)
+    if normalized_language == "php":
+        return analyze_php(content, path)
+    if normalized_language == "java":
+        return analyze_java(content, path)
+    if normalized_language == "go":
+        return analyze_go(content, path)
     return []
+
+
+def format_startup_message(host: str, port: int) -> str:
+    """Return a machine-readable startup line for parent processes."""
+    return json.dumps({"event": "listening", "host": host, "port": port}, ensure_ascii=False)
+
+
+def emit_startup_message(host: str, port: int, output: TextIO) -> None:
+    """Write and flush the machine-readable startup line."""
+    output.write(format_startup_message(host, port) + "\n")
+    output.flush()
 
 
 def current_memory_mb() -> float:
@@ -52,26 +109,25 @@ def current_memory_mb() -> float:
         return 0.0
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Aegis scan worker daemon (TDD 9.1.1)")
-    parser.add_argument("--port", type=int, default=0, help="TCP port (0=auto)")
-    parser.add_argument("--max-requests", type=int, default=DEFAULT_MAX_REQUESTS)
-    parser.add_argument("--max-memory-mb", type=float, default=DEFAULT_MAX_MEMORY_MB)
-    args = parser.parse_args()
-
+def run_daemon(args: argparse.Namespace, startup_output: TextIO | None = None) -> None:
+    """Run the worker daemon with parsed arguments."""
     import socket
 
+    output = startup_output or sys.stdout
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind(("127.0.0.1", args.port))
+    sock.bind((DEFAULT_HOST, args.port))
     port = sock.getsockname()[1]
     sock.listen(1)
     logger.info(
-        "Worker daemon listening on 127.0.0.1:%s (max_requests=%s, max_memory_mb=%s)",
+        "Worker daemon listening on %s:%s (max_requests=%s, max_memory_mb=%s)",
+        DEFAULT_HOST,
         port,
         args.max_requests,
         args.max_memory_mb,
     )
+    if args.port == 0:
+        emit_startup_message(DEFAULT_HOST, port, output)
 
     request_count = 0
     while True:
@@ -109,7 +165,7 @@ def main() -> None:
                 req = json.loads(raw.split("\n")[0])
                 file_path = req.get("file_path", "")
                 content = req.get("content", "")
-                language = req.get("language", "javascript")
+                language = req.get("language", "")
                 findings = run_scan(file_path, content, language)
                 request_count += 1
                 out = json.dumps({"findings": findings}, ensure_ascii=False) + "\n"
@@ -123,6 +179,15 @@ def main() -> None:
 
     sock.close()
     logger.info("Worker daemon exited (request_count=%s)", request_count)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Aegis scan worker daemon (TDD 9.1.1)")
+    parser.add_argument("--port", type=int, default=0, help="TCP port (0=auto)")
+    parser.add_argument("--max-requests", type=int, default=DEFAULT_MAX_REQUESTS)
+    parser.add_argument("--max-memory-mb", type=float, default=DEFAULT_MAX_MEMORY_MB)
+    args = parser.parse_args()
+    run_daemon(args)
 
 
 if __name__ == "__main__":

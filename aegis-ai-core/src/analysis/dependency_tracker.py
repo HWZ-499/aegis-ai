@@ -7,6 +7,7 @@ dependency_tracker.py — O5 跨文件依赖追踪
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import logging
 import re
@@ -17,6 +18,8 @@ logger = logging.getLogger(__name__)
 # Import patterns by language
 _JS_IMPORT_RE = re.compile(r"""(?:import\s+.*?\s+from\s+['"](.+?)['"]|require\s*\(\s*['"](.+?)['"]\s*\))""")
 _PY_IMPORT_RE = re.compile(r"""(?:from\s+(\S+)\s+import|import\s+(\S+))""")
+_PY_FROM_IMPORT_RE = re.compile(r"""^\s*from\s+(\S+)\s+import\s+([^\n#]+)""", re.MULTILINE)
+_PY_DIRECT_IMPORT_RE = re.compile(r"""^\s*import\s+([^\n#]+)""", re.MULTILINE)
 
 
 class DependencyTracker:
@@ -50,24 +53,20 @@ class DependencyTracker:
                 if resolved:
                     imports.add(resolved)
         elif language == "python":
-            for m in _PY_IMPORT_RE.finditer(code):
-                raw = m.group(1) or m.group(2) or ""
-                resolved = self._resolve_py_import(raw, file_path, project_root)
-                if resolved:
-                    imports.add(resolved)
+            imports.update(self._extract_py_imports(code, file_path, project_root))
 
         self._import_graph[file_path] = imports
 
     def update_export_hash(self, file_path: str, code: str) -> bool:
         """
-        Compute a hash of the file's "exported interface" (first 200 lines
-        of function/class signatures) and return True if it changed.
+        Compute a hash of the file's "exported interface" from function/class
+        signatures and return True if it changed.
 
         This is a lightweight heuristic — not a full symbol table.
         """
         # Extract function/class/export lines as a proxy for "public API"
         sig_lines: list[str] = []
-        for line in code.splitlines()[:200]:
+        for line in code.splitlines():
             stripped = line.strip()
             if any(
                 stripped.startswith(kw)
@@ -129,14 +128,138 @@ class DependencyTracker:
     @staticmethod
     def _resolve_py_import(raw_module: str, importer: str, project_root: str) -> str | None:
         """Resolve a Python import to an absolute file path (best-effort)."""
-        parts = raw_module.split(".")
-        base = Path(project_root)
+        level = len(raw_module) - len(raw_module.lstrip("."))
+        return DependencyTracker._resolve_py_module(raw_module[level:], importer, project_root, level=level)
 
-        # Try as relative path from project root
-        candidate = base / "/".join(parts)
-        for suffix in (".py", "/__init__.py"):
-            p = Path(str(candidate) + suffix)
-            if p.exists():
-                return str(p.resolve())
+    @classmethod
+    def _extract_py_imports(cls, code: str, importer: str, project_root: str) -> set[str]:
+        """Extract Python imports with AST parsing, falling back to regex for incomplete code."""
+        try:
+            tree = ast.parse(code)
+        except SyntaxError:
+            return cls._extract_py_imports_with_regex(code, importer, project_root)
+
+        imports: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    resolved = cls._resolve_py_module(alias.name, importer, project_root, level=0)
+                    if resolved:
+                        imports.add(resolved)
+            elif isinstance(node, ast.ImportFrom):
+                imports.update(cls._resolve_py_import_from(node, importer, project_root))
+
+        return imports
+
+    @classmethod
+    def _extract_py_imports_with_regex(cls, code: str, importer: str, project_root: str) -> set[str]:
+        """Best-effort fallback for unsaved buffers that do not parse yet."""
+        imports: set[str] = set()
+
+        for match in _PY_FROM_IMPORT_RE.finditer(code):
+            raw_module = match.group(1)
+            imported_names = [name.strip().split(" as ", 1)[0] for name in match.group(2).split(",")]
+            imports.update(cls._resolve_py_from_parts(raw_module, imported_names, importer, project_root))
+
+        for match in _PY_DIRECT_IMPORT_RE.finditer(code):
+            for raw_module in match.group(1).split(","):
+                raw_module = raw_module.strip().split(" as ", 1)[0]
+                resolved = cls._resolve_py_module(raw_module, importer, project_root, level=0)
+                if resolved:
+                    imports.add(resolved)
+
+        if imports:
+            return imports
+
+        for match in _PY_IMPORT_RE.finditer(code):
+            raw_module = match.group(1) or match.group(2) or ""
+            level = len(raw_module) - len(raw_module.lstrip("."))
+            resolved = cls._resolve_py_module(raw_module[level:], importer, project_root, level=level)
+            if resolved:
+                imports.add(resolved)
+        return imports
+
+    @classmethod
+    def _resolve_py_import_from(cls, node: ast.ImportFrom, importer: str, project_root: str) -> set[str]:
+        imports: set[str] = set()
+        module = node.module or ""
+
+        if module == "__future__":
+            return imports
+
+        imported_names = [alias.name for alias in node.names]
+        return cls._resolve_py_from_parts(module, imported_names, importer, project_root, level=node.level)
+
+    @classmethod
+    def _resolve_py_from_parts(
+        cls,
+        module: str,
+        imported_names: list[str],
+        importer: str,
+        project_root: str,
+        *,
+        level: int | None = None,
+    ) -> set[str]:
+        imports: set[str] = set()
+        if level is None:
+            level = len(module) - len(module.lstrip("."))
+            module = module[level:]
+
+        resolved_module = cls._resolve_py_module(module, importer, project_root, level=level)
+        if resolved_module:
+            imports.add(resolved_module)
+
+        for imported_name in imported_names:
+            if not imported_name or imported_name == "*":
+                continue
+            imported_module = f"{module}.{imported_name}" if module else imported_name
+            resolved_import = cls._resolve_py_module(imported_module, importer, project_root, level=level)
+            if resolved_import:
+                imports.add(resolved_import)
+
+        return imports
+
+    @classmethod
+    def _resolve_py_module(
+        cls,
+        raw_module: str,
+        importer: str,
+        project_root: str,
+        *,
+        level: int,
+    ) -> str | None:
+        """Resolve a Python module name to an absolute file path (best-effort)."""
+        module_parts = [part for part in raw_module.split(".") if part]
+        root = Path(project_root).resolve()
+        importer_path = Path(importer).resolve()
+
+        if level > 0:
+            base = importer_path.parent
+            for _ in range(level - 1):
+                base = base.parent
+        else:
+            base = root
+
+        candidate = base.joinpath(*module_parts) if module_parts else base
+        return cls._resolve_py_candidate(candidate, root)
+
+    @staticmethod
+    def _resolve_py_candidate(candidate: Path, project_root: Path) -> str | None:
+        """Resolve module candidate paths while keeping dependencies inside project_root."""
+        candidates = [candidate]
+        if candidate.suffix != ".py":
+            candidates.append(candidate.with_suffix(".py"))
+        candidates.append(candidate / "__init__.py")
+
+        for path in candidates:
+            if not path.is_file():
+                continue
+            resolved = path.resolve()
+            try:
+                if not resolved.is_relative_to(project_root):
+                    continue
+            except ValueError:
+                continue
+            return str(resolved)
 
         return None

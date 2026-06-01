@@ -379,6 +379,80 @@ def _php_find_latest_assignment_expr(var_name: str, before_idx: int, lines: list
     return None
 
 
+def _php_sql_line_protected_by_strict_digit_guard(raw_line: str, lines: list[str], line_idx: int) -> bool:
+    if re.search(r"\b(select|update|delete|insert|replace|where|from|into)\b", raw_line, re.IGNORECASE) is None:
+        return False
+
+    var_names = set(re.findall(r"\$\{\s*([A-Za-z_]\w*)\s*\}|\$([A-Za-z_]\w*)", raw_line))
+    flattened_var_names = {name for pair in var_names for name in pair if name}
+    lhs = re.match(r"\s*\$([A-Za-z_]\w*)\s*=", raw_line)
+    if lhs is not None:
+        flattened_var_names.discard(lhs.group(1))
+    if not flattened_var_names:
+        return False
+
+    saw_guarded_input = False
+    for var_name in sorted(flattened_var_names):
+        assignment = _php_find_latest_assignment_expr(var_name, line_idx + 1, lines)
+        if assignment is None:
+            continue
+        assignment_idx, assignment_expr = assignment
+        if _php_is_integer_cast_expr(assignment_expr):
+            saw_guarded_input = True
+            continue
+        if _php_has_strict_digit_guard_for_expr(lines, assignment_idx, assignment_expr, "$" + var_name):
+            saw_guarded_input = True
+            continue
+        if _PHP_SOURCE_RE.search(assignment_expr):
+            return False
+
+    return saw_guarded_input
+
+
+def _php_has_strict_digit_guard_for_expr(
+    lines: list[str],
+    assignment_idx: int,
+    assignment_expr: str,
+    var_expr: str,
+) -> bool:
+    assigned_norm = _php_normalize_expr(assignment_expr)
+    var_norm = _php_normalize_expr(var_expr)
+    start = max(0, assignment_idx - 30)
+    for guard_idx in range(assignment_idx - 1, start - 1, -1):
+        line = lines[guard_idx]
+        if "preg_match" not in line:
+            continue
+        matched = re.search(
+            r"preg_match\s*\(\s*(['\"])(?P<pattern>.+?)\1\s*,\s*(?P<expr>.+?)\s*\)",
+            line,
+        )
+        if matched is None or not _php_is_strict_digit_regex(matched.group("pattern")):
+            continue
+        guard_expr = _php_normalize_expr(matched.group("expr"))
+        if guard_expr not in {assigned_norm, var_norm}:
+            continue
+        between = "\n".join(lines[guard_idx : assignment_idx + 1])
+        if re.search(r"}\s*else\b|\belse\s*{", between):
+            return True
+    return False
+
+
+def _php_is_integer_cast_expr(expr: str) -> bool:
+    return re.search(r"^\s*(?:intval\s*\(|\(\s*int\s*\)|\(\s*integer\s*\))", expr, re.IGNORECASE) is not None
+
+
+def _php_is_strict_digit_regex(pattern: str) -> bool:
+    normalized = pattern.strip()
+    if normalized.startswith("/") and normalized.count("/") >= 2:
+        normalized = normalized[1 : normalized.rfind("/")]
+    normalized = normalized.replace("\\\\", "\\")
+    return normalized in {r"^\d+$", r"^[0-9]+$"}
+
+
+def _php_normalize_expr(expr: str) -> str:
+    return re.sub(r"\s+", "", expr.strip().rstrip(";"))
+
+
 def _php_echoes_static_local_value(raw_line: str, lines: list[str], line_idx: int) -> bool:
     matched = re.search(r"\b(?:echo|print)\s+(\$[A-Za-z_]\w*)\b", raw_line, re.IGNORECASE)
     if matched is None:
@@ -413,7 +487,7 @@ def _php_extract_ip_rebuild_array_var(expr: str) -> str | None:
         return None
     if len(re.findall(r"['\"]\.['\"]", expr)) < 3:
         return None
-    return next(iter(array_names))
+    return str(next(iter(array_names)))
 
 
 def _php_has_explode_assignment(lines: list[str], array_var: str, source_var: str, before_idx: int) -> bool:
@@ -1262,12 +1336,6 @@ def scan_code_locally(code_content, file_path=None):
     language = "python"  # 默认
     if file_path:
         ext = file_path.lower().split(".")[-1] if "." in file_path else ""
-        file_name_lower = file_path.lower()
-
-        # 【修复问题5】跳过帮助文档和纯 HTML 文件
-        if "help" in file_name_lower and ext in ["php", "html", "htm"]:
-            # help.php, help.html 等帮助文档文件，通常包含大量文档说明，跳过扫描
-            return []
 
         if ext in ["js", "jsx", "mjs"]:
             language = "javascript"
@@ -1412,6 +1480,9 @@ def scan_code_locally(code_content, file_path=None):
 
                         # 【优化7】识别更多SQL安全函数
                         if language == "php":
+                            if _php_sql_line_protected_by_strict_digit_guard(line, lines, line_idx):
+                                continue
+
                             # mysqli_real_escape_string() - SQL转义函数
                             if re.search(r"mysqli_real_escape_string\s*\(", context_lines, re.IGNORECASE):
                                 # 检查变量是否经过转义（简单检查：同一行或前后行）

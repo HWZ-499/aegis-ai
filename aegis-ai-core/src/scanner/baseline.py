@@ -14,6 +14,15 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
+class BaselineLoadError(ValueError):
+    """Raised when an existing baseline file cannot be trusted."""
+
+    def __init__(self, path: Path, reason: str) -> None:
+        super().__init__(f"Failed to load baseline {path}: {reason}")
+        self.path = path
+        self.reason = reason
+
+
 class BaselineFinding(BaseModel):
     """Baseline 中的单条记录，用于匹配 finding。"""
 
@@ -76,15 +85,21 @@ class Baseline:
         """从 JSON 文件加载 baseline。"""
         if not path.exists():
             return cls([])
+        if path.is_dir():
+            return cls([])
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return cls([])
+        except json.JSONDecodeError as exc:
+            raise BaselineLoadError(path, f"invalid JSON: {exc.msg}") from exc
+        except OSError as exc:
+            raise BaselineLoadError(path, f"read failed: {exc}") from exc
         if not isinstance(data, dict):
-            return cls([])
-        entries_list = data.get("findings", data) if isinstance(data.get("findings"), list) else []
-        if not isinstance(entries_list, list):
+            raise BaselineLoadError(path, "root value must be a JSON object")
+        entries_list = data.get("findings", [])
+        if entries_list is None:
             entries_list = []
+        if not isinstance(entries_list, list):
+            raise BaselineLoadError(path, "findings must be a list")
         entries: list[BaselineFinding] = []
         for item in entries_list:
             if isinstance(item, dict):

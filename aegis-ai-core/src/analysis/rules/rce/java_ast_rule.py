@@ -36,6 +36,7 @@ _RCE_METHODS = frozenset(["exec", "start", "eval", "loadLibrary"])
 
 # 危险的类/对象
 _RCE_RECEIVERS = frozenset(["Runtime", "ProcessBuilder", "ScriptEngine", "Nashorn", "System"])
+_SCRIPT_ENGINE_RECEIVERS = frozenset(["ScriptEngine", "Nashorn", "NashornScriptEngine"])
 
 
 class JavaRCEAstRule(SecurityRule):
@@ -50,15 +51,19 @@ class JavaRCEAstRule(SecurityRule):
             languages=["java"],
         )
         self._reported_lines: set[int] = set()
+        self._receiver_types: dict[str, str] = {}
 
     def before_file(self, context: AnalysisContext) -> None:
         self._reported_lines = set()
+        self._receiver_types = {}
 
     def visit(self, node: Any, context: AnalysisContext) -> None:
         if not TREE_SITTER_AVAILABLE or not isinstance(node, Node):
             return
 
-        if node.type == "method_invocation":
+        if node.type in ("formal_parameter", "local_variable_declaration", "field_declaration"):
+            self._track_declared_receiver_type(node)
+        elif node.type == "method_invocation":
             self._check_method_invocation(node, context)
         elif node.type == "object_creation_expression":
             self._check_process_builder(node, context)
@@ -67,6 +72,9 @@ class JavaRCEAstRule(SecurityRule):
         """检测 Runtime.getRuntime().exec(var), ScriptEngine.eval(var) 等。"""
         method_name = self._get_method_name(node)
         if method_name not in _RCE_METHODS:
+            return
+
+        if not self._has_dangerous_receiver(node, method_name):
             return
 
         # 检查参数中是否有用户输入
@@ -151,11 +159,38 @@ class JavaRCEAstRule(SecurityRule):
 
     @staticmethod
     def _get_method_name(node: Any) -> str | None:
-        for child in node.children:
-            if child.type == "identifier":
-                text = child.text
-                return text.decode("utf-8") if isinstance(text, bytes) else str(text)
+        method_index = JavaRCEAstRule._get_method_identifier_index(node)
+        if method_index is None:
+            return None
+        child = node.children[method_index]
+        text = child.text
+        return text.decode("utf-8") if isinstance(text, bytes) else str(text)
+
+    @staticmethod
+    def _get_method_identifier_index(node: Any) -> int | None:
+        children = list(getattr(node, "children", []) or [])
+        argument_index = next(
+            (index for index, child in enumerate(children) if child.type == "argument_list"),
+            len(children),
+        )
+        for index in range(argument_index - 1, -1, -1):
+            if children[index].type == "identifier":
+                return index
         return None
+
+    @staticmethod
+    def _get_receiver_node(node: Any) -> Any | None:
+        children = list(getattr(node, "children", []) or [])
+        method_index = JavaRCEAstRule._get_method_identifier_index(node)
+        if method_index is None:
+            return None
+
+        index = method_index - 1
+        while index >= 0 and children[index].type in (".", "::"):
+            index -= 1
+        if index < 0:
+            return None
+        return children[index]
 
     @staticmethod
     def _get_arguments(node: Any) -> list[Any]:
@@ -171,6 +206,84 @@ class JavaRCEAstRule(SecurityRule):
             if self._subtree_has_user_input(child, context):
                 return True
         return False
+
+    def _track_declared_receiver_type(self, node: Any) -> None:
+        type_name = self._extract_declared_type(node)
+        if not type_name:
+            return
+
+        for child in getattr(node, "children", []) or []:
+            if child.type == "identifier":
+                name = self._get_node_text(child)
+                if name:
+                    self._receiver_types[name] = type_name
+            elif child.type == "variable_declarator":
+                var_name = self._extract_variable_declarator_name(child)
+                if var_name:
+                    self._receiver_types[var_name] = type_name
+
+    def _has_dangerous_receiver(self, node: Any, method_name: str) -> bool:
+        receiver = self._get_receiver_node(node)
+        receiver_type = self._resolve_receiver_type(receiver)
+
+        if method_name == "exec":
+            return receiver_type == "Runtime"
+        if method_name == "start":
+            return receiver_type == "ProcessBuilder"
+        if method_name == "eval":
+            return receiver_type in _SCRIPT_ENGINE_RECEIVERS
+        if method_name == "loadLibrary":
+            return receiver_type == "System"
+        return False
+
+    def _resolve_receiver_type(self, receiver: Any | None) -> str | None:
+        if receiver is None:
+            return None
+
+        receiver_text = (self._get_node_text(receiver) or "").strip()
+        if not receiver_text:
+            return None
+
+        simple_receiver = self._simple_type_name(receiver_text)
+        if simple_receiver in _RCE_RECEIVERS:
+            return simple_receiver
+        if receiver_text.endswith("Runtime.getRuntime()"):
+            return "Runtime"
+
+        if receiver.type == "object_creation_expression":
+            return self._extract_created_type(receiver)
+
+        if receiver.type == "method_invocation" and receiver_text.endswith("Runtime.getRuntime()"):
+            return "Runtime"
+
+        receiver_name = receiver_text.rsplit(".", 1)[-1]
+        return self._receiver_types.get(receiver_text) or self._receiver_types.get(receiver_name)
+
+    def _extract_declared_type(self, node: Any) -> str | None:
+        for child in getattr(node, "children", []) or []:
+            if child.type in ("type_identifier", "scoped_type_identifier", "generic_type"):
+                return self._simple_type_name(self._get_node_text(child) or "")
+        return None
+
+    def _extract_created_type(self, node: Any) -> str | None:
+        for child in getattr(node, "children", []) or []:
+            if child.type in ("type_identifier", "scoped_type_identifier", "generic_type"):
+                return self._simple_type_name(self._get_node_text(child) or "")
+        return None
+
+    def _extract_variable_declarator_name(self, node: Any) -> str | None:
+        for child in getattr(node, "children", []) or []:
+            if child.type == "identifier":
+                return self._get_node_text(child)
+        return None
+
+    @staticmethod
+    def _simple_type_name(type_text: str) -> str:
+        clean = type_text.strip()
+        if "<" in clean:
+            clean = clean.split("<", 1)[0]
+        clean = clean.replace("[]", "").strip()
+        return clean.rsplit(".", 1)[-1]
 
     def _report(self, node: Any, context: AnalysisContext, method_name: str) -> None:
         line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0

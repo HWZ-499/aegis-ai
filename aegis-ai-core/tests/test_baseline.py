@@ -6,6 +6,7 @@ from pathlib import Path
 from src.scanner.baseline import (
     Baseline,
     BaselineFinding,
+    BaselineLoadError,
     _fingerprint,
     filter_suppressed_findings,
 )
@@ -56,6 +57,19 @@ def test_baseline_save_and_load(tmp_path: Path) -> None:
     loaded = Baseline.load(path)
     assert len(loaded._by_fingerprint) == 2
     assert "fp1" in loaded._by_fingerprint
+
+
+def test_baseline_load_rejects_invalid_json(tmp_path: Path) -> None:
+    """损坏 baseline 不应被当作空 baseline 继续使用。"""
+    path = tmp_path / ".aegis-baseline.json"
+    path.write_text("{ not valid json", encoding="utf-8")
+
+    try:
+        Baseline.load(path)
+    except BaselineLoadError as exc:
+        assert ".aegis-baseline.json" in str(exc)
+    else:
+        raise AssertionError("Expected BaselineLoadError for corrupt baseline")
 
 
 def test_baseline_contains_and_diff(tmp_path: Path) -> None:
