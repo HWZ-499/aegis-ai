@@ -677,6 +677,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   // aegis-ai-core directory: LSP Server needs to run in aegis-ai-core.
   let backendLaunch;
   try {
+    const backendLaunchStartedAt = Date.now();
     backendLaunch = await window.withProgress(
       {
         location: ProgressLocation.Notification,
@@ -696,6 +697,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
             : [],
         }),
     );
+    outputChannel.appendLine(`[Aegis] Backend launch resolved in ${Date.now() - backendLaunchStartedAt}ms`);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     outputChannel.appendLine(`[Aegis] Backend startup failed: ${message}`);
@@ -752,6 +754,8 @@ export async function activate(context: ExtensionContext): Promise<void> {
       { scheme: "file", language: "php" },
       { scheme: "file", language: "java" },
       { scheme: "file", language: "go" },
+      { scheme: "file", language: "c" },
+      { scheme: "file", language: "cpp" },
     ],
     outputChannel: outputChannel,
     revealOutputChannelOn: RevealOutputChannelOn.Error,
@@ -769,7 +773,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     },
     synchronize: {
       fileEvents: workspace.createFileSystemWatcher(
-        "**/*.{js,jsx,ts,tsx,py,php,phtml,java,go}"
+        "**/*.{js,jsx,ts,tsx,py,php,phtml,java,go,c,cpp,cc,cxx,h,hpp,hxx}"
       ),
     },
   };
@@ -782,9 +786,10 @@ export async function activate(context: ExtensionContext): Promise<void> {
     clientOptions
   );
 
+  const lspStartStartedAt = Date.now();
   client.start().then(
     () => {
-      outputChannel.appendLine("[Aegis] LSP Server connected.");
+      outputChannel.appendLine(`[Aegis] LSP Server connected (${Date.now() - lspStartStartedAt}ms).`);
       updateStatusBar("ready");
 
       window.showInformationMessage("Aegis AI Security Scanner is now active.");

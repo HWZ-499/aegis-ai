@@ -61,6 +61,8 @@
     "onLanguage:php",
     "onLanguage:java",
     "onLanguage:go",
+    "onLanguage:c",
+    "onLanguage:cpp",
     "onCommand:aegisAI.scanCurrentFile",
     "onCommand:aegisAI.scanWorkspace",
     "onCommand:aegisAI.showOutput",
@@ -205,7 +207,7 @@
     "viewsWelcome": [
       {
         "view": "aegisFindings",
-        "contents": "No security issues found.\n\nOpen a supported file (JS/TS/Python/PHP/Java/Go) and save it to trigger a scan, or use the command:\n[Scan Current File](command:aegisAI.scanCurrentFile)\n[Scan Workspace](command:aegisAI.scanWorkspace)"
+        "contents": "No security issues found.\n\nOpen a supported file (JS/TS/Python/PHP/Java/Go/C/C++) and save it to trigger a scan, or use the command:\n[Scan Current File](command:aegisAI.scanCurrentFile)\n[Scan Workspace](command:aegisAI.scanWorkspace)"
       }
     ],
     "configuration": {

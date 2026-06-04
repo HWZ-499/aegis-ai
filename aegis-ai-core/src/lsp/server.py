@@ -73,6 +73,13 @@ EXTENSION_LANGUAGE_MAP: dict[str, str] = {
     ".php5": "php",
     ".java": "java",
     ".go": "go",
+    ".c": "c",
+    ".cpp": "cpp",
+    ".cc": "cpp",
+    ".cxx": "cpp",
+    ".h": "c",
+    ".hpp": "cpp",
+    ".hxx": "cpp",
 }
 
 #: Scanner severity -> LSP DiagnosticSeverity
@@ -763,6 +770,7 @@ def scan_document(
         return []
 
     from ..analysis.rule_engine import (
+        analyze_c_cpp,
         analyze_go,
         analyze_java,
         analyze_javascript,
@@ -814,6 +822,8 @@ def scan_document(
                     rules_allowed_root=rules_allowed_root,
                 ),
             )
+        elif language in ("c", "cpp"):
+            return cast(list[dict[str, Any]], analyze_c_cpp(source, file_path))
     except Exception as e:  # Intentional: re-raises as ScanError
         logger.exception("Scan failed for %s", file_path)
         raise ScanError(str(e)) from e

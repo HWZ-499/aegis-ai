@@ -481,6 +481,74 @@ def analyze_go(
     )
 
 
+def _merge_basic_findings(primary_findings: list[dict], regex_findings: list[dict]) -> list[dict]:
+    """Merge legacy multi-language and regex findings by line/type."""
+    findings_by_key: dict[tuple[int, str], dict[str, Any]] = {}
+    severity_order = {"Critical": 4, "High": 3, "Medium": 2, "Low": 1}
+
+    def _normalized(finding: dict, source: str) -> dict[str, Any]:
+        details = finding.get("details", finding.get("content", ""))
+        return {
+            "line": finding.get("line", 0),
+            "type": finding.get("type", "Unknown"),
+            "severity": finding.get("severity", "Medium"),
+            "details": details,
+            "source": finding.get("source", source),
+            **{
+                k: v
+                for k, v in finding.items()
+                if k not in ("line", "type", "severity", "details", "content", "source")
+            },
+        }
+
+    for finding in primary_findings:
+        normalized = _normalized(finding, "AST+Regex")
+        key = (int(normalized.get("line", 0) or 0), str(normalized.get("type", "")))
+        findings_by_key[key] = normalized
+
+    for finding in regex_findings:
+        normalized = _normalized(finding, "Regex")
+        key = (int(normalized.get("line", 0) or 0), str(normalized.get("type", "")))
+        existing = findings_by_key.get(key)
+        if existing is None:
+            findings_by_key[key] = normalized
+            continue
+        existing_severity = severity_order.get(str(existing.get("severity", "")), 0)
+        new_severity = severity_order.get(str(normalized.get("severity", "")), 0)
+        if new_severity > existing_severity:
+            findings_by_key[key] = normalized
+
+    return sorted(findings_by_key.values(), key=lambda item: int(item.get("line", 0) or 0))
+
+
+def analyze_c_cpp(code: str, file_path: Path | str) -> list[dict]:
+    """
+    Analyze C/C++ files with the shared basic support path.
+
+    This intentionally remains a lightweight fallback, not full C/C++ AST/taint support.
+    """
+    from .multi_language_ast import analyze_code_multi_language
+    from .security_rules import filter_cpp_findings, scan_code_locally
+
+    path = Path(file_path)
+    try:
+        multi_language_findings = analyze_code_multi_language(code, file_path=str(path))
+    except (RuntimeError, ValueError):
+        logger.exception("analyze_c_cpp (multi-language) failed for %s", path)
+        multi_language_findings = []
+
+    try:
+        regex_findings = scan_code_locally(code, file_path=str(path))
+    except (RuntimeError, ValueError):
+        logger.exception("analyze_c_cpp (regex) failed for %s", path)
+        regex_findings = []
+
+    return cast(
+        list[dict],
+        filter_cpp_findings(code, _merge_basic_findings(multi_language_findings, regex_findings)),
+    )
+
+
 def analyze_php(code: str, file_path: Path | str) -> list[dict]:
     """
     分析单个 PHP 文件。
@@ -568,6 +636,7 @@ __all__ = [
     "analyze_java",
     "analyze_go",
     "analyze_php",
+    "analyze_c_cpp",
     # Deprecated: old PHP line-level rules, kept for backward compat
     "PhpSQLInjectionRule",
     "PhpRCERule",

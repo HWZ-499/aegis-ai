@@ -1,10 +1,12 @@
 const fs = require("fs");
+const crypto = require("crypto");
 const path = require("path");
 
 const extensionRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(extensionRoot, "..");
 const coreRoot = path.join(repoRoot, "aegis-ai-core");
 const targetRoot = path.join(extensionRoot, "resources", "aegis-ai-core");
+const manifestName = "backend-manifest.json";
 
 const excludedDirectories = new Set([
   ".aegis-cache",
@@ -55,6 +57,45 @@ function copyRecursive(sourcePath, targetPath) {
   fs.copyFileSync(sourcePath, targetPath);
 }
 
+function listFiles(root, current = root) {
+  const entries = fs.readdirSync(current, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const fullPath = path.join(current, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...listFiles(root, fullPath));
+    } else if (entry.isFile() && entry.name !== manifestName) {
+      files.push(path.relative(root, fullPath).replace(/\\/g, "/"));
+    }
+  }
+  return files.sort();
+}
+
+function writeBackendManifest() {
+  const files = listFiles(targetRoot);
+  const hash = crypto.createHash("sha256");
+  for (const rel of files) {
+    const fullPath = path.join(targetRoot, rel);
+    hash.update(rel);
+    hash.update("\0");
+    hash.update(fs.readFileSync(fullPath));
+    hash.update("\0");
+  }
+  fs.writeFileSync(
+    path.join(targetRoot, manifestName),
+    JSON.stringify(
+      {
+        manifestVersion: 1,
+        fingerprint: hash.digest("hex"),
+        files: files.length,
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+}
+
 function main() {
   assertExists(path.join(coreRoot, "pyproject.toml"), "aegis-ai-core pyproject.toml");
   assertExists(path.join(coreRoot, "src", "lsp", "__main__.py"), "Aegis LSP entry point");
@@ -64,6 +105,7 @@ function main() {
 
   fs.copyFileSync(path.join(coreRoot, "pyproject.toml"), path.join(targetRoot, "pyproject.toml"));
   copyRecursive(path.join(coreRoot, "src"), path.join(targetRoot, "src"));
+  writeBackendManifest();
 
   console.log(`[Aegis] Prepared bundled backend at ${targetRoot}`);
 }
