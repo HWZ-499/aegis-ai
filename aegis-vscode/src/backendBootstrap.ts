@@ -40,13 +40,20 @@ export interface BackendLaunchInput {
 }
 
 interface BackendStamp {
-  backendPath: string;
+  backendPath?: string;
+  backendFingerprint?: string;
   backendVersion: string;
   bootstrapVersion: number;
 }
 
+interface BackendManifest {
+  fingerprint?: string;
+  manifestVersion?: number;
+}
+
 const BOOTSTRAP_VERSION = 1;
 const BACKEND_TIMEOUT_MS = 10 * 60 * 1000;
+const BACKEND_MANIFEST_NAME = "backend-manifest.json";
 
 function defaultRunProcess(
   file: string,
@@ -162,11 +169,37 @@ function readBackendVersion(backendPath: string): string {
   return match?.[1] ?? "unknown";
 }
 
+function readBackendManifest(backendPath: string): BackendManifest | undefined {
+  const manifestPath = path.join(backendPath, BACKEND_MANIFEST_NAME);
+  if (!fileExists(manifestPath)) {
+    return undefined;
+  }
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as BackendManifest;
+    if (manifest.manifestVersion === 1 && manifest.fingerprint) {
+      return manifest;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 function buildExpectedStamp(backendPath: string): BackendStamp {
-  return {
-    backendPath,
+  const stamp: BackendStamp = {
     backendVersion: readBackendVersion(backendPath),
     bootstrapVersion: BOOTSTRAP_VERSION,
+  };
+  const manifest = readBackendManifest(backendPath);
+  if (manifest?.fingerprint) {
+    return {
+      ...stamp,
+      backendFingerprint: manifest.fingerprint,
+    };
+  }
+  return {
+    ...stamp,
+    backendPath,
   };
 }
 
@@ -176,11 +209,13 @@ function isStampCurrent(stampPath: string, expected: BackendStamp): boolean {
   }
   try {
     const actual = JSON.parse(fs.readFileSync(stampPath, "utf8")) as Partial<BackendStamp>;
-    return (
-      actual.backendPath === expected.backendPath &&
-      actual.backendVersion === expected.backendVersion &&
-      actual.bootstrapVersion === expected.bootstrapVersion
-    );
+    if (actual.backendVersion !== expected.backendVersion || actual.bootstrapVersion !== expected.bootstrapVersion) {
+      return false;
+    }
+    if (expected.backendFingerprint) {
+      return actual.backendFingerprint === expected.backendFingerprint;
+    }
+    return actual.backendPath === expected.backendPath;
   } catch {
     return false;
   }
@@ -191,6 +226,7 @@ async function assertSupportedPython(
   runProcess: RunProcessLike,
   logMessages: string[],
 ): Promise<void> {
+  const startedAt = Date.now();
   const result = await runProcess(pythonPath, ["--version"], { timeout: 5000 });
   const versionOutput = (result.stdout || result.stderr).trim();
   if (!isPythonVersionSupported(versionOutput)) {
@@ -198,7 +234,7 @@ async function assertSupportedPython(
     const detected = parsed ? parsed.raw : versionOutput || "unknown";
     throw new Error(`Python 3.10 or newer is required for Aegis. Detected: ${detected}.`);
   }
-  logMessages.push(`[Aegis] ${versionOutput} found`);
+  logMessages.push(`[Aegis] ${versionOutput} found (${Date.now() - startedAt}ms)`);
 }
 
 async function bootstrapBundledBackend(input: {
@@ -215,23 +251,33 @@ async function bootstrapBundledBackend(input: {
   const managedBackendPath = getManagedBackendPath(input.globalStoragePath);
   const venvPython = getVenvPythonPath(input.globalStoragePath);
   const stampPath = getStampPath(input.globalStoragePath);
+  const stampStartedAt = Date.now();
   const expectedStamp = buildExpectedStamp(input.backendPath);
+  logMessages.push(`[Aegis] Backend stamp check completed (${Date.now() - stampStartedAt}ms)`);
   fs.mkdirSync(backendStateDir, { recursive: true });
 
   if (fileExists(venvPython) && directoryExists(managedBackendPath) && isStampCurrent(stampPath, expectedStamp)) {
     logMessages.push(`[Aegis] Using existing bundled backend environment: ${venvPython}`);
   } else {
     const venvDir = path.dirname(path.dirname(venvPython));
+    const stageStartedAt = Date.now();
     stageBundledBackend(input.backendPath, managedBackendPath);
+    logMessages.push(`[Aegis] Bundled backend staged (${Date.now() - stageStartedAt}ms)`);
     logMessages.push(`[Aegis] Creating bundled backend environment: ${venvDir}`);
+    const venvStartedAt = Date.now();
     await input.runProcess(input.pythonPath, ["-m", "venv", venvDir], { timeout: BACKEND_TIMEOUT_MS });
+    logMessages.push(`[Aegis] Python venv created (${Date.now() - venvStartedAt}ms)`);
+    const pipUpgradeStartedAt = Date.now();
     await input.runProcess(venvPython, ["-m", "pip", "install", "--upgrade", "pip"], {
       timeout: BACKEND_TIMEOUT_MS,
     });
+    logMessages.push(`[Aegis] pip upgraded (${Date.now() - pipUpgradeStartedAt}ms)`);
+    const installStartedAt = Date.now();
     await input.runProcess(venvPython, ["-m", "pip", "install", managedBackendPath], {
       cwd: managedBackendPath,
       timeout: BACKEND_TIMEOUT_MS,
     });
+    logMessages.push(`[Aegis] Bundled backend pip install completed (${Date.now() - installStartedAt}ms)`);
     fs.writeFileSync(stampPath, JSON.stringify(expectedStamp, null, 2), "utf8");
     logMessages.push(`[Aegis] Bundled backend installed from ${input.backendPath}`);
   }

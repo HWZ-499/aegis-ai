@@ -11,7 +11,7 @@ import {
   RunProcessLike,
 } from "../../backendBootstrap";
 
-function createBundledBackend(extensionPath: string): string {
+function createBundledBackend(extensionPath: string, fingerprint?: string): string {
   const backendPath = path.join(extensionPath, "resources", "aegis-ai-core");
   fs.mkdirSync(path.join(backendPath, "src", "lsp"), { recursive: true });
   fs.writeFileSync(
@@ -25,6 +25,13 @@ function createBundledBackend(extensionPath: string): string {
     "utf8",
   );
   fs.writeFileSync(path.join(backendPath, "src", "lsp", "__main__.py"), "", "utf8");
+  if (fingerprint) {
+    fs.writeFileSync(
+      path.join(backendPath, "backend-manifest.json"),
+      JSON.stringify({ manifestVersion: 1, fingerprint, files: 2 }, null, 2),
+      "utf8",
+    );
+  }
   return backendPath;
 }
 
@@ -127,5 +134,92 @@ suite("backendBootstrap", () => {
     assert.strictEqual(launch.cwd, explicitCwd);
     assert.strictEqual(launch.pythonPath, "python");
     assert.ok(!calls.some((call) => call.includes("-m venv")));
+  });
+
+  test("reuses bundled backend when manifest fingerprint is unchanged across extension paths", async () => {
+    const firstExtensionPath = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-ext-"));
+    const secondExtensionPath = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-ext-"));
+    const globalStoragePath = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-storage-"));
+    createBundledBackend(firstExtensionPath, "same-fingerprint");
+    createBundledBackend(secondExtensionPath, "same-fingerprint");
+    const calls: string[] = [];
+    const runProcess: RunProcessLike = async (file, args) => {
+      calls.push([file, ...args].join(" "));
+      if (args[0] === "-m" && args[1] === "venv") {
+        fs.mkdirSync(path.dirname(getVenvPythonPath(globalStoragePath)), { recursive: true });
+        fs.writeFileSync(getVenvPythonPath(globalStoragePath), "", "utf8");
+      }
+      return { stdout: args.includes("--version") ? "Python 3.11.9" : "", stderr: "" };
+    };
+
+    await ensureBackendLaunch({
+      explicitCwd: "",
+      extensionPath: firstExtensionPath,
+      globalStoragePath,
+      preferBundledBackend: true,
+      pythonPath: "python",
+      serverModule: "src.lsp",
+      workspaceFolders: [],
+      runProcess,
+    });
+    calls.length = 0;
+
+    const launch = await ensureBackendLaunch({
+      explicitCwd: "",
+      extensionPath: secondExtensionPath,
+      globalStoragePath,
+      preferBundledBackend: true,
+      pythonPath: "python",
+      serverModule: "src.lsp",
+      workspaceFolders: [],
+      runProcess,
+    });
+
+    assert.strictEqual(launch.source, "bundled");
+    assert.ok(!calls.some((call) => call.includes("-m venv")));
+    assert.ok(!calls.some((call) => call.includes("-m pip install")));
+  });
+
+  test("reinstalls bundled backend when manifest fingerprint changes", async () => {
+    const firstExtensionPath = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-ext-"));
+    const secondExtensionPath = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-ext-"));
+    const globalStoragePath = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-storage-"));
+    createBundledBackend(firstExtensionPath, "old-fingerprint");
+    createBundledBackend(secondExtensionPath, "new-fingerprint");
+    const calls: string[] = [];
+    const runProcess: RunProcessLike = async (file, args) => {
+      calls.push([file, ...args].join(" "));
+      if (args[0] === "-m" && args[1] === "venv") {
+        fs.mkdirSync(path.dirname(getVenvPythonPath(globalStoragePath)), { recursive: true });
+        fs.writeFileSync(getVenvPythonPath(globalStoragePath), "", "utf8");
+      }
+      return { stdout: args.includes("--version") ? "Python 3.11.9" : "", stderr: "" };
+    };
+
+    await ensureBackendLaunch({
+      explicitCwd: "",
+      extensionPath: firstExtensionPath,
+      globalStoragePath,
+      preferBundledBackend: true,
+      pythonPath: "python",
+      serverModule: "src.lsp",
+      workspaceFolders: [],
+      runProcess,
+    });
+    calls.length = 0;
+
+    await ensureBackendLaunch({
+      explicitCwd: "",
+      extensionPath: secondExtensionPath,
+      globalStoragePath,
+      preferBundledBackend: true,
+      pythonPath: "python",
+      serverModule: "src.lsp",
+      workspaceFolders: [],
+      runProcess,
+    });
+
+    assert.ok(calls.some((call) => call.includes("python -m venv")));
+    assert.ok(calls.some((call) => call.includes("-m pip install")));
   });
 });

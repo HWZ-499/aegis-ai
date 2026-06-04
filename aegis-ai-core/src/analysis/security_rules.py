@@ -684,6 +684,147 @@ def _strip_comments_and_strings(line: str, language: str = "python") -> str:
     return line.strip()
 
 
+_CPP_CHAR_ARRAY_DECL_RE = re.compile(r"\bchar\s+(?!\*)\s*(?P<name>[A-Za-z_]\w*)\s*\[\s*(?P<size>\d+)\s*\]")
+_CPP_STRCPY_LITERAL_RE = re.compile(
+    r"""\bstrcpy\s*\(\s*(?P<dest>[^,]+?)\s*,\s*(?P<src>(?:u8|u|U|L)?\"(?:\\.|[^\"\\])*\")\s*\)""",
+    re.IGNORECASE,
+)
+_CPP_CIN_RE = re.compile(r"\bcin\b")
+_CPP_STREAM_EXTRACT_RE = re.compile(r">>\s*(?P<name>[A-Za-z_]\w*)")
+
+
+def _cpp_char_array_sizes(code_content: str) -> dict[str, int]:
+    """Return simple char array declarations keyed by variable/field name."""
+    sizes: dict[str, int] = {}
+    for line in code_content.split("\n"):
+        code_only = _strip_comments_and_strings(line, "cpp")
+        for match in _CPP_CHAR_ARRAY_DECL_RE.finditer(code_only):
+            size = int(match.group("size"))
+            if size > 0:
+                sizes[match.group("name")] = size
+    return sizes
+
+
+def _cpp_destination_name(dest_expr: str) -> str | None:
+    """Extract the final field/identifier from a C/C++ destination expression."""
+    cleaned = dest_expr.strip()
+    match = re.search(r"(?:->|\.)\s*([A-Za-z_]\w*)\s*$", cleaned)
+    if match:
+        return match.group(1)
+    match = re.search(r"\b([A-Za-z_]\w*)\s*$", cleaned)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _cpp_string_literal_length(raw_literal: str) -> int:
+    """Approximate the runtime length of a C/C++ string literal."""
+    match = re.match(r'(?:u8|u|U|L)?"(?P<body>(?:\\.|[^"\\])*)"$', raw_literal.strip())
+    if not match:
+        return len(raw_literal)
+    body = match.group("body")
+    length = 0
+    idx = 0
+    while idx < len(body):
+        if body[idx] != "\\":
+            length += 1
+            idx += 1
+            continue
+        length += 1
+        idx += 1
+        if idx >= len(body):
+            break
+        if body[idx] in {"x", "X"}:
+            idx += 1
+            while idx < len(body) and body[idx] in "0123456789abcdefABCDEF":
+                idx += 1
+            continue
+        if body[idx] in "01234567":
+            consumed = 0
+            while idx < len(body) and body[idx] in "01234567" and consumed < 3:
+                idx += 1
+                consumed += 1
+            continue
+        idx += 1
+    return length
+
+
+def _cpp_safe_strcpy_literal_lines(code_content: str) -> set[int]:
+    """Find strcpy(destination, "literal") calls provably fitting a visible char[N]."""
+    char_arrays = _cpp_char_array_sizes(code_content)
+    safe_lines: set[int] = set()
+    if not char_arrays:
+        return safe_lines
+
+    for line_idx, line in enumerate(code_content.split("\n"), 1):
+        match = _CPP_STRCPY_LITERAL_RE.search(line)
+        if not match:
+            continue
+        dest_name = _cpp_destination_name(match.group("dest"))
+        if not dest_name:
+            continue
+        dest_size = char_arrays.get(dest_name)
+        if dest_size is None:
+            continue
+        literal_len = _cpp_string_literal_length(match.group("src"))
+        if literal_len + 1 <= dest_size:
+            safe_lines.add(line_idx)
+    return safe_lines
+
+
+def filter_cpp_findings(code_content: str, findings: list[dict]) -> list[dict]:
+    """Apply narrow C/C++ false-positive filters shared by CLI and LSP."""
+    safe_strcpy_lines = _cpp_safe_strcpy_literal_lines(code_content)
+    if not safe_strcpy_lines:
+        return findings
+
+    filtered: list[dict] = []
+    for finding in findings:
+        line = int(finding.get("line", 0) or 0)
+        vuln_type = finding.get("type", "")
+        details = str(finding.get("details", finding.get("content", "")))
+        if vuln_type == "BUFFER_OVERFLOW" and line in safe_strcpy_lines and "strcpy" in details:
+            continue
+        filtered.append(finding)
+    return filtered
+
+
+def _scan_cpp_cin_into_char_arrays(code_content: str) -> list[dict[str, Any]]:
+    """Detect unbounded std::cin extraction into fixed char arrays."""
+    char_arrays = _cpp_char_array_sizes(code_content)
+    if not char_arrays:
+        return []
+
+    findings: list[dict[str, Any]] = []
+    for line_idx, line in enumerate(code_content.split("\n"), 1):
+        code_only = _strip_comments_and_strings(line, "cpp")
+        if not _CPP_CIN_RE.search(code_only) or "setw" in code_only:
+            continue
+        reported_line = False
+        for match in _CPP_STREAM_EXTRACT_RE.finditer(code_only):
+            name = match.group("name")
+            size = char_arrays.get(name)
+            if size is None:
+                continue
+            findings.append(
+                {
+                    "line": line_idx,
+                    "type": "BUFFER_OVERFLOW",
+                    "severity": "Critical",
+                    "content": (
+                        f"C/C++: cin 写入固定 char[{size}] 数组 `{name}`，未限制输入长度 - {line.strip()[:60]}"
+                    ),
+                    "confidence": "High",
+                }
+            )
+            reported_line = True
+            break
+        if reported_line:
+            continue
+
+    return findings
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  PHP 行级赋值链追踪器（PHP TaintGraph MVP）
 # ═══════════════════════════════════════════════════════════════════
@@ -1823,5 +1964,9 @@ def scan_code_locally(code_content, file_path=None):
                         }
                     )
                     break  # 同一行同一种漏洞只报一次
+
+    if language == "cpp":
+        findings.extend(_scan_cpp_cin_into_char_arrays(code_content))
+        findings = filter_cpp_findings(code_content, findings)
 
     return findings

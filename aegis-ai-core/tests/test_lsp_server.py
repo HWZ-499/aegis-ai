@@ -181,6 +181,9 @@ class TestDetectLanguage:
             ("component.tsx", "typescript"),
             ("script.py", "python"),
             ("script.pyw", "python"),
+            ("main.c", "c"),
+            ("main.cpp", "cpp"),
+            ("main.hpp", "cpp"),
         ],
     )
     def test_supported_extensions(self, path, expected):
@@ -212,6 +215,14 @@ class TestDetectLanguage:
         """完整路径也能正确检测。"""
         assert detect_language("/home/user/project/src/app.js") == "javascript"
         assert detect_language("C:\\Users\\foo\\bar.py") == "python"
+
+    def test_scan_document_supports_cpp(self):
+        """LSP 单文件扫描应覆盖 VS Code 中打开的 C++ 文件。"""
+        source = "char name[20];\nvoid f() { cin >> name; }\n"
+
+        findings = scan_document(source, "main.cpp")
+
+        assert any(finding.get("type") == "BUFFER_OVERFLOW" for finding in findings)
 
 
 # ============================================================================

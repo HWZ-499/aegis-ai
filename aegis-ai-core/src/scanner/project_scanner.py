@@ -24,6 +24,9 @@ if str(_project_root) not in sys.path:
 
 from src.analysis.multi_language_ast import analyze_code_multi_language
 from src.analysis.rule_based_audit import merge_findings
+from src.analysis.rule_engine import (
+    analyze_c_cpp as analyze_c_cpp_new,
+)
 from src.analysis.rule_engine import analyze_code_ast, scan_code_locally
 from src.analysis.rule_engine import (
     analyze_go as analyze_go_new,
@@ -504,6 +507,8 @@ class ProjectScanner:
                     extra_rule_dirs=extra,
                     rules_allowed_root=root,
                 )
+            elif language in ("c", "cpp"):
+                merged_findings = analyze_c_cpp_new(code, file_path_str)
             else:
                 if language == "python":
                     # 旧版 Python 引擎：AST 分析 + 本地规则匹配

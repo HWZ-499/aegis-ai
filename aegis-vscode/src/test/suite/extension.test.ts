@@ -134,6 +134,36 @@ suite("Extension Test Suite", () => {
     assert.strictEqual(reopenedLine, shiftedLine);
   });
 
+  test("Aegis scans C++ files through the VS Code extension", async function () {
+    this.timeout(90000);
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-ext-cpp-"));
+    const filePath = path.join(tempDir, "course-case.cpp");
+    fs.writeFileSync(
+      filePath,
+      [
+        "#include <iostream>",
+        "using namespace std;",
+        "char name[20] = {'\\0'};",
+        "void readName() {",
+        "  cin >> name;",
+        "}",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const uri = vscode.Uri.file(filePath);
+    const document = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(document);
+
+    await vscode.commands.executeCommand("aegisAI.scanCurrentFile");
+    const count = await waitForAegisDiagnosticCount(uri, (diagnosticCount) => diagnosticCount > 0);
+
+    assert.ok(count > 0);
+    assert.strictEqual(document.languageId, "cpp");
+  });
+
   test("inserting remediation comments does not hide findings and can be undone", async function () {
     this.timeout(90000);
 

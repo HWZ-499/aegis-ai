@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from src.analysis.multi_language_ast import MultiLanguageASTAnalyzer, analyze_code_multi_language
+from src.analysis.rule_engine import analyze_c_cpp
 from src.scanner.project_scanner import ProjectScanner
 from src.scanner.report_generator import ReportGenerator
 
@@ -287,6 +288,52 @@ printf(user_input);
 
     print(f"\n结果: {passed} 通过, {failed} 失败")
     assert failed == 0
+
+
+def test_cpp_cin_into_fixed_char_array_detected():
+    """C/C++ 基础规则应检测 cin 直接写入固定 char 数组。"""
+    code = """
+char name[20] = {'\\0'};
+void read() {
+    cin >> name;
+}
+"""
+
+    findings = analyze_c_cpp(code, "test.cpp")
+
+    assert any(finding.get("type") == "BUFFER_OVERFLOW" and finding.get("line") == 4 for finding in findings)
+
+
+def test_cpp_short_literal_strcpy_to_known_char_array_is_filtered():
+    """能证明字面量放得下时，不应把 strcpy 短常量报成溢出。"""
+    code = """
+typedef struct PCB {
+    char name[20];
+} PCB, *pPCB;
+void initialPCB(pPCB p) {
+    strcpy(p->name, "NoName");
+}
+"""
+
+    findings = analyze_c_cpp(code, "test.cpp")
+
+    assert not any(finding.get("type") == "BUFFER_OVERFLOW" for finding in findings)
+
+
+def test_cpp_variable_strcpy_to_fixed_char_array_still_reported():
+    """变量来源长度未知的 strcpy 仍应保守报告。"""
+    code = """
+typedef struct PCB {
+    char name[20];
+} PCB, *pPCB;
+void createProcess(pPCB newPcb, char *name) {
+    strcpy(newPcb->name, name);
+}
+"""
+
+    findings = analyze_c_cpp(code, "test.cpp")
+
+    assert any(finding.get("type") == "BUFFER_OVERFLOW" and finding.get("line") == 6 for finding in findings)
 
 
 def test_multi_language_project_scan():
