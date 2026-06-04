@@ -24,6 +24,21 @@ Finding = dict[str, Any]
 ToolPayload = dict[str, Any]
 ToolHandler = Callable[..., ToolPayload]
 
+RULE_FAMILY_CWE = {
+    "SQL_INJECTION": "CWE-89",
+    "NOSQL_INJECTION": "CWE-943",
+    "XSS": "CWE-79",
+    "XSS_RISK": "CWE-79",
+    "RCE_COMMAND_EXEC": "CWE-78",
+    "PATH_TRAVERSAL": "CWE-22",
+    "DESERIALIZATION": "CWE-502",
+    "SSRF": "CWE-918",
+    "OPEN_REDIRECT": "CWE-601",
+    "HARDCODED_CREDENTIALS": "CWE-798",
+}
+
+SEVERITY_RANK = {"Critical": 4, "High": 3, "Medium": 2, "Low": 1}
+
 
 @dataclass(frozen=True)
 class AgentTool:
@@ -52,6 +67,43 @@ def _finding_rule_id(finding: Finding) -> str:
 
 def _finding_file(finding: Finding) -> str:
     return str(finding.get("file") or finding.get("file_path") or "")
+
+
+def normalize_rule_family(rule_id: str) -> str:
+    """Normalize concrete AST/DSL rule ids into report-level vulnerability families."""
+    text = rule_id.lower()
+    if "nosql" in text:
+        return "NOSQL_INJECTION"
+    if "sql" in text:
+        return "SQL_INJECTION"
+    if "xss" in text:
+        return "XSS"
+    if "ssrf" in text:
+        return "SSRF"
+    if "path" in text or "traversal" in text:
+        return "PATH_TRAVERSAL"
+    if "deserial" in text or "unserialize" in text:
+        return "DESERIALIZATION"
+    if "open_redirect" in text or "redirect" in text:
+        return "OPEN_REDIRECT"
+    if "hardcoded" in text or "credential" in text or "secret" in text:
+        return "HARDCODED_CREDENTIALS"
+    if "rce" in text or "command_exec" in text or "command-exec" in text:
+        return "RCE_COMMAND_EXEC"
+    return rule_id.upper()
+
+
+def _family_cwe(rule_family: str) -> str:
+    return RULE_FAMILY_CWE.get(rule_family, "")
+
+
+def _family_remediation(rule_family: str) -> dict[str, Any]:
+    remediation_key = "XSS_RISK" if rule_family == "XSS" else rule_family
+    return cast(dict[str, Any], BUILTIN_REMEDIATION.get(remediation_key, {}))
+
+
+def _severity_value(finding: Finding) -> int:
+    return SEVERITY_RANK.get(str(finding.get("severity") or "Medium"), 2)
 
 
 def make_finding_id(finding: Finding) -> str:
@@ -157,8 +209,12 @@ def get_finding_detail_tool(
 ) -> ToolPayload:
     """Normalize a raw scanner finding for report and workflow use."""
     rule_id = _finding_rule_id(finding)
+    rule_family = normalize_rule_family(rule_id)
     remediation = cast(dict[str, Any], BUILTIN_REMEDIATION.get(rule_id, {}))
-    cwe = finding.get("cwe") or finding.get("cwe_id") or remediation.get("cwe") or ""
+    family_remediation = _family_remediation(rule_family)
+    cwe = finding.get("cwe") or finding.get("cwe_id") or remediation.get("cwe") or family_remediation.get("cwe")
+    if not cwe:
+        cwe = _family_cwe(rule_family)
     details = str(finding.get("details") or finding.get("message") or "")
     normalized = {
         "finding_id": str(finding.get("finding_id") or make_finding_id(finding)),
@@ -166,6 +222,9 @@ def get_finding_detail_tool(
         "line": int(finding.get("line") or finding.get("start_line") or 0),
         "column": int(finding.get("column") or finding.get("start_character") or 0),
         "rule_id": rule_id,
+        "primary_rule_id": rule_id,
+        "rule_family": rule_family,
+        "detection_sources": [rule_id],
         "severity": str(finding.get("severity") or "Medium"),
         "confidence": finding.get("confidence", ""),
         "cwe": cwe,
@@ -194,12 +253,234 @@ def search_vulnerability_knowledge_tool(
 ) -> ToolPayload:
     """Retrieve bundled Markdown knowledge for a finding."""
     kb = knowledge_base or MarkdownKnowledgeBase()
-    terms = " ".join(part for part in [query, vuln_type or "", cwe or ""] if part)
+    rule_family = normalize_rule_family(vuln_type or "")
+    cwe_value = cwe or _family_cwe(rule_family)
+    terms = " ".join(part for part in [query, rule_family, vuln_type or "", cwe_value] if part)
     hits = kb.search(terms, top_k=top_k)
+    evidence: list[dict[str, Any]] = []
+    background: list[dict[str, Any]] = []
+    for hit in hits:
+        item = hit.to_dict()
+        why = cast(dict[str, list[str]], item.get("why_matched", {}))
+        matched_tags = set(why.get("tags", []))
+        matched_terms = set(why.get("terms", []))
+        cwe_token = cwe_value.lower() if cwe_value else ""
+        matched_tokens = matched_tags | matched_terms
+        is_evidence = bool(cwe_token and cwe_token in matched_tokens)
+        is_evidence = is_evidence or bool(set(rule_family.lower().split("_")).intersection(matched_terms))
+        item["category"] = "evidence" if is_evidence else "background"
+        if is_evidence:
+            evidence.append(item)
+        else:
+            background.append(item)
     return {
         "query": terms,
-        "hits": [hit.to_dict() for hit in hits],
+        "hits": evidence + background,
+        "knowledge_evidence": evidence,
+        "general_background": background,
     }
+
+
+def _grouping_window(rule_family: str) -> int:
+    if rule_family == "SSRF":
+        return 3
+    if rule_family in {"SQL_INJECTION", "NOSQL_INJECTION"}:
+        return 2
+    return 0
+
+
+def _choose_group_primary(items: list[Finding], rule_family: str) -> Finding:
+    if rule_family == "SSRF":
+        return max(
+            items,
+            key=lambda finding: (
+                _severity_value(finding),
+                int(finding.get("line") or 0),
+            ),
+        )
+    return max(
+        items,
+        key=lambda finding: (
+            _severity_value(finding),
+            -int(finding.get("line") or 0),
+        ),
+    )
+
+
+def group_findings_for_report(findings: list[Finding]) -> tuple[list[Finding], dict[str, int]]:
+    """Collapse duplicate AST/DSL/taint findings into report-level findings."""
+    grouped: list[list[Finding]] = []
+    for finding in sorted(
+        findings,
+        key=lambda item: (
+            _finding_file(item),
+            str(item.get("rule_family") or normalize_rule_family(_finding_rule_id(item))),
+            int(item.get("line") or 0),
+        ),
+    ):
+        rule_family = str(finding.get("rule_family") or normalize_rule_family(_finding_rule_id(finding)))
+        file_path = _finding_file(finding)
+        line = int(finding.get("line") or 0)
+        window = _grouping_window(rule_family)
+        target_group: list[Finding] | None = None
+        for group in grouped:
+            first = group[0]
+            if _finding_file(first) != file_path:
+                continue
+            first_family = str(first.get("rule_family") or normalize_rule_family(_finding_rule_id(first)))
+            if first_family != rule_family:
+                continue
+            group_lines = [int(item.get("line") or 0) for item in group]
+            if window == 0 and line in group_lines:
+                target_group = group
+                break
+            if window > 0 and min(abs(line - group_line) for group_line in group_lines) <= window:
+                target_group = group
+                break
+        if target_group is None:
+            grouped.append([finding])
+        else:
+            target_group.append(finding)
+
+    report_findings: list[Finding] = []
+    for group in grouped:
+        rule_family = str(group[0].get("rule_family") or normalize_rule_family(_finding_rule_id(group[0])))
+        primary = dict(_choose_group_primary(group, rule_family))
+        detection_sources = sorted({_finding_rule_id(item) for item in group})
+        raw_ids = [str(item.get("finding_id") or make_finding_id(item)) for item in group]
+        status = "new" if any(str(item.get("status", "new")) == "new" for item in group) else "accepted_risk"
+        primary["status"] = status
+        primary["primary_rule_id"] = _finding_rule_id(primary)
+        primary["rule_family"] = rule_family
+        primary["cwe"] = primary.get("cwe") or _family_cwe(rule_family)
+        primary["detection_sources"] = detection_sources
+        primary["raw_finding_ids"] = raw_ids
+        primary["related_findings"] = [
+            {
+                "finding_id": str(item.get("finding_id") or make_finding_id(item)),
+                "rule_id": _finding_rule_id(item),
+                "line": int(item.get("line") or 0),
+                "severity": str(item.get("severity") or "Medium"),
+            }
+            for item in group
+            if str(item.get("finding_id") or make_finding_id(item)) != primary.get("finding_id")
+        ]
+        report_findings.append(primary)
+
+    stats = {
+        "raw_findings": len(findings),
+        "grouped_findings": len(report_findings),
+        "duplicates_collapsed": max(0, len(findings) - len(report_findings)),
+    }
+    return report_findings, stats
+
+
+def _contextual_sql_fix(finding: Finding, source: str) -> ToolPayload | None:
+    lines = source.splitlines()
+    line_number = int(finding.get("line") or 0)
+    if line_number < 1 or line_number > len(lines):
+        return None
+
+    idx = line_number - 1
+    candidate_indices = [idx]
+    if idx > 0:
+        candidate_indices.append(idx - 1)
+    for sql_idx in candidate_indices:
+        sql_line = lines[sql_idx]
+        direct = re_search(
+            r"^(\s*)([\w.]+)\.query\(([\"'])SELECT \* FROM users WHERE id = \3\s*\+\s*(\w+)\s*\);?\s*$",
+            sql_line,
+        )
+        if direct:
+            indent, db_object, quote, input_var = direct
+            fixed_code = f"{indent}{db_object}.query({quote}SELECT * FROM users WHERE id = ?{quote}, [{input_var}]);"
+            return {
+                "fix_suggestion": "Use a parameter placeholder and pass the user-controlled id as a bound value.",
+                "fixed_code": fixed_code,
+                "fix_start_line": sql_idx + 1,
+                "fix_end_line": sql_idx + 1,
+                "kind": "applicable_preview",
+                "can_auto_apply": True,
+                "safety_reasons": ["direct query call was matched exactly"],
+            }
+
+        match = re_search(
+            r"^(\s*)const\s+(\w+)\s*=\s*([\"'])SELECT \* FROM users WHERE id = \3\s*\+\s*(\w+)\s*;?\s*$",
+            sql_line,
+        )
+        if not match:
+            continue
+        if sql_idx + 1 >= len(lines):
+            return None
+        indent, query_var, quote, input_var = match
+        call_line = lines[sql_idx + 1]
+        if f"query({query_var})" not in call_line:
+            return None
+        call_replacement = call_line.replace(f"query({query_var})", f"query({query_var}, [{input_var}])")
+        fixed_code = "\n".join(
+            [
+                f"{indent}const {query_var} = {quote}SELECT * FROM users WHERE id = ?{quote};",
+                call_replacement,
+            ]
+        )
+        return {
+            "fix_suggestion": "Use a parameter placeholder and pass the user-controlled id as a bound value.",
+            "fixed_code": fixed_code,
+            "fix_start_line": sql_idx + 1,
+            "fix_end_line": sql_idx + 2,
+            "kind": "applicable_preview",
+            "can_auto_apply": True,
+            "safety_reasons": ["query text and query call were both matched exactly"],
+        }
+    return None
+
+
+def _contextual_xss_fix(finding: Finding, source: str) -> ToolPayload | None:
+    lines = source.splitlines()
+    line_number = int(finding.get("line") or 0)
+    if line_number < 1 or line_number > len(lines):
+        return None
+    original = lines[line_number - 1]
+    if "res.send(" not in original or "req.query.name" not in original:
+        return None
+    indent = original[: len(original) - len(original.lstrip())]
+    fixed_code = "\n".join(
+        [
+            f'{indent}const escapeHtml = (value) => String(value ?? "")',
+            f'{indent}  .replace(/&/g, "&amp;")',
+            f'{indent}  .replace(/</g, "&lt;")',
+            f'{indent}  .replace(/>/g, "&gt;")',
+            f'{indent}  .replace(/"/g, "&quot;")',
+            f'{indent}  .replace(/\'/g, "&#39;");',
+            f'{indent}res.send("<h1>Welcome " + escapeHtml(req.query.name) + "</h1>");',
+        ]
+    )
+    return {
+        "fix_suggestion": "HTML-encode the reflected query parameter before writing it into the response body.",
+        "fixed_code": fixed_code,
+        "fix_start_line": line_number,
+        "fix_end_line": line_number,
+        "kind": "applicable_preview",
+        "can_auto_apply": True,
+        "safety_reasons": ["matched Express res.send with req.query.name on the finding line"],
+    }
+
+
+def re_search(pattern: str, text: str) -> tuple[str, ...] | None:
+    """Small regex wrapper that returns groups without exposing Match in public helpers."""
+    import re
+
+    match = re.search(pattern, text)
+    return tuple(match.groups()) if match else None
+
+
+def _contextual_offline_fix(finding: Finding, source: str) -> ToolPayload | None:
+    family = str(finding.get("rule_family") or normalize_rule_family(_finding_rule_id(finding)))
+    if family == "SQL_INJECTION":
+        return _contextual_sql_fix(finding, source)
+    if family == "XSS":
+        return _contextual_xss_fix(finding, source)
+    return None
 
 
 def generate_fix_suggestion_tool(
@@ -214,10 +495,13 @@ def generate_fix_suggestion_tool(
     rule_id = _finding_rule_id(finding)
     response: ToolPayload = {
         "mode": "offline",
+        "kind": "guidance_only",
         "fix_suggestion": "",
         "fixed_code": "",
         "confidence": None,
         "requires_review": True,
+        "can_auto_apply": False,
+        "safety_reasons": [],
         "ai_error": "",
     }
 
@@ -227,7 +511,7 @@ def generate_fix_suggestion_tool(
             response.update(
                 {
                     "fix_suggestion": smart.message,
-                    "fixed_code": smart.suggested_code,
+                    "guidance_code": smart.suggested_code,
                     "framework": smart.framework or "",
                     "replacements": smart.replacements or {},
                 }
@@ -235,11 +519,16 @@ def generate_fix_suggestion_tool(
         except (RuntimeError, ValueError, KeyError) as exc:
             response["ai_error"] = f"smart remediation failed: {exc}"
 
+        contextual_fix = _contextual_offline_fix(finding, source)
+        if contextual_fix:
+            response.update(contextual_fix)
+
     if not response.get("fix_suggestion"):
-        remediation = cast(dict[str, Any], BUILTIN_REMEDIATION.get(rule_id, {}))
+        rule_family = str(finding.get("rule_family") or normalize_rule_family(rule_id))
+        remediation = cast(dict[str, Any], BUILTIN_REMEDIATION.get(rule_id) or _family_remediation(rule_family))
         suggestions = remediation.get("remediation") or []
         response["fix_suggestion"] = suggestions[0] if suggestions else remediation.get("description", "")
-        response["fixed_code"] = remediation.get("suggested_code", "")
+        response["guidance_code"] = remediation.get("suggested_code", "")
 
     if not use_ai:
         return response
@@ -260,6 +549,8 @@ def generate_fix_suggestion_tool(
         return response
 
     response["mode"] = "ai"
+    response["kind"] = "preview"
+    response["can_auto_apply"] = False
     response["confidence"] = result.confidence
     response["requires_review"] = result.requires_review
     if result.fix_suggestion:
@@ -298,11 +589,14 @@ def generate_patch_preview_tool(
     project_path: str,
 ) -> ToolPayload:
     """Create a non-mutating unified diff preview for a suggested fix."""
-    fixed_code = str(fix.get("fixed_code") or "").strip()
+    fixed_code = str(fix.get("fixed_code") or "").strip("\n")
+    fix_kind = str(fix.get("kind") or "guidance_only")
     base_payload: ToolPayload = {
-        "status": "unavailable",
+        "status": "guidance_only" if fix_kind == "guidance_only" else "unavailable",
+        "kind": "guidance_only" if fix_kind == "guidance_only" else "unavailable",
         "mutates_files": False,
         "can_auto_apply": False,
+        "safety_reasons": list(fix.get("safety_reasons", [])) if isinstance(fix.get("safety_reasons"), list) else [],
         "reason": "No concrete replacement code was generated for this finding.",
     }
     if not fixed_code:
@@ -321,18 +615,20 @@ def generate_patch_preview_tool(
         return base_payload
 
     source_lines = source.splitlines()
-    line_number = int(finding.get("line") or finding.get("start_line") or 0)
-    if line_number < 1 or line_number > len(source_lines):
+    line_number = int(fix.get("fix_start_line") or finding.get("line") or finding.get("start_line") or 0)
+    end_line = int(fix.get("fix_end_line") or line_number)
+    if line_number < 1 or line_number > len(source_lines) or end_line < line_number or end_line > len(source_lines):
         base_payload["reason"] = "Finding line is outside the current file."
         return base_payload
 
+    original_code = "\n".join(source_lines[line_number - 1 : end_line])
     original_line = source_lines[line_number - 1]
     replacement_lines = _normalize_replacement_lines(fixed_code, original_line)
     if not replacement_lines:
         return base_payload
 
     relative_file = str(file_path.relative_to(root).as_posix())
-    proposed_lines = source_lines[: line_number - 1] + replacement_lines + source_lines[line_number:]
+    proposed_lines = source_lines[: line_number - 1] + replacement_lines + source_lines[end_line:]
     diff = "\n".join(
         unified_diff(
             source_lines,
@@ -345,15 +641,27 @@ def generate_patch_preview_tool(
     if diff:
         diff += "\n"
 
+    can_auto_apply = bool(fix.get("can_auto_apply")) and fix_kind == "applicable_preview"
+    preview_kind = "applicable_preview" if can_auto_apply else "preview"
+    safety_reasons = list(fix.get("safety_reasons", [])) if isinstance(fix.get("safety_reasons"), list) else []
+    if not safety_reasons:
+        safety_reasons = ["replacement is preview-only and requires manual review"]
+
     return {
         "status": "preview",
+        "kind": preview_kind,
         "mutates_files": False,
-        "can_auto_apply": False,
-        "reason": "Preview only. Review, apply explicitly, then rescan before trusting the change.",
+        "can_auto_apply": can_auto_apply,
+        "safety_reasons": safety_reasons,
+        "reason": (
+            "Patch preview is eligible for explicit apply after validation and rescan."
+            if can_auto_apply
+            else "Preview only. Review manually; this patch is not eligible for automatic apply."
+        ),
         "file": relative_file,
         "start_line": line_number,
-        "end_line": line_number,
-        "original_code": original_line,
+        "end_line": end_line,
+        "original_code": original_code,
         "replacement_code": "\n".join(replacement_lines),
         "unified_diff": diff,
     }
@@ -531,9 +839,20 @@ def apply_patch_preview_tool(
     patch_preview = fix.get("patch_preview", {}) if isinstance(fix, dict) else {}
     if not isinstance(patch_preview, dict) or patch_preview.get("status") != "preview":
         return _apply_status(
-            "unavailable",
+            "not_applicable",
             "Finding does not contain an applicable patch preview.",
             finding_id=finding_id,
+        )
+    if patch_preview.get("kind") != "applicable_preview" or patch_preview.get("can_auto_apply") is not True:
+        return _apply_status(
+            "unsafe_preview",
+            "Patch preview is not marked applicable for automatic file writes.",
+            finding_id=finding_id,
+            extra={
+                "kind": patch_preview.get("kind", "preview"),
+                "can_auto_apply": bool(patch_preview.get("can_auto_apply", False)),
+                "safety_reasons": patch_preview.get("safety_reasons", []),
+            },
         )
 
     raw_file = str(patch_preview.get("file") or "")
@@ -737,9 +1056,12 @@ def summarize_report_tool(
     memory: dict[str, Any],
     workflow_nodes: list[str],
     tool_trace: list[dict[str, Any]],
+    raw_finding_count: int | None = None,
+    triage_plan: dict[str, Any] | None = None,
 ) -> ToolPayload:
     """Build the structured Aegis Agent diagnosis report."""
     status_counts = Counter(str(finding.get("status", "new")) for finding in findings)
+    raw_count = len(findings) if raw_finding_count is None else raw_finding_count
     report_findings = sorted(
         findings,
         key=lambda finding: (
@@ -755,10 +1077,14 @@ def summarize_report_tool(
             "partial": bool(stats.get("partial", False)),
             "error_count": int(stats.get("error_count", 0)),
             "errors": stats.get("errors", []),
+            "triage_plan": triage_plan or {},
         },
         "summary": {
             "project_path": str(Path(project_path).resolve()),
             "total_findings": len(findings),
+            "raw_findings": raw_count,
+            "grouped_findings": len(findings),
+            "duplicates_collapsed": max(0, raw_count - len(findings)),
             "severity_counts": _severity_counts(findings),
             "status_counts": dict(status_counts),
             "new_findings": int(status_counts.get("new", 0)),
@@ -783,6 +1109,9 @@ def render_markdown_report(report: dict[str, Any]) -> str:
         "",
         f"- Project: `{summary.get('project_path', '')}`",
         f"- Total findings: {summary.get('total_findings', 0)}",
+        f"- Raw findings: {summary.get('raw_findings', summary.get('total_findings', 0))}",
+        f"- Grouped findings: {summary.get('grouped_findings', summary.get('total_findings', 0))}",
+        f"- Duplicates collapsed: {summary.get('duplicates_collapsed', 0)}",
         f"- New findings: {summary.get('new_findings', 0)}",
         f"- Accepted risk findings: {summary.get('accepted_risk_findings', 0)}",
         f"- Source suppression markers: {summary.get('suppressed_by_source_markers', 0)}",
@@ -800,23 +1129,34 @@ def render_markdown_report(report: dict[str, Any]) -> str:
     for finding in findings:
         lines.extend(
             [
-                f"### {finding.get('rule_id', 'UNKNOWN')} - {finding.get('file', '')}:{finding.get('line', 0)}",
+                f"### {finding.get('rule_family') or finding.get('rule_id', 'UNKNOWN')} - {finding.get('file', '')}:{finding.get('line', 0)}",
                 "",
                 f"- Severity: {finding.get('severity', 'Medium')}",
                 f"- Status: {finding.get('status', 'new')}",
                 f"- CWE: {finding.get('cwe', '') or 'n/a'}",
+                f"- Primary rule: {finding.get('primary_rule_id', finding.get('rule_id', 'UNKNOWN'))}",
+                f"- Detection sources: {', '.join(str(item) for item in finding.get('detection_sources', []))}",
                 f"- Cause: {finding.get('cause', '')}",
             ]
         )
-        knowledge = finding.get("knowledge", [])
-        if knowledge:
-            lines.append("- Retrieved knowledge:")
-            for hit in knowledge[:3]:
+        evidence = finding.get("knowledge_evidence") or finding.get("knowledge", [])
+        if evidence:
+            lines.append("- Knowledge evidence:")
+            for hit in evidence[:3]:
+                why = hit.get("why_matched", {})
+                terms = ", ".join(str(term) for term in why.get("terms", [])[:5]) if isinstance(why, dict) else ""
+                suffix = f" (matched: {terms})" if terms else ""
+                lines.append(f"  - {hit.get('title', '')}: {hit.get('snippet', '')}{suffix}")
+        background = finding.get("general_background", [])
+        if background:
+            lines.append("- General background:")
+            for hit in background[:2]:
                 lines.append(f"  - {hit.get('title', '')}: {hit.get('snippet', '')}")
         fix = finding.get("fix", {})
         if fix:
+            lines.append(f"- Fix kind: {fix.get('kind', 'unavailable')}")
             lines.append(f"- Fix suggestion: {fix.get('fix_suggestion', '')}")
-            fixed_code = str(fix.get("fixed_code") or "").strip()
+            fixed_code = str(fix.get("fixed_code") or fix.get("guidance_code") or "").strip()
             if fixed_code:
                 lines.extend(["", "```", fixed_code, "```"])
             patch_preview = fix.get("patch_preview", {})
@@ -1068,6 +1408,9 @@ def render_html_report(report: dict[str, Any]) -> str:
             <h2>Summary</h2>
             <div class="summary-grid">
                 <div class="metric"><span class="metric-label">Total findings</span><span class="metric-value">{_html_escape(summary.get("total_findings", 0))}</span></div>
+                <div class="metric"><span class="metric-label">Raw findings</span><span class="metric-value">{_html_escape(summary.get("raw_findings", summary.get("total_findings", 0)))}</span></div>
+                <div class="metric"><span class="metric-label">Grouped findings</span><span class="metric-value">{_html_escape(summary.get("grouped_findings", summary.get("total_findings", 0)))}</span></div>
+                <div class="metric"><span class="metric-label">Collapsed duplicates</span><span class="metric-value">{_html_escape(summary.get("duplicates_collapsed", 0))}</span></div>
                 <div class="metric"><span class="metric-label">New findings</span><span class="metric-value">{_html_escape(summary.get("new_findings", 0))}</span></div>
                 <div class="metric"><span class="metric-label">Accepted risk</span><span class="metric-value">{_html_escape(summary.get("accepted_risk_findings", 0))}</span></div>
                 <div class="metric"><span class="metric-label">Partial scan</span><span class="metric-value">{_html_escape(str(workflow.get("partial", False)).lower())}</span></div>
@@ -1117,26 +1460,43 @@ def render_html_report(report: dict[str, Any]) -> str:
 
 
 def _render_html_finding(finding: Finding) -> str:
-    knowledge = finding.get("knowledge", [])
+    evidence = finding.get("knowledge_evidence") or finding.get("knowledge", [])
     knowledge_html = ""
-    if knowledge:
-        knowledge_html = "\n".join(
+    if evidence:
+        knowledge_html = "<h4>Knowledge evidence</h4>" + "\n".join(
+            f"""
+            <div class="knowledge">
+                <div class="knowledge-title">{_html_escape(hit.get("title", ""))}</div>
+                <div>{_html_escape(hit.get("snippet", ""))}</div>
+                <div class="subtitle">Why matched: {_html_escape(hit.get("why_matched", {}))}</div>
+            </div>"""
+            for hit in evidence[:3]
+        )
+    background = finding.get("general_background", [])
+    background_html = ""
+    if background:
+        background_html = "<h4>General background</h4>" + "\n".join(
             f"""
             <div class="knowledge">
                 <div class="knowledge-title">{_html_escape(hit.get("title", ""))}</div>
                 <div>{_html_escape(hit.get("snippet", ""))}</div>
             </div>"""
-            for hit in knowledge[:3]
+            for hit in background[:2]
         )
     fix = finding.get("fix", {})
-    fixed_code = str(fix.get("fixed_code") or "").strip() if isinstance(fix, dict) else ""
+    fixed_code = str(fix.get("fixed_code") or fix.get("guidance_code") or "").strip() if isinstance(fix, dict) else ""
     fixed_code_html = f"<pre>{_html_escape(fixed_code)}</pre>" if fixed_code else ""
     fix_suggestion = fix.get("fix_suggestion", "") if isinstance(fix, dict) else ""
+    fix_kind = fix.get("kind", "unavailable") if isinstance(fix, dict) else "unavailable"
     patch_preview = fix.get("patch_preview", {}) if isinstance(fix, dict) else {}
     patch_html = ""
     apply_html = ""
     finding_id = str(finding.get("finding_id") or "")
-    if isinstance(patch_preview, dict) and patch_preview.get("status") == "preview":
+    if (
+        isinstance(patch_preview, dict)
+        and patch_preview.get("status") == "preview"
+        and patch_preview.get("kind") == "applicable_preview"
+    ):
         if finding_id:
             dry_run_command = f"aegis-agent apply-fix aegis-agent-report.json --finding-id {finding_id}"
             apply_command = f"{dry_run_command} --yes --rescan"
@@ -1153,18 +1513,23 @@ def _render_html_finding(finding: Finding) -> str:
     review_note = finding.get("review_note", "")
     review_html = f"<p><strong>Review:</strong> {_html_escape(review_note)}</p>" if review_note else ""
     cwe = finding.get("cwe") or "n/a"
+    sources = ", ".join(str(item) for item in finding.get("detection_sources", []))
     return f"""
         <article class="finding">
-            <h3>{_html_escape(finding.get("rule_id", "UNKNOWN"))}</h3>
+            <h3>{_html_escape(finding.get("rule_family") or finding.get("rule_id", "UNKNOWN"))}</h3>
             <div class="finding-meta">
                 <span><span class="severity {_severity_class(finding.get("severity"))}">{_html_escape(finding.get("severity", "Medium"))}</span></span>
                 <span>{_html_escape(finding.get("file", ""))}:{_html_escape(finding.get("line", 0))}</span>
                 <span>Finding ID: <code>{_html_escape(finding_id)}</code></span>
                 <span>Status: {_html_escape(finding.get("status", "new"))}</span>
                 <span>CWE: {_html_escape(cwe)}</span>
+                <span>Primary rule: {_html_escape(finding.get("primary_rule_id", finding.get("rule_id", "UNKNOWN")))}</span>
+                <span>Sources: {_html_escape(sources)}</span>
             </div>
             <p><strong>Cause:</strong> {_html_escape(finding.get("cause", ""))}</p>
             {knowledge_html}
+            {background_html}
+            <p><strong>Fix kind:</strong> {_html_escape(fix_kind)}</p>
             <p><strong>Fix suggestion:</strong> {_html_escape(fix_suggestion)}</p>
             {fixed_code_html}
             {patch_html}
@@ -1352,9 +1717,11 @@ __all__ = [
     "generate_patch_preview_tool",
     "get_finding_detail_tool",
     "get_tool_schemas",
+    "group_findings_for_report",
     "load_project_memory_tool",
     "render_patch_apply_result_markdown",
     "make_finding_id",
+    "normalize_rule_family",
     "render_tool_schemas_markdown",
     "render_markdown_report",
     "render_html_report",

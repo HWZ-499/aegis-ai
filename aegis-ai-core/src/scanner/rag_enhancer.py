@@ -267,10 +267,9 @@ BUILTIN_REMEDIATION = {
             "// ── Node.js/Express 服务端输出 ──\n"
             "const he = require('he');\n"
             "res.send(`<p>${he.encode(userInput)}</p>`);\n\n"
-            "// ── Angular（DomSanitizer）──\n"
-            "// 在模板中使用 {{ userInput }}（自动转义），\n"
-            "// 避免 [innerHTML]，若必须使用则:\n"
-            "// this.sanitizer.bypassSecurityTrustHtml(content)"
+            "// ── Angular ──\n"
+            "// 在模板中使用 {{ userInput }}（自动转义）。\n"
+            "// 避免 [innerHTML]；必须渲染 HTML 时使用 sanitizer.sanitize(SecurityContext.HTML, content)。"
         ),
         "framework_suggested_code": {
             "dompurify": ("// DOMPurify 净化后插入\nelement.innerHTML = DOMPurify.sanitize(userInput);"),
@@ -284,6 +283,93 @@ BUILTIN_REMEDIATION = {
             "html_escape": ("# Python: html.escape\nimport html\nsafe = html.escape(user_input)"),
             "markupsafe": ("# Jinja2 / MarkupSafe\nfrom markupsafe import escape\nsafe = escape(user_input)"),
             "htmlspecialchars": ("// PHP: 输出前转义\necho htmlspecialchars($var, ENT_QUOTES, 'UTF-8');"),
+        },
+    },
+    "SSRF": {
+        "description": "服务器端请求伪造（SSRF）允许攻击者诱导服务器访问内网、云元数据或其他受保护服务。",
+        "remediation": [
+            "不要直接请求用户提供的 URL",
+            "使用目的地 allowlist，只允许业务明确需要的外部主机",
+            "解析 DNS 后阻断 private、loopback、link-local 和 metadata 地址",
+            "禁用自动跳转或对跳转后的最终地址重复执行同样校验",
+        ],
+        "references": [
+            "https://owasp.org/www-community/attacks/Server_Side_Request_Forgery",
+            "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html",
+        ],
+        "cwe": "CWE-918",
+        "suggested_code": (
+            "// SSRF safe fetch template: keep this as guidance until project-specific hosts are known.\n"
+            "const dns = require('dns').promises;\n"
+            "const net = require('net');\n\n"
+            "const ALLOWED_HOSTS = new Set(['api.example.com']);\n\n"
+            "function isPrivateAddress(address) {\n"
+            "  if (net.isIP(address) === 4) {\n"
+            "    const parts = address.split('.').map(Number);\n"
+            "    return parts[0] === 10 ||\n"
+            "      parts[0] === 127 ||\n"
+            "      (parts[0] === 169 && parts[1] === 254) ||\n"
+            "      (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||\n"
+            "      (parts[0] === 192 && parts[1] === 168);\n"
+            "  }\n"
+            "  return address === '::1' || address.startsWith('fc') || address.startsWith('fd') || address.startsWith('fe80:');\n"
+            "}\n\n"
+            "async function fetchAllowed(rawUrl) {\n"
+            "  const url = new URL(rawUrl);\n"
+            "  if (url.protocol !== 'https:' || !ALLOWED_HOSTS.has(url.hostname)) {\n"
+            "    throw new Error('Blocked SSRF destination');\n"
+            "  }\n"
+            "  const { address } = await dns.lookup(url.hostname);\n"
+            "  if (isPrivateAddress(address)) throw new Error('Blocked private destination');\n"
+            "  return fetch(url.toString(), { redirect: 'manual', signal: AbortSignal.timeout(5000) });\n"
+            "}"
+        ),
+        "framework_suggested_code": {
+            "express": (
+                "// Express SSRF guard: replace ALLOWED_HOSTS with the business-approved destinations.\n"
+                "const dns = require('dns').promises;\n"
+                "const net = require('net');\n"
+                "const ALLOWED_HOSTS = new Set(['api.example.com']);\n\n"
+                "function isPrivateAddress(address) {\n"
+                "  if (net.isIP(address) === 4) {\n"
+                "    const parts = address.split('.').map(Number);\n"
+                "    return parts[0] === 10 || parts[0] === 127 ||\n"
+                "      (parts[0] === 169 && parts[1] === 254) ||\n"
+                "      (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||\n"
+                "      (parts[0] === 192 && parts[1] === 168);\n"
+                "  }\n"
+                "  return address === '::1' || address.startsWith('fc') || address.startsWith('fd') || address.startsWith('fe80:');\n"
+                "}\n\n"
+                "async function fetchAllowed(rawUrl) {\n"
+                "  const url = new URL(rawUrl);\n"
+                "  if (url.protocol !== 'https:' || !ALLOWED_HOSTS.has(url.hostname)) {\n"
+                "    throw new Error('Blocked SSRF destination');\n"
+                "  }\n"
+                "  const { address } = await dns.lookup(url.hostname);\n"
+                "  if (isPrivateAddress(address)) throw new Error('Blocked private destination');\n"
+                "  return fetch(url.toString(), { redirect: 'manual', signal: AbortSignal.timeout(5000) });\n"
+                "}\n\n"
+                "app.get('/proxy', async (req, res) => {\n"
+                "  const response = await fetchAllowed(req.query.url);\n"
+                "  res.send(await response.text());\n"
+                "});"
+            ),
+            "requests": (
+                "# Python requests SSRF guard: replace ALLOWED_HOSTS with approved destinations.\n"
+                "import ipaddress\n"
+                "import socket\n"
+                "from urllib.parse import urlparse\n"
+                "import requests\n\n"
+                "ALLOWED_HOSTS = {'api.example.com'}\n\n"
+                "def fetch_allowed(raw_url):\n"
+                "    parsed = urlparse(raw_url)\n"
+                "    if parsed.scheme != 'https' or parsed.hostname not in ALLOWED_HOSTS:\n"
+                "        raise ValueError('blocked SSRF destination')\n"
+                "    address = socket.gethostbyname(parsed.hostname)\n"
+                "    if ipaddress.ip_address(address).is_private:\n"
+                "        raise ValueError('blocked private destination')\n"
+                "    return requests.get(parsed.geturl(), allow_redirects=False, timeout=5)"
+            ),
         },
     },
     "PATH_TRAVERSAL": {

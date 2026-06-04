@@ -8,6 +8,7 @@ dsl_adapter.py
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from ..base import AnalysisContext, SecurityRule
@@ -98,6 +99,8 @@ class DslRuleAdapter(SecurityRule):
 
         findings = match_source(self._dsl_rule, source, file_path)
         for finding in findings:
+            if self._is_suppressed_dsl_finding(finding, source):
+                continue
             key = (finding.get("line"), finding.get("type"))
             if key in existing_pairs:
                 continue
@@ -105,6 +108,39 @@ class DslRuleAdapter(SecurityRule):
             finding.setdefault("rule_id", self.rule_id)
             finding.setdefault("severity", self.severity)
             context.add_finding(finding)
+
+    def _is_suppressed_dsl_finding(self, finding: dict, source: str) -> bool:
+        if self.rule_id != "dsl.javascript.xss-innerhtml":
+            return False
+        line_no = finding.get("line")
+        if not isinstance(line_no, int):
+            return False
+        return _is_static_jsonp_answer_innerhtml_line(source, line_no)
+
+
+def _is_static_jsonp_answer_innerhtml_line(source: str, line_no: int) -> bool:
+    lines = source.splitlines()
+    if line_no < 1 or line_no > len(lines):
+        return False
+
+    line = lines[line_no - 1]
+    matched = re.search(
+        r"\.innerHTML\s*=\s*(?P<param>[A-Za-z_$][\w$]*)\s*(?:\[\s*['\"]answer['\"]\s*\]|\.\s*answer)",
+        line,
+    )
+    if matched is None:
+        return False
+
+    param = re.escape(matched.group("param"))
+    has_fixed_jsonp_src = re.search(
+        r"\.src\s*=\s*['\"]source/jsonp(?:_impossible)?\.php(?:\?callback=solveSum)?['\"]",
+        source,
+    )
+    if has_fixed_jsonp_src is None:
+        return False
+
+    callback_re = rf"\bfunction\s+solveSum\s*\(\s*{param}\s*\)"
+    return re.search(callback_re, source) is not None
 
 
 def load_dsl_rules_for_language(

@@ -11,6 +11,7 @@ from src.agent.tools import (
     get_tool_schemas,
     load_project_memory_tool,
     render_html_report,
+    render_markdown_report,
     scan_project_tool,
     search_vulnerability_knowledge_tool,
 )
@@ -103,7 +104,7 @@ def test_generate_fix_offline_does_not_call_ai_unless_requested(tmp_path: Path, 
     fix = generate_fix_suggestion_tool(finding, str(tmp_path), use_ai=False)
 
     assert fix["mode"] == "offline"
-    assert "参数化" in fix["fix_suggestion"] or "Prepared" in fix["fix_suggestion"]
+    assert "parameter" in fix["fix_suggestion"].lower() or "参数化" in fix["fix_suggestion"]
 
 
 def test_patch_preview_generates_unified_diff_without_mutating_file(tmp_path: Path) -> None:
@@ -116,11 +117,48 @@ def test_patch_preview_generates_unified_diff_without_mutating_file(tmp_path: Pa
     preview = generate_patch_preview_tool(finding, fix, str(tmp_path))
 
     assert preview["status"] == "preview"
+    assert preview["kind"] == "applicable_preview"
     assert preview["mutates_files"] is False
-    assert preview["can_auto_apply"] is False
+    assert preview["can_auto_apply"] is True
     assert "--- a/app.js" in preview["unified_diff"]
     assert "+++ b/app.js" in preview["unified_diff"]
     assert app.read_text(encoding="utf-8") == before
+
+
+def test_ssrf_fix_stays_guidance_only_with_allowlist_template(tmp_path: Path) -> None:
+    app = tmp_path / "app.js"
+    app.write_text(
+        "\n".join(
+            [
+                'const express = require("express");',
+                "const app = express();",
+                'app.get("/proxy", async (req, res) => {',
+                "  const response = await fetch(req.query.url);",
+                "  res.send(await response.text());",
+                "});",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    finding = {
+        "finding_id": "ssrf-1",
+        "file": "app.js",
+        "line": 4,
+        "rule_id": "SSRF_JS_TAINT",
+        "rule_family": "SSRF",
+        "type": "SSRF",
+    }
+
+    fix = generate_fix_suggestion_tool(finding, str(tmp_path), use_ai=False)
+    preview = generate_patch_preview_tool(finding, fix, str(tmp_path))
+
+    assert fix["kind"] == "guidance_only"
+    assert fix["can_auto_apply"] is False
+    assert "ALLOWED_HOSTS" in fix["guidance_code"]
+    assert "fetchAllowed" in fix["guidance_code"]
+    assert preview["kind"] == "guidance_only"
+    assert preview["can_auto_apply"] is False
+    assert app.read_text(encoding="utf-8").count("fetch(req.query.url)") == 1
 
 
 def _write_patch_report(tmp_path: Path, *, target_file: str = "app.js") -> Path:
@@ -135,6 +173,8 @@ def _write_patch_report(tmp_path: Path, *, target_file: str = "app.js") -> Path:
                 "fix": {
                     "patch_preview": {
                         "status": "preview",
+                        "kind": "applicable_preview",
+                        "can_auto_apply": True,
                         "file": target_file,
                         "start_line": 1,
                         "end_line": 1,
@@ -191,6 +231,8 @@ def test_apply_patch_preview_rescans_after_apply_and_reports_target_removed(tmp_
                 "fix": {
                     "patch_preview": {
                         "status": "preview",
+                        "kind": "applicable_preview",
+                        "can_auto_apply": True,
                         "file": "app.js",
                         "start_line": 3,
                         "end_line": 3,
@@ -235,6 +277,42 @@ def test_apply_patch_preview_rejects_path_escape(tmp_path: Path) -> None:
 
     assert result["status"] == "error"
     assert "outside the project" in result["reason"]
+    assert app.read_text(encoding="utf-8") == "bad()\n"
+
+
+def test_apply_patch_preview_rejects_unsafe_preview_even_with_confirmation(tmp_path: Path) -> None:
+    app = tmp_path / "app.js"
+    app.write_text("bad()\n", encoding="utf-8")
+    report_path = _write_patch_report(tmp_path)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    preview = report["findings"][0]["fix"]["patch_preview"]
+    preview["kind"] = "preview"
+    preview["can_auto_apply"] = False
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    result = apply_patch_preview_tool(str(report_path), "finding-1", confirm=True)
+
+    assert result["status"] == "unsafe_preview"
+    assert result["mutates_files"] is False
+    assert app.read_text(encoding="utf-8") == "bad()\n"
+
+
+def test_apply_patch_preview_returns_not_applicable_without_preview(tmp_path: Path) -> None:
+    app = tmp_path / "app.js"
+    app.write_text("bad()\n", encoding="utf-8")
+    report_path = _write_patch_report(tmp_path)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report["findings"][0]["fix"]["patch_preview"] = {
+        "status": "guidance_only",
+        "kind": "guidance_only",
+        "can_auto_apply": False,
+    }
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    result = apply_patch_preview_tool(str(report_path), "finding-1", confirm=True)
+
+    assert result["status"] == "not_applicable"
+    assert result["mutates_files"] is False
     assert app.read_text(encoding="utf-8") == "bad()\n"
 
 
@@ -292,6 +370,8 @@ def test_html_report_escapes_finding_and_knowledge_fields(tmp_path: Path) -> Non
                     "fixed_code": "res.send('<script>alert(1)</script>')",
                     "patch_preview": {
                         "status": "preview",
+                        "kind": "applicable_preview",
+                        "can_auto_apply": True,
                         "unified_diff": "- <script>alert(1)</script>\n+ safe()",
                     },
                 },
@@ -315,3 +395,145 @@ def test_html_report_escapes_finding_and_knowledge_fields(tmp_path: Path) -> Non
     assert "--yes --rescan" in html
     assert "&lt;b&gt;HTML&lt;/b&gt;" in html
     assert "res.send(&#x27;&lt;script&gt;alert(1)&lt;/script&gt;&#x27;)" in html
+
+
+def test_markdown_and_html_reports_show_grouped_snapshot_without_noise(tmp_path: Path) -> None:
+    report = {
+        "workflow": {
+            "nodes": ["scan", "analyze", "triage", "retrieve", "fix", "review", "summarize"],
+            "tool_trace": [
+                {"node": "scan", "tool": "scan_project", "status": "ok", "duration_ms": 1.0, "detail": "5 files"},
+                {
+                    "node": "triage",
+                    "tool": "group_findings",
+                    "status": "ok",
+                    "duration_ms": 1.0,
+                    "detail": "5 raw -> 3 grouped",
+                },
+                {"node": "fix", "tool": "generate_patch_preview", "status": "ok", "duration_ms": 1.0},
+            ],
+            "partial": False,
+            "error_count": 0,
+            "errors": [],
+        },
+        "summary": {
+            "project_path": str(tmp_path),
+            "total_findings": 3,
+            "raw_findings": 5,
+            "grouped_findings": 3,
+            "duplicates_collapsed": 2,
+            "new_findings": 3,
+            "accepted_risk_findings": 0,
+            "suppressed_by_source_markers": 0,
+            "severity_counts": {"Critical": 0, "High": 3, "Medium": 0, "Low": 0},
+            "status_counts": {"new": 3},
+        },
+        "findings": [
+            {
+                "finding_id": "sql-1",
+                "file": "app.js",
+                "line": 7,
+                "rule_id": "SQL_INJECTION_JS_AST",
+                "primary_rule_id": "SQL_INJECTION_JS_AST",
+                "rule_family": "SQL_INJECTION",
+                "detection_sources": ["SQL_INJECTION_JS_AST", "dsl.javascript.sql-injection-concat"],
+                "severity": "High",
+                "status": "new",
+                "cwe": "CWE-89",
+                "cause": "query concatenates req.params.id",
+                "knowledge_evidence": [
+                    {
+                        "title": "CWE-89 SQL Injection",
+                        "snippet": "Use parameterized queries.",
+                        "why_matched": {"terms": ["sql", "injection"], "tags": ["cwe-89"]},
+                    }
+                ],
+                "fix": {
+                    "kind": "applicable_preview",
+                    "fix_suggestion": "Use a parameter placeholder.",
+                    "fixed_code": 'db.query("SELECT * FROM users WHERE id = ?", [id]);',
+                    "patch_preview": {
+                        "status": "preview",
+                        "kind": "applicable_preview",
+                        "can_auto_apply": True,
+                        "unified_diff": "- concat\n+ parameterized\n",
+                    },
+                },
+            },
+            {
+                "finding_id": "xss-1",
+                "file": "app.js",
+                "line": 13,
+                "rule_id": "XSS_RISK_JS_AST",
+                "primary_rule_id": "XSS_RISK_JS_AST",
+                "rule_family": "XSS",
+                "detection_sources": ["XSS_RISK_JS_AST"],
+                "severity": "High",
+                "status": "new",
+                "cwe": "CWE-79",
+                "cause": "reflected query parameter in HTML",
+                "fix": {
+                    "kind": "applicable_preview",
+                    "fix_suggestion": "HTML-encode reflected output.",
+                    "fixed_code": "res.send(escapeHtml(req.query.name));",
+                    "patch_preview": {
+                        "status": "preview",
+                        "kind": "applicable_preview",
+                        "can_auto_apply": True,
+                        "unified_diff": "- raw\n+ escaped\n",
+                    },
+                },
+            },
+            {
+                "finding_id": "ssrf-1",
+                "file": "app.js",
+                "line": 18,
+                "rule_id": "SSRF_JS_TAINT",
+                "primary_rule_id": "SSRF_JS_TAINT",
+                "rule_family": "SSRF",
+                "detection_sources": ["SSRF_JS_TAINT"],
+                "severity": "High",
+                "status": "new",
+                "cwe": "CWE-918",
+                "cause": "server fetches req.query.url",
+                "knowledge_evidence": [
+                    {
+                        "title": "CWE-918 Server-Side Request Forgery",
+                        "snippet": "Use a strict destination allowlist.",
+                        "why_matched": {"terms": ["ssrf"], "tags": ["cwe-918"]},
+                    }
+                ],
+                "fix": {
+                    "kind": "guidance_only",
+                    "fix_suggestion": "Use a strict destination allowlist.",
+                    "guidance_code": "const ALLOWED_HOSTS = new Set(['api.example.com']);",
+                    "patch_preview": {
+                        "status": "guidance_only",
+                        "kind": "guidance_only",
+                        "can_auto_apply": False,
+                    },
+                },
+            },
+        ],
+        "memory": {},
+    }
+
+    markdown = render_markdown_report(report)
+    html = render_html_report(report)
+
+    assert markdown.count("### SQL_INJECTION") == 1
+    assert markdown.count("### SSRF") == 1
+    assert html.count("<h3>SQL_INJECTION</h3>") == 1
+    assert html.count("<h3>SSRF</h3>") == 1
+    assert "Duplicates collapsed: 2" in markdown
+    assert "Collapsed duplicates" in html
+    assert "## Workflow Trace" in markdown
+    assert "Workflow Trace" in html
+    assert "## Tool Calls" in markdown
+    assert "Tool Calls" in html
+    assert "group_findings" in markdown
+    assert "group_findings" in html
+    assert "Knowledge evidence" in markdown
+    assert "Knowledge evidence" in html
+    assert "bypassSecurityTrustHtml" not in markdown
+    assert "bypassSecurityTrustHtml" not in html

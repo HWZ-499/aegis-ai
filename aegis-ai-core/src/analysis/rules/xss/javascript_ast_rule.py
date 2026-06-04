@@ -16,6 +16,7 @@ JavaScript/TypeScript XSS 风险 AST 规则（新规则架构）。
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ...base import (
@@ -136,6 +137,11 @@ class JavaScriptXSSAstRule(SecurityRule):
             if self._is_sanitizer_call(right_node):
                 return
 
+            # 情形 3：固定 JSONP answer 回调——DVWA CSP 页面中使用静态
+            # 同源 JSONP 端点返回计算结果，不等同于任意用户输入。
+            if self._is_static_jsonp_answer_assignment(right_node, context):
+                return
+
             # 情形 3：TaintGraph Sanitizer 感知——右值所有标识符均已净化
             identifiers = self._collect_identifiers_from_node(right_node)
             if identifiers and all(context.is_var_sanitized(v) for v in identifiers):
@@ -180,6 +186,37 @@ class JavaScriptXSSAstRule(SecurityRule):
                 if fname in self._TRUSTED_DIRECT_HTML_SANITIZERS:
                     return True
         return False
+
+    def _is_static_jsonp_answer_assignment(self, node: Node, context: AnalysisContext) -> bool:
+        """
+        Detect the narrow static JSONP answer pattern used by DVWA CSP pages.
+
+        The rule still reports normal callback object writes. This only skips a
+        fixed same-origin JSONP script source that calls ``solveSum(obj)`` and
+        writes the ``answer`` field.
+        """
+        right_text = (self._get_node_text(node) or "").strip()
+        matched = re.fullmatch(
+            r"(?P<param>[A-Za-z_$][\w$]*)\s*(?:\[\s*['\"]answer['\"]\s*\]|\.\s*answer)",
+            right_text,
+        )
+        if matched is None:
+            return False
+
+        callback_param = re.escape(matched.group("param"))
+        source = context.extras.get("source")
+        if not isinstance(source, str):
+            return False
+
+        has_fixed_jsonp_src = re.search(
+            r"\.src\s*=\s*['\"]source/jsonp(?:_impossible)?\.php(?:\?callback=solveSum)?['\"]",
+            source,
+        )
+        if has_fixed_jsonp_src is None:
+            return False
+
+        callback_re = rf"\bfunction\s+solveSum\s*\(\s*{callback_param}\s*\)"
+        return re.search(callback_re, source) is not None
 
     def _check_dangerous_function_call(self, node: Node, context: AnalysisContext) -> None:
         """

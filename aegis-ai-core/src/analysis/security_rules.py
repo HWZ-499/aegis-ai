@@ -292,6 +292,7 @@ _RE_PHP_CONTENT_JSON = re.compile(r'header\s*\(\s*["\']Content-Type:\s*applicati
 _RE_PHP_RESP_JSONENC = re.compile(r"\$response\s*\[.*\]\s*=\s*json_encode\s*\(", re.IGNORECASE)
 _RE_PHP_RESP_METHOD = re.compile(r"\$response\s*=\s*\$this\s*->\s*\w+\s*\(", re.IGNORECASE)
 _RE_PHP_DB_QUERY = re.compile(r"(SELECT|mysqli_query|mysql_query|->query)\s*\(", re.IGNORECASE)
+_RE_PHP_SQL_KEYWORD = re.compile(r"\b(?:SELECT|INSERT|UPDATE|DELETE|REPLACE)\b", re.IGNORECASE)
 _RE_PHP_FPASSTHRU = re.compile(r"\bfpassthru\s*\(", re.IGNORECASE)
 _RE_PHP_SHELL_EXEC = re.compile(r"\b(shell_exec|exec|system|passthru|popen)\s*\(", re.IGNORECASE)
 _RE_OPEN_REDIRECT_HDR = re.compile(r'header\s*\(\s*["\']location\s*:', re.IGNORECASE)
@@ -391,6 +392,132 @@ def _php_echoes_static_local_value(raw_line: str, lines: list[str], line_idx: in
 
     _, expr = assignment
     return _php_is_static_literal_expr(expr)
+
+
+def _php_echoes_static_db_record(raw_line: str, lines: list[str], line_idx: int) -> bool:
+    matched = re.search(r"\b(?:echo|print)\s+\$([A-Za-z_]\w*)\s*\[", raw_line, re.IGNORECASE)
+    if matched is None:
+        return False
+
+    record_var = matched.group(1)
+    fetch_assignment = _php_find_latest_db_fetch_assignment(record_var, line_idx, lines)
+    if fetch_assignment is None:
+        return False
+
+    fetch_idx, fetch_arg = fetch_assignment
+    result_var = _php_extract_var_name(fetch_arg)
+    if result_var is None:
+        return False
+
+    result_assignment = _php_find_latest_assignment_expr(result_var.lstrip("$"), fetch_idx, lines)
+    if result_assignment is None:
+        return False
+
+    result_idx, result_expr = result_assignment
+    return _php_db_query_expr_is_static(result_expr, result_idx, lines)
+
+
+def _php_find_latest_db_fetch_assignment(record_var: str, before_idx: int, lines: list[str]) -> tuple[int, str] | None:
+    assignment_re = re.compile(rf"\${re.escape(record_var)}\s*=", re.IGNORECASE)
+    fetch_re = re.compile(
+        rf"\${re.escape(record_var)}\s*=\s*"
+        r"(?:mysql|mysqli|mssql|pg|sqlite)_fetch_(?:array|assoc|row|object)\s*\((?P<args>[^)]*)\)",
+        re.IGNORECASE,
+    )
+
+    for index in range(before_idx - 1, -1, -1):
+        if assignment_re.search(lines[index]) is None:
+            continue
+        matched = fetch_re.search(lines[index])
+        if matched is None:
+            return None
+        return index, matched.group("args")
+    return None
+
+
+def _php_db_query_expr_is_static(expr: str, before_idx: int, lines: list[str]) -> bool:
+    if _PHP_SOURCE_RE.search(expr):
+        return False
+
+    query_args = _php_extract_db_query_args(expr)
+    if query_args is None:
+        return _php_sql_expr_is_static(expr, before_idx, lines)
+
+    return any(_php_sql_expr_is_static(arg, before_idx, lines) for arg in query_args)
+
+
+def _php_extract_db_query_args(expr: str) -> list[str] | None:
+    matched = re.search(
+        r"\b(?:mysql_query|mysqli_query|mssql_query|pg_query|sqlite_query|sqlite_exec)\s*\((?P<func_args>.*)\)\s*$"
+        r"|->\s*(?:query|execute)\s*\((?P<method_args>.*)\)\s*$",
+        expr,
+        re.IGNORECASE,
+    )
+    if matched is None:
+        return None
+
+    args_text = matched.group("func_args") if matched.group("func_args") is not None else matched.group("method_args")
+    return _php_split_call_args(args_text)
+
+
+def _php_sql_expr_is_static(expr: str, before_idx: int, lines: list[str], depth: int = 0) -> bool:
+    if depth > 4:
+        return False
+
+    expr = expr.strip().rstrip(";")
+    if not expr or _PHP_SOURCE_RE.search(expr):
+        return False
+
+    if _php_is_static_literal_expr(expr):
+        return bool(_RE_PHP_SQL_KEYWORD.search(expr))
+
+    var_match = re.fullmatch(r"\$([A-Za-z_]\w*)", expr)
+    if var_match is None:
+        return False
+
+    assignment = _php_find_latest_assignment_expr(var_match.group(1), before_idx, lines)
+    if assignment is None:
+        return False
+
+    assignment_idx, assignment_expr = assignment
+    return _php_sql_expr_is_static(assignment_expr, assignment_idx, lines, depth + 1)
+
+
+def _php_split_call_args(args_text: str) -> list[str]:
+    args: list[str] = []
+    current: list[str] = []
+    depth = 0
+    in_single_quote = False
+    in_double_quote = False
+    escaped = False
+
+    for char in args_text:
+        if escaped:
+            current.append(char)
+            escaped = False
+            continue
+        if char == "\\" and (in_single_quote or in_double_quote):
+            current.append(char)
+            escaped = True
+            continue
+        if char == "'" and not in_double_quote:
+            in_single_quote = not in_single_quote
+        elif char == '"' and not in_single_quote:
+            in_double_quote = not in_double_quote
+        elif not in_single_quote and not in_double_quote:
+            if char in "([{":
+                depth += 1
+            elif char in ")]}" and depth > 0:
+                depth -= 1
+            elif char == "," and depth == 0:
+                args.append("".join(current).strip())
+                current = []
+                continue
+        current.append(char)
+
+    if current:
+        args.append("".join(current).strip())
+    return args
 
 
 def _php_is_static_literal_expr(expr: str) -> bool:
@@ -1596,6 +1723,8 @@ def scan_code_locally(code_content, file_path=None):
 
                             if _php_echoes_static_local_value(line, lines, line_idx):
                                 continue  # 最近赋值为静态字面量，不是用户可控输出
+                            if _php_echoes_static_db_record(line, lines, line_idx):
+                                continue  # 静态查询结果输出，非反射型用户输入
 
                             # echo $response['...']：$response 由内部方法构造，扫全文件确认
                             if re.search(r"\becho\s+\$response\s*\[", line, re.IGNORECASE):

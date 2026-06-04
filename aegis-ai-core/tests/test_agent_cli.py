@@ -42,6 +42,8 @@ def _fake_report(project_path: Path) -> dict[str, Any]:
                     "fixed_code": "db.query(sql, [id]);",
                     "patch_preview": {
                         "status": "preview",
+                        "kind": "applicable_preview",
+                        "can_auto_apply": True,
                         "file": "app.js",
                         "start_line": 3,
                         "end_line": 3,
@@ -153,6 +155,8 @@ def _write_apply_report(tmp_path: Path) -> Path:
                 "fix": {
                     "patch_preview": {
                         "status": "preview",
+                        "kind": "applicable_preview",
+                        "can_auto_apply": True,
                         "file": "app.js",
                         "start_line": 1,
                         "end_line": 1,

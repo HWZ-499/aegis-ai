@@ -49,11 +49,27 @@
   },
   {
     "file": "vulnerabilities/sqli/source/medium.php",
+    "line": 12,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA SQL Injection 中等安全级别 MySQL 分支：mysqli_real_escape_string 后未加引号拼接，仍可注入"
+  },
+  {
+    "file": "vulnerabilities/sqli/source/medium.php",
     "line": 30,
     "type": "SQL_INJECTION",
     "severity": "High",
     "is_true_positive": true,
-    "description": "DVWA SQL Injection 中等安全级别"
+    "description": "DVWA SQL Injection 中等安全级别 SQLite 分支"
+  },
+  {
+    "file": "vulnerabilities/sqli/source/high.php",
+    "line": 11,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA SQL Injection 高安全级别 MySQL 分支：会话 id 直接拼接进查询"
   },
   {
     "file": "vulnerabilities/sqli/source/high.php",
@@ -61,7 +77,7 @@
     "type": "SQL_INJECTION",
     "severity": "High",
     "is_true_positive": true,
-    "description": "DVWA SQL Injection 高安全级别（通过 # 注释绕过）"
+    "description": "DVWA SQL Injection 高安全级别 SQLite 分支（通过 # 注释绕过）"
   },
   {
     "file": "vulnerabilities/sqli_blind/source/low.php",
@@ -69,7 +85,23 @@
     "type": "SQL_INJECTION",
     "severity": "High",
     "is_true_positive": true,
-    "description": "DVWA Blind SQL Injection 低安全级别"
+    "description": "DVWA Blind SQL Injection 低安全级别 MySQL 分支"
+  },
+  {
+    "file": "vulnerabilities/sqli_blind/source/low.php",
+    "line": 34,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA Blind SQL Injection 低安全级别 SQLite 分支"
+  },
+  {
+    "file": "vulnerabilities/sqli_blind/source/medium.php",
+    "line": 15,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA Blind SQL Injection 中等安全级别 MySQL 分支：转义后未加引号拼接"
   },
   {
     "file": "vulnerabilities/sqli_blind/source/medium.php",
@@ -77,7 +109,15 @@
     "type": "SQL_INJECTION",
     "severity": "High",
     "is_true_positive": true,
-    "description": "DVWA Blind SQL Injection 中等安全级别"
+    "description": "DVWA Blind SQL Injection 中等安全级别 SQLite 分支"
+  },
+  {
+    "file": "vulnerabilities/sqli_blind/source/high.php",
+    "line": 13,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA Blind SQL Injection 高安全级别 MySQL 分支：Cookie id 直接拼接进查询"
   },
   {
     "file": "vulnerabilities/sqli_blind/source/high.php",
@@ -85,7 +125,7 @@
     "type": "SQL_INJECTION",
     "severity": "High",
     "is_true_positive": true,
-    "description": "DVWA Blind SQL Injection 高安全级别"
+    "description": "DVWA Blind SQL Injection 高安全级别 SQLite 分支"
   },
   {
     "file": "vulnerabilities/exec/source/low.php",
@@ -136,6 +176,54 @@
     "description": "DVWA API HealthController exec 命令注入"
   },
   {
+    "file": "vulnerabilities/view_help.php",
+    "line": 20,
+    "type": "RCE_COMMAND_EXEC",
+    "severity": "Critical",
+    "is_true_positive": true,
+    "description": "DVWA help viewer 将用户可控 help 文件内容传入 eval，存在代码执行风险"
+  },
+  {
+    "file": "vulnerabilities/view_help.php",
+    "line": 20,
+    "type": "PATH_TRAVERSAL",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA help viewer 将 id/locale 参数拼接到 file_get_contents 路径，存在路径遍历风险"
+  },
+  {
+    "file": "vulnerabilities/view_source.php",
+    "line": 63,
+    "type": "PATH_TRAVERSAL",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA source viewer 将 id/security 参数拼接到 PHP source 路径，存在源码读取路径遍历风险"
+  },
+  {
+    "file": "vulnerabilities/view_source.php",
+    "line": 68,
+    "type": "PATH_TRAVERSAL",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA source viewer 将 id/security 参数拼接到 JS source 路径，存在源码读取路径遍历风险"
+  },
+  {
+    "file": "vulnerabilities/view_source_all.php",
+    "line": 14,
+    "type": "PATH_TRAVERSAL",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA compare-all source viewer 将 id 参数拼接到 low.php 路径，存在路径遍历风险"
+  },
+  {
+    "file": "vulnerabilities/view_source_all.php",
+    "line": 22,
+    "type": "PATH_TRAVERSAL",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA compare-all source viewer 将 id 参数拼接到 medium.php 路径，存在路径遍历风险"
+  },
+  {
     "file": "setup.php",
     "line": 51,
     "type": "RCE_COMMAND_EXEC",
@@ -150,6 +238,22 @@
     "severity": "Medium",
     "is_true_positive": true,
     "description": "DVWA XSS Reflected 低安全级别：$_GET['name'] 直接 echo 输出"
+  },
+  {
+    "file": "vulnerabilities/xss_r/source/medium.php",
+    "line": 11,
+    "type": "XSS_RISK",
+    "severity": "Medium",
+    "is_true_positive": true,
+    "description": "DVWA XSS Reflected 中等安全级别：仅移除精确 <script> 字符串，仍可绕过"
+  },
+  {
+    "file": "vulnerabilities/xss_r/source/high.php",
+    "line": 11,
+    "type": "XSS_RISK",
+    "severity": "Medium",
+    "is_true_positive": true,
+    "description": "DVWA XSS Reflected 高安全级别：弱正则过滤 script 片段，仍可绕过"
   },
   {
     "file": "vulnerabilities/xss_d/index.php",
@@ -167,6 +271,30 @@
     "severity": "Medium",
     "is_true_positive": true,
     "description": "DVWA SQL Injection 页面直接输出用户可控数据，存在反射型 XSS"
+  },
+  {
+    "file": "vulnerabilities/sqli/source/low.php",
+    "line": 47,
+    "type": "XSS_RISK",
+    "severity": "Medium",
+    "is_true_positive": true,
+    "description": "DVWA SQL Injection 页面 SQLite 分支直接输出用户可控 id，存在反射型 XSS"
+  },
+  {
+    "file": "vulnerabilities/csp/source/jsonp.php",
+    "line": 12,
+    "type": "XSS_RISK",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA CSP JSONP 端点直接输出用户可控 callback 名称，存在 JSONP callback 注入风险"
+  },
+  {
+    "file": "vulnerabilities/authbypass/authbypass.js",
+    "line": 43,
+    "type": "XSS_RISK",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA auth bypass 前端将可被修改的用户资料字段拼接到 innerHTML，存在存储型 DOM XSS 风险"
   },
   {
     "file": "vulnerabilities/open_redirect/source/low.php",
@@ -199,6 +327,14 @@
     "severity": "High",
     "is_true_positive": true,
     "description": "DVWA Broken Access Control SQL 注入"
+  },
+  {
+    "file": "vulnerabilities/authbypass/change_user_details.php",
+    "line": 48,
+    "type": "SQL_INJECTION",
+    "severity": "High",
+    "is_true_positive": true,
+    "description": "DVWA auth bypass 更新接口将 JSON body 字段直接拼接进 UPDATE 查询"
   },
   {
     "file": "vulnerabilities/csrf/test_credentials.php",

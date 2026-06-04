@@ -32,6 +32,8 @@ class KnowledgeHit:
     score: float
     snippet: str
     tags: tuple[str, ...]
+    matched_terms: tuple[str, ...]
+    matched_tags: tuple[str, ...]
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation."""
@@ -41,6 +43,10 @@ class KnowledgeHit:
             "score": round(self.score, 4),
             "snippet": self.snippet,
             "tags": list(self.tags),
+            "why_matched": {
+                "terms": list(self.matched_terms),
+                "tags": list(self.matched_tags),
+            },
         }
 
 
@@ -102,7 +108,7 @@ class MarkdownKnowledgeBase:
             )
         return docs
 
-    def search(self, query: str, top_k: int = 3) -> list[KnowledgeHit]:
+    def search(self, query: str, top_k: int = 3, min_score: float = 0.08) -> list[KnowledgeHit]:
         """Return top ranked knowledge documents for a query."""
         query_terms = Counter(_tokenize(query))
         if not query_terms:
@@ -117,11 +123,15 @@ class MarkdownKnowledgeBase:
             overlap = sum(query_terms[token] * doc_terms.get(token, 0) for token in query_terms)
             if overlap <= 0:
                 continue
+            matched_terms = tuple(sorted(token for token in query_set if doc_terms.get(token, 0) > 0))
+            matched_tags = tuple(sorted(query_set.intersection(doc.tags)))
             doc_norm = math.sqrt(sum(value * value for value in doc_terms.values())) or 1.0
             score = overlap / (query_norm * doc_norm)
-            tag_bonus = 0.08 * len(query_set.intersection(doc.tags))
+            tag_bonus = 0.08 * len(matched_tags)
             title_bonus = 0.05 * sum(1 for token in query_set if token in _tokenize(doc.title))
             score += tag_bonus + title_bonus
+            if score < min_score:
+                continue
             hits.append(
                 KnowledgeHit(
                     title=doc.title,
@@ -129,6 +139,8 @@ class MarkdownKnowledgeBase:
                     score=score,
                     snippet=_snippet(doc.body, query_set),
                     tags=doc.tags,
+                    matched_terms=matched_terms,
+                    matched_tags=matched_tags,
                 )
             )
 
