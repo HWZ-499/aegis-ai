@@ -98,12 +98,11 @@ class PhpSQLInjectionAstRule(SecurityRule):
                             continue
                         if inner.type == "string" and not self._string_has_variable(inner):
                             continue
-                        sql_expr = self._get_sql_expression_for_arg(inner, line, context)
-                        if self._is_sql_expr_protected_by_strict_digit_guards(sql_expr, line, context):
-                            continue
                         if inner.type in ("string", "encapsed_string", "binary_expression"):
                             weak_var = self._find_weakly_sanitized_unquoted_sql_var(inner, context)
                             if weak_var:
+                                if self._is_var_numeric_guarded(weak_var, line, context):
+                                    continue
                                 self._reported.add(line)
                                 finding = {
                                     "type": "SQL_INJECTION",
@@ -120,6 +119,8 @@ class PhpSQLInjectionAstRule(SecurityRule):
                                 return
                         if _subtree_contains_php_user_input(arg, context):
                             if not self._contains_high_risk_php_sql_source(arg, context):
+                                continue
+                            if self._is_sql_arg_numeric_guarded(inner, line, context):
                                 continue
                             self._reported.add(line)
                             finding = {
@@ -152,6 +153,8 @@ class PhpSQLInjectionAstRule(SecurityRule):
                             assigned_expr = self._find_latest_assignment_expr(var, line, context)
                             weak_var = self._find_weakly_sanitized_unquoted_sql_var_in_text(assigned_expr, context)
                             if weak_var:
+                                if self._is_var_numeric_guarded(weak_var, line, context):
+                                    continue
                                 self._reported.add(line)
                                 finding = {
                                     "type": "SQL_INJECTION",
@@ -170,6 +173,8 @@ class PhpSQLInjectionAstRule(SecurityRule):
                         if inner.type in ("binary_expression", "encapsed_string"):
                             if self._expr_contains_tainted_var(inner, context):
                                 if not self._contains_high_risk_php_sql_source(inner, context):
+                                    continue
+                                if self._is_sql_arg_numeric_guarded(inner, line, context):
                                     continue
                                 self._reported.add(line)
                                 finding = {
@@ -285,119 +290,248 @@ class PhpSQLInjectionAstRule(SecurityRule):
                 return var_name
         return None
 
-    def _get_sql_expression_for_arg(self, inner: Any, sink_line: int, context: AnalysisContext) -> str | None:
-        if getattr(inner, "type", "") == "variable_name":
-            var_name = self._get_node_text(inner).lstrip("$")
-            return self._find_latest_assignment_expr(var_name, sink_line, context)
-        return self._get_node_text(inner)
-
-    def _is_sql_expr_protected_by_strict_digit_guards(
-        self,
-        sql_text: str | None,
-        sink_line: int,
-        context: AnalysisContext,
-    ) -> bool:
+    def _is_sql_arg_numeric_guarded(self, node: Any, sink_line: int, context: AnalysisContext) -> bool:
         """
-        Return True when every tainted SQL variable is constrained to digits.
+        Return True when every high-risk variable flowing into this SQL argument
+        has been narrowed to numeric-only input before the sink.
 
-        This covers common PHP guard patterns such as:
-        `if (!preg_match('/^\\d+$/', $_GET['id'])) { ... } else { $id = $_GET['id']; ... }`.
-        A digit-only value cannot alter SQL structure even when placed inside a
-        quoted numeric comparison.
+        This is intentionally SQLi-specific. A digit-only guard proves the value
+        cannot inject SQL syntax, but it is not a general-purpose sanitizer for
+        other vulnerability classes.
         """
+        sql_text = self._get_sql_text_for_arg(node, sink_line, context)
         if not sql_text or not self._looks_like_sql(sql_text):
             return False
 
-        var_names = set(re.findall(r"\$\{\s*([A-Za-z_]\w*)\s*\}|\$([A-Za-z_]\w*)", sql_text))
-        flattened_var_names = {name for pair in var_names for name in pair if name}
-        if not flattened_var_names:
+        candidate_vars = self._collect_sql_value_vars(node, sql_text, sink_line, context)
+        if not candidate_vars:
             return False
 
-        saw_guarded_tainted_var = False
-        for var_name in sorted(flattened_var_names):
-            if self._is_var_strict_digit_guarded(var_name, sink_line, context):
-                saw_guarded_tainted_var = True
-                continue
-            if context.is_var_tainted(var_name) or context.is_var_tainted("$" + var_name):
-                return False
-            source = context.get_taint_source(var_name) or context.get_taint_source("$" + var_name)
-            if source is not None:
-                source_expr = (getattr(source, "source_expr", "") or "").strip()
-                if self._HIGH_RISK_SOURCE_RE.search(source_expr):
-                    return False
-
-        return saw_guarded_tainted_var
-
-    def _is_var_strict_digit_guarded(self, var_name: str, sink_line: int, context: AnalysisContext) -> bool:
-        assigned_expr = self._find_latest_assignment_expr(var_name, sink_line, context)
-        if not assigned_expr:
+        high_risk_vars = {var_name for var_name in candidate_vars if self._is_high_risk_tainted_var(var_name, context)}
+        if not high_risk_vars:
             return False
-        if self._is_integer_cast_expr(assigned_expr):
+
+        return all(self._is_var_numeric_guarded(var_name, sink_line, context) for var_name in high_risk_vars)
+
+    def _get_sql_text_for_arg(self, node: Any, sink_line: int, context: AnalysisContext) -> str | None:
+        if getattr(node, "type", "") == "variable_name":
+            var_name = self._get_node_text(node).lstrip("$")
+            assignment = self._find_latest_assignment(var_name, sink_line, context)
+            if assignment is not None:
+                return assignment[1]
+        return self._get_node_text(node)
+
+    def _collect_sql_value_vars(
+        self,
+        node: Any,
+        sql_text: str,
+        sink_line: int,
+        context: AnalysisContext,
+    ) -> set[str]:
+        if getattr(node, "type", "") == "variable_name":
+            var_name = self._get_node_text(node).lstrip("$")
+            assignment = self._find_latest_assignment(var_name, sink_line, context)
+            if assignment is not None:
+                return set(re.findall(r"\$([A-Za-z_]\w*)", assignment[1]))
+        collected = self._collect_variable_names(node)
+        if collected:
+            return collected
+        return set(re.findall(r"\$([A-Za-z_]\w*)", sql_text))
+
+    def _is_high_risk_tainted_var(self, var_name: str, context: AnalysisContext) -> bool:
+        if not (context.is_var_tainted(var_name) or context.is_var_tainted("$" + var_name)):
+            return False
+
+        source = context.get_taint_source(var_name) or context.get_taint_source("$" + var_name)
+        if source is None:
             return True
 
+        source_type = (getattr(source, "source_type", "") or "").strip().lower()
+        source_expr = (getattr(source, "source_expr", "") or "").strip()
+        if any(token in source_type for token in ("get", "post", "request", "cookie", "files")):
+            return True
+        if self._HIGH_RISK_SOURCE_RE.search(source_expr):
+            return True
+        if "server" in source_type or self._LOW_RISK_SERVER_SOURCE_RE.search(source_expr):
+            return False
+        return True
+
+    def _is_var_numeric_guarded(self, var_name: str, sink_line: int, context: AnalysisContext) -> bool:
+        assignment = self._find_latest_assignment(var_name, sink_line, context)
+        assignment_line = assignment[0] if assignment is not None else sink_line
+        assignment_expr = assignment[1] if assignment is not None else None
+
+        if assignment_expr and self._is_numeric_cast_expr(assignment_expr):
+            return True
+
+        guarded_exprs = {f"${var_name}"}
+        if assignment_expr:
+            guarded_exprs.add(assignment_expr)
+
+        source = context.get_taint_source(var_name) or context.get_taint_source("$" + var_name)
+        source_expr = (getattr(source, "source_expr", "") or "").strip() if source is not None else ""
+        if source_expr and source_expr != f"${var_name}":
+            guarded_exprs.add(source_expr)
+
+        return self._has_numeric_guard_for_exprs(guarded_exprs, assignment_line, sink_line, context)
+
+    @staticmethod
+    def _is_numeric_cast_expr(expr: str) -> bool:
+        return re.search(r"^\s*(?:\(?\s*(?:int|integer|float|double)\s*\)?|intval|floatval|abs)\s*\(", expr) is not None
+
+    def _has_numeric_guard_for_exprs(
+        self,
+        exprs: set[str],
+        assignment_line: int,
+        sink_line: int,
+        context: AnalysisContext,
+    ) -> bool:
         source = context.extras.get("source")
         if not isinstance(source, str) or not source:
             return False
-
         lines = source.splitlines()
-        upper_bound = min(max(sink_line - 1, 0), len(lines))
-        assignment_line = self._find_latest_assignment_line(var_name, sink_line, context)
-        if assignment_line is None:
+        normalized_exprs = {self._normalize_php_expr(expr) for expr in exprs if expr}
+        if not normalized_exprs:
             return False
 
-        assigned_norm = self._normalize_php_expr(assigned_expr)
-        var_norm = self._normalize_php_expr("$" + var_name)
-        for idx in range(0, min(assignment_line, upper_bound)):
-            line = lines[idx]
-            if "preg_match" not in line:
+        sink_idx = max(sink_line - 1, 0)
+        assignment_idx = max(assignment_line - 1, 0)
+        for guard_idx in range(0, min(sink_idx + 1, len(lines))):
+            condition = self._extract_if_condition(lines[guard_idx])
+            if not condition:
                 continue
-            match = re.search(
-                r"preg_match\s*\(\s*(['\"])(?P<pattern>.+?)\1\s*,\s*(?P<expr>.+?)\s*\)",
-                line,
-            )
-            if match is None or not self._is_strict_digit_regex(match.group("pattern")):
+
+            guarded = self._numeric_guard_exprs(condition)
+            matching_guard_exprs = {
+                self._normalize_php_expr(expr) for expr in guarded if self._normalize_php_expr(expr) in normalized_exprs
+            }
+            if not matching_guard_exprs:
                 continue
-            guard_expr_norm = self._normalize_php_expr(match.group("expr"))
-            if guard_expr_norm not in {assigned_norm, var_norm}:
-                continue
-            if self._guard_invalid_branch_flows_to_else(lines, idx, assignment_line - 1):
+
+            if self._is_negative_guard_condition(condition):
+                if self._else_block_contains_lines(lines, guard_idx, {assignment_idx, sink_idx}):
+                    return True
+                if self._guard_failure_block_exits(lines, guard_idx) and guard_idx < assignment_idx <= sink_idx:
+                    return True
+            elif self._block_contains_lines(lines, guard_idx, {assignment_idx, sink_idx}):
                 return True
+
         return False
 
     @staticmethod
-    def _find_latest_assignment_line(var_name: str, sink_line: int, context: AnalysisContext) -> int | None:
-        source = context.extras.get("source")
-        if not isinstance(source, str) or not source:
+    def _extract_if_condition(line: str) -> str | None:
+        match = re.search(r"\bif\s*\((.*)\)", line)
+        if match is None:
             return None
+        return match.group(1)
 
-        lines = source.splitlines()
-        upper_bound = min(max(sink_line - 1, 0), len(lines))
-        assign_re = re.compile(rf"\${re.escape(var_name)}\s*=\s*.+?;\s*$")
-        for idx in range(upper_bound - 1, -1, -1):
-            if assign_re.search(lines[idx]):
-                return idx + 1
-        return None
+    def _numeric_guard_exprs(self, condition: str) -> list[str]:
+        result: list[str] = []
+        for match in re.finditer(
+            r"preg_match\s*\(\s*(['\"])(?P<pattern>.*?)(?<!\\)\1\s*,\s*(?P<expr>[^,)]+)",
+            condition,
+            re.IGNORECASE,
+        ):
+            if self._is_digit_only_regex(match.group("pattern")):
+                result.append(match.group("expr").strip())
+
+        for match in re.finditer(
+            r"\b(?:ctype_digit|is_numeric)\s*\(\s*(?P<expr>[^)]+)\)",
+            condition,
+            re.IGNORECASE,
+        ):
+            result.append(match.group("expr").strip())
+
+        for match in re.finditer(
+            r"\bfilter_var\s*\(\s*(?P<expr>[^,]+)\s*,\s*FILTER_VALIDATE_(?:INT|FLOAT)\b",
+            condition,
+            re.IGNORECASE,
+        ):
+            result.append(match.group("expr").strip())
+
+        return result
 
     @staticmethod
-    def _is_integer_cast_expr(expr: str) -> bool:
-        return re.search(r"^\s*(?:intval\s*\(|\(\s*int\s*\)|\(\s*integer\s*\))", expr, re.IGNORECASE) is not None
+    def _is_digit_only_regex(pattern: str) -> bool:
+        stripped = pattern.strip()
+        if stripped.startswith("/") and stripped.count("/") >= 2:
+            last = stripped.rfind("/")
+            stripped = stripped[1:last]
+        normalized = stripped.replace("\\\\d", r"\d").replace("\\d", r"\d")
+        normalized = re.sub(r"\s+", "", normalized)
+        return normalized in {r"^\d+$", "^[0-9]+$", "^[[:digit:]]+$"}
 
     @staticmethod
-    def _is_strict_digit_regex(pattern: str) -> bool:
-        normalized = pattern.strip()
-        if normalized.startswith("/") and normalized.count("/") >= 2:
-            normalized = normalized[1 : normalized.rfind("/")]
-        normalized = normalized.replace("\\\\", "\\")
-        return normalized in {r"^\d+$", r"^[0-9]+$"}
+    def _is_negative_guard_condition(condition: str) -> bool:
+        if re.search(r"!\s*(?:preg_match|ctype_digit|is_numeric|filter_var)\s*\(", condition, re.IGNORECASE):
+            return True
+        return (
+            re.search(
+                r"(?:preg_match|ctype_digit|is_numeric|filter_var)\s*\([^)]*\)\s*(?:={2,3}|!==?)\s*(?:false|0)",
+                condition,
+                re.IGNORECASE,
+            )
+            is not None
+        )
 
     @staticmethod
     def _normalize_php_expr(expr: str) -> str:
-        return re.sub(r"\s+", "", expr.strip().rstrip(";"))
+        return re.sub(r"\s+", "", expr).replace('"', "'")
+
+    def _else_block_contains_lines(self, lines: list[str], guard_idx: int, target_indices: set[int]) -> bool:
+        guard_end = self._find_block_end(lines, guard_idx)
+        if guard_end is None:
+            return False
+        else_idx = self._find_else_open_line(lines, guard_end)
+        if else_idx is None:
+            return False
+        return self._block_contains_lines(lines, else_idx, target_indices)
+
+    def _guard_failure_block_exits(self, lines: list[str], guard_idx: int) -> bool:
+        guard_end = self._find_block_end(lines, guard_idx)
+        if guard_end is None:
+            return False
+        block_text = "\n".join(lines[guard_idx : guard_end + 1])
+        return re.search(r"\b(?:return|exit|die|throw)\b", block_text, re.IGNORECASE) is not None
+
+    def _block_contains_lines(self, lines: list[str], open_idx: int, target_indices: set[int]) -> bool:
+        block_end = self._find_block_end(lines, open_idx)
+        if block_end is None:
+            return False
+        return all(open_idx <= target_idx <= block_end for target_idx in target_indices)
 
     @staticmethod
-    def _guard_invalid_branch_flows_to_else(lines: list[str], guard_idx: int, assignment_idx: int) -> bool:
-        between = "\n".join(lines[guard_idx : assignment_idx + 1])
-        return re.search(r"}\s*else\b|\belse\s*{", between) is not None
+    def _find_block_end(lines: list[str], open_idx: int) -> int | None:
+        depth = 0
+        saw_open = False
+        for idx in range(open_idx, len(lines)):
+            for ch in lines[idx]:
+                if ch == "{":
+                    depth += 1
+                    saw_open = True
+                elif ch == "}" and saw_open:
+                    depth -= 1
+                    if depth == 0:
+                        return idx
+        return None
+
+    @staticmethod
+    def _find_else_open_line(lines: list[str], guard_end_idx: int) -> int | None:
+        for idx in range(guard_end_idx, min(guard_end_idx + 4, len(lines))):
+            line = lines[idx].strip()
+            if not line:
+                continue
+            if "else" not in line:
+                if idx == guard_end_idx:
+                    continue
+                return None
+            if "{" in line:
+                return idx
+            for next_idx in range(idx + 1, min(idx + 3, len(lines))):
+                if lines[next_idx].strip().startswith("{"):
+                    return next_idx
+            return None
+        return None
 
     @staticmethod
     def _looks_like_sql(text: str) -> bool:
@@ -453,8 +587,13 @@ class PhpSQLInjectionAstRule(SecurityRule):
             return True
         return False
 
+    @classmethod
+    def _find_latest_assignment_expr(cls, var_name: str, sink_line: int, context: AnalysisContext) -> str | None:
+        assignment = cls._find_latest_assignment(var_name, sink_line, context)
+        return assignment[1] if assignment is not None else None
+
     @staticmethod
-    def _find_latest_assignment_expr(var_name: str, sink_line: int, context: AnalysisContext) -> str | None:
+    def _find_latest_assignment(var_name: str, sink_line: int, context: AnalysisContext) -> tuple[int, str] | None:
         source = context.extras.get("source")
         if not isinstance(source, str) or not source:
             return None
@@ -467,7 +606,7 @@ class PhpSQLInjectionAstRule(SecurityRule):
             line = lines[idx]
             matched = assign_re.search(line)
             if matched is not None:
-                return matched.group(1).strip()
+                return idx + 1, matched.group(1).strip()
         return None
 
     def _collect_variable_names(self, node: Any) -> set[str]:

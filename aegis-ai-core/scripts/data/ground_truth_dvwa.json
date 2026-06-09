@@ -195,18 +195,19 @@
   {
     "file": "vulnerabilities/bac/source/medium.php",
     "line": 22,
+    "line_candidates": [22, 28],
     "type": "SQL_INJECTION",
     "severity": "High",
     "is_true_positive": false,
-    "description": "DVWA BAC medium user_id existence query is protected by a strict digit preg_match guard; reporting SQLi here is an FP"
+    "description": "DVWA BAC medium 的 user_id 查询位于 preg_match('/^\\\\d+$/') 数字 guard 后；这里的真实问题是 token 可绕过的访问控制，不应按 SQLi 计入 TP"
   },
   {
-    "file": "vulnerabilities/bac/source/medium.php",
-    "line": 28,
+    "file": "vulnerabilities/authbypass/change_user_details.php",
+    "line": 48,
     "type": "SQL_INJECTION",
     "severity": "High",
-    "is_true_positive": false,
-    "description": "DVWA BAC medium profile query reuses the strict digit-guarded user_id; the access-control weakness is not SQL injection"
+    "is_true_positive": true,
+    "description": "DVWA auth bypass 更新接口将 JSON body 字段直接拼接进 UPDATE 查询"
   },
   {
     "file": "vulnerabilities/csrf/test_credentials.php",

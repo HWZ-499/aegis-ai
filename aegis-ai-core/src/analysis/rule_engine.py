@@ -85,6 +85,9 @@ _PHP_RCE_SINK_CALL_RE = re.compile(
     re.IGNORECASE,
 )
 _PHP_SUPERGLOBAL_RE = re.compile(r"\$_(?:GET|POST|REQUEST|COOKIE|FILES|SERVER)\b", re.IGNORECASE)
+_PHP_HIGH_RISK_SQL_SOURCE_RE = re.compile(r"\$_(?:GET|POST|REQUEST|COOKIE|FILES)\s*\[", re.IGNORECASE)
+_PHP_VAR_RE = re.compile(r"\$([A-Za-z_]\w*)")
+_PHP_ASSIGN_RE = re.compile(r"^\s*\$(?P<var>[A-Za-z_]\w*)\s*=\s*(?P<expr>.+?)\s*;?\s*$")
 _PHP_LITERAL_EXPR_PART = r"""(?:'[^'\\]*(?:\\.[^'\\]*)*'|"[^"\\]*(?:\\.[^"\\]*)*"|\d+|__DIR__|__FILE__)"""
 _PHP_LITERAL_COMMAND_EXPR_RE = re.compile(
     rf"^\s*{_PHP_LITERAL_EXPR_PART}(?:\s*\.\s*{_PHP_LITERAL_EXPR_PART})*\s*$",
@@ -185,6 +188,215 @@ def _is_setup_like_php_file(path: Path) -> bool:
     """判断是否为安装/初始化类脚本（通常为低风险运维命令场景）。"""
     basename = path.name.lower()
     return any(basename.startswith(prefix) or basename == f"{prefix}.php" for prefix in _PHP_SETUP_SCRIPT_PREFIXES)
+
+
+def _php_regex_sqli_is_numeric_guarded(lines: list[str], line: int) -> bool:
+    """
+    Filter PHP regex SQLi hits where the only high-risk variables in the SQL
+    text are constrained by a digit-only guard before the query is reachable.
+    """
+    line_idx = line - 1
+    if line_idx < 0 or line_idx >= len(lines):
+        return False
+
+    raw_line = lines[line_idx]
+    if not re.search(r"\b(?:SELECT|UPDATE|INSERT|DELETE|REPLACE|WHERE|FROM|INTO)\b", raw_line, re.IGNORECASE):
+        return False
+
+    vars_in_sql = set(_PHP_VAR_RE.findall(raw_line))
+    if not vars_in_sql:
+        return False
+
+    high_risk_vars = [var for var in vars_in_sql if _php_var_has_high_risk_source(lines, var, line_idx)]
+    if not high_risk_vars:
+        return False
+
+    return all(_php_var_is_numeric_guarded(lines, var, line_idx) for var in high_risk_vars)
+
+
+def _php_var_has_high_risk_source(lines: list[str], var_name: str, before_idx: int, depth: int = 0) -> bool:
+    if depth > 3:
+        return False
+
+    assignment = _php_latest_assignment(lines, var_name, before_idx)
+    if assignment is None:
+        return False
+
+    _, expr = assignment
+    if _PHP_HIGH_RISK_SQL_SOURCE_RE.search(expr):
+        return True
+
+    for inner in _PHP_VAR_RE.findall(expr):
+        if inner != var_name and _php_var_has_high_risk_source(lines, inner, before_idx, depth + 1):
+            return True
+    return False
+
+
+def _php_var_is_numeric_guarded(lines: list[str], var_name: str, sink_idx: int) -> bool:
+    assignment = _php_latest_assignment(lines, var_name, sink_idx)
+    assignment_idx = assignment[0] if assignment is not None else sink_idx
+    assignment_expr = assignment[1] if assignment is not None else ""
+
+    if re.search(r"^\s*(?:\(?\s*(?:int|integer|float|double)\s*\)?|intval|floatval|abs)\s*\(", assignment_expr):
+        return True
+
+    guarded_exprs = {f"${var_name}"}
+    if assignment_expr:
+        guarded_exprs.add(assignment_expr)
+
+    return _php_has_numeric_guard_for_exprs(lines, guarded_exprs, assignment_idx, sink_idx)
+
+
+def _php_has_numeric_guard_for_exprs(
+    lines: list[str],
+    exprs: set[str],
+    assignment_idx: int,
+    sink_idx: int,
+) -> bool:
+    normalized_exprs = {_php_normalize_expr(expr) for expr in exprs if expr}
+    if not normalized_exprs:
+        return False
+
+    for guard_idx in range(0, min(sink_idx + 1, len(lines))):
+        condition = _php_extract_if_condition(lines[guard_idx])
+        if not condition:
+            continue
+        guarded = {
+            _php_normalize_expr(expr)
+            for expr in _php_numeric_guard_exprs(condition)
+            if _php_normalize_expr(expr) in normalized_exprs
+        }
+        if not guarded:
+            continue
+
+        if _php_is_negative_numeric_guard(condition):
+            if _php_else_block_contains_lines(lines, guard_idx, {assignment_idx, sink_idx}):
+                return True
+            if _php_guard_failure_block_exits(lines, guard_idx) and guard_idx < assignment_idx <= sink_idx:
+                return True
+        elif _php_block_contains_lines(lines, guard_idx, {assignment_idx, sink_idx}):
+            return True
+
+    return False
+
+
+def _php_latest_assignment(lines: list[str], var_name: str, before_idx: int) -> tuple[int, str] | None:
+    for idx in range(min(before_idx - 1, len(lines) - 1), -1, -1):
+        match = _PHP_ASSIGN_RE.match(lines[idx].strip())
+        if match and match.group("var") == var_name:
+            return idx, match.group("expr").strip()
+    return None
+
+
+def _php_extract_if_condition(line: str) -> str | None:
+    match = re.search(r"\bif\s*\((.*)\)", line)
+    return match.group(1) if match is not None else None
+
+
+def _php_numeric_guard_exprs(condition: str) -> list[str]:
+    result: list[str] = []
+    for match in re.finditer(
+        r"preg_match\s*\(\s*(['\"])(?P<pattern>.*?)(?<!\\)\1\s*,\s*(?P<expr>[^,)]+)",
+        condition,
+        re.IGNORECASE,
+    ):
+        if _php_is_digit_only_regex(match.group("pattern")):
+            result.append(match.group("expr").strip())
+
+    for match in re.finditer(r"\b(?:ctype_digit|is_numeric)\s*\(\s*(?P<expr>[^)]+)\)", condition, re.IGNORECASE):
+        result.append(match.group("expr").strip())
+
+    for match in re.finditer(
+        r"\bfilter_var\s*\(\s*(?P<expr>[^,]+)\s*,\s*FILTER_VALIDATE_(?:INT|FLOAT)\b",
+        condition,
+        re.IGNORECASE,
+    ):
+        result.append(match.group("expr").strip())
+
+    return result
+
+
+def _php_is_digit_only_regex(pattern: str) -> bool:
+    stripped = pattern.strip()
+    if stripped.startswith("/") and stripped.count("/") >= 2:
+        stripped = stripped[1 : stripped.rfind("/")]
+    normalized = re.sub(r"\s+", "", stripped.replace("\\\\d", r"\d").replace("\\d", r"\d"))
+    return normalized in {r"^\d+$", "^[0-9]+$", "^[[:digit:]]+$"}
+
+
+def _php_is_negative_numeric_guard(condition: str) -> bool:
+    if re.search(r"!\s*(?:preg_match|ctype_digit|is_numeric|filter_var)\s*\(", condition, re.IGNORECASE):
+        return True
+    return (
+        re.search(
+            r"(?:preg_match|ctype_digit|is_numeric|filter_var)\s*\([^)]*\)\s*(?:={2,3}|!==?)\s*(?:false|0)",
+            condition,
+            re.IGNORECASE,
+        )
+        is not None
+    )
+
+
+def _php_normalize_expr(expr: str) -> str:
+    return re.sub(r"\s+", "", expr).replace('"', "'")
+
+
+def _php_else_block_contains_lines(lines: list[str], guard_idx: int, target_indices: set[int]) -> bool:
+    guard_end = _php_find_block_end(lines, guard_idx)
+    if guard_end is None:
+        return False
+    else_idx = _php_find_else_open_line(lines, guard_end)
+    if else_idx is None:
+        return False
+    return _php_block_contains_lines(lines, else_idx, target_indices)
+
+
+def _php_guard_failure_block_exits(lines: list[str], guard_idx: int) -> bool:
+    guard_end = _php_find_block_end(lines, guard_idx)
+    if guard_end is None:
+        return False
+    block_text = "\n".join(lines[guard_idx : guard_end + 1])
+    return re.search(r"\b(?:return|exit|die|throw)\b", block_text, re.IGNORECASE) is not None
+
+
+def _php_block_contains_lines(lines: list[str], open_idx: int, target_indices: set[int]) -> bool:
+    block_end = _php_find_block_end(lines, open_idx)
+    if block_end is None:
+        return False
+    return all(open_idx <= target_idx <= block_end for target_idx in target_indices)
+
+
+def _php_find_block_end(lines: list[str], open_idx: int) -> int | None:
+    depth = 0
+    saw_open = False
+    for idx in range(open_idx, len(lines)):
+        for ch in lines[idx]:
+            if ch == "{":
+                depth += 1
+                saw_open = True
+            elif ch == "}" and saw_open:
+                depth -= 1
+                if depth == 0:
+                    return idx
+    return None
+
+
+def _php_find_else_open_line(lines: list[str], guard_end_idx: int) -> int | None:
+    for idx in range(guard_end_idx, min(guard_end_idx + 4, len(lines))):
+        line = lines[idx].strip()
+        if not line:
+            continue
+        if "else" not in line:
+            if idx == guard_end_idx:
+                continue
+            return None
+        if "{" in line:
+            return idx
+        for next_idx in range(idx + 1, min(idx + 3, len(lines))):
+            if lines[next_idx].strip().startswith("{"):
+                return next_idx
+        return None
+    return None
 
 
 def _dedupe_php_nearby_findings(findings: list[dict]) -> list[dict]:
@@ -597,6 +809,9 @@ def analyze_php(code: str, file_path: Path | str) -> list[dict]:
         if vuln_type == "DESERIALIZATION" and 1 <= line <= len(lines_of_code):
             raw_line = lines_of_code[line - 1]
             if "allowed_classes" in raw_line:
+                continue
+        if vuln_type == "SQL_INJECTION" and 1 <= line <= len(lines_of_code):
+            if _php_regex_sqli_is_numeric_guarded(lines_of_code, int(line)):
                 continue
         # 正则层：PHP RCE 仅当参数为字面量（无 $var / $_GET 等）时不报告，避免常量命令误报
         if vuln_type == "RCE_COMMAND_EXEC" and 1 <= line <= len(lines_of_code):
