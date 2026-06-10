@@ -132,7 +132,6 @@ Ground-truth 格式：每项 `{"file": str, "line": int, "type": str}`，`file` 
 - 基准运行与报告：`src/scanner/benchmark.py`  
 - 验收测试与阈值：`tests/test_acceptance_benchmark.py`  
 - 产品验证总览：`docs/VERIFICATION_GUIDE.md`  
-- TDD 12.2 里程碑 M3：`docs/technical/TECHNICAL_DESIGN_DOCUMENT.md`  
 
 ---
 
