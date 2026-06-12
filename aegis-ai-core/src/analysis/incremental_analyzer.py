@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -66,6 +67,8 @@ class FunctionInfo:
     content_hash: str
     node_start_byte: int = 0
     node_end_byte: int = 0
+    start_column: int = 0
+    node_type: str = ""
 
 
 @dataclass
@@ -142,10 +145,11 @@ class IncrementalAnalyzer:
             if old is None or old.content_hash != info.content_hash:
                 changed.append(name)
 
-        # Detect deleted functions (findings for them must be removed)
+        # Deleted functions can shift all following line numbers and remove cached
+        # findings. Fall back to a full scan instead of trying to repair cache state.
         for name in old_funcs:
             if name not in new_functions:
-                changed.append(name)
+                return [], True
 
         # 源码变了但函数体哈希没变，通常意味着修改发生在函数外部：
         # 例如顶部新增注释、全局常量/敏感信息位置移动、函数之间插入注释等。
@@ -159,6 +163,92 @@ class IncrementalAnalyzer:
             return [], True
 
         return changed, False
+
+    def build_partial_source(
+        self,
+        file_path: str,
+        code: str,
+        language: str,
+        changed_funcs: list[str],
+    ) -> str | None:
+        """
+        Build a sparse source file containing only changed top-level functions.
+
+        The returned source keeps the original line count by replacing unrelated
+        lines with blanks, so findings emitted by the normal analyzer keep their
+        original line numbers. Top-level import/require lines are preserved to
+        keep common alias-based rules working.
+        """
+        if language not in {"python", "javascript", "typescript"}:
+            return None
+        if not changed_funcs:
+            return None
+
+        cached = self._cache.get(file_path)
+        if cached is None:
+            return None
+        if cached.findings_by_func.get("__global__"):
+            return None
+
+        parser = self._get_parser(language)
+        if parser is None:
+            return None
+        functions = self._extract_functions(code, language, parser)
+        if functions is None:
+            return None
+
+        lines = code.splitlines()
+        selected: list[FunctionInfo] = []
+        for name in changed_funcs:
+            info = functions.get(name)
+            if info is None or not self._can_slice_function(info, language, lines):
+                return None
+            selected.append(info)
+
+        sparse_lines = ["" for _ in lines]
+        for idx, line in enumerate(lines):
+            if self._is_context_line(line, language):
+                sparse_lines[idx] = line
+
+        for info in selected:
+            start = max(info.start_line - 1, 0)
+            end = min(info.end_line, len(lines))
+            for idx in range(start, end):
+                sparse_lines[idx] = lines[idx]
+
+        return "\n".join(sparse_lines)
+
+    def filter_findings_for_functions(
+        self,
+        file_path: str,
+        code: str,
+        language: str,
+        function_names: list[str],
+        findings: list[dict],
+    ) -> list[dict]:
+        """Keep only findings that fall inside the requested functions."""
+        parser = self._get_parser(language)
+        if parser is None:
+            return findings
+        functions = self._extract_functions(code, language, parser)
+        if functions is None:
+            return findings
+
+        ranges: list[tuple[int, int]] = []
+        for name in function_names:
+            info = functions.get(name)
+            if info is not None:
+                ranges.append((info.start_line, info.end_line))
+
+        if not ranges:
+            return []
+
+        filtered: list[dict] = []
+        for finding in findings:
+            line = int(finding.get("line", 0) or 0)
+            if any(start <= line <= end for start, end in ranges):
+                filtered.append(finding)
+        return filtered
 
     def update_cache(
         self,
@@ -214,7 +304,14 @@ class IncrementalAnalyzer:
             all_findings.extend(func_findings)
         return all_findings
 
-    def merge_partial_findings(self, file_path: str, changed_funcs: list[str], new_findings: list[dict]) -> list[dict]:
+    def merge_partial_findings(
+        self,
+        file_path: str,
+        changed_funcs: list[str],
+        new_findings: list[dict],
+        code: str | None = None,
+        language: str | None = None,
+    ) -> list[dict]:
         """
         Merge new partial findings (for changed functions) with cached findings
         for unchanged functions.
@@ -223,6 +320,8 @@ class IncrementalAnalyzer:
             file_path: File path
             changed_funcs: Names of functions that were re-analyzed
             new_findings: Fresh findings from re-analyzing only changed functions
+            code: Current full source, used to remap cached finding line numbers
+            language: Language key for parsing current full source
 
         Returns:
             Complete finding list for the file.
@@ -233,11 +332,23 @@ class IncrementalAnalyzer:
 
         result: list[dict] = []
         changed_set = set(changed_funcs)
+        new_functions: dict[str, FunctionInfo] | None = None
+        if code is not None and language is not None:
+            parser = self._get_parser(language)
+            if parser is not None:
+                new_functions = self._extract_functions(code, language, parser)
 
         # Keep cached findings for unchanged functions
         for fname, func_findings in cached.findings_by_func.items():
             if fname not in changed_set:
-                result.extend(func_findings)
+                delta = 0
+                if fname != "__global__" and new_functions is not None:
+                    old_info = cached.functions.get(fname)
+                    new_info = new_functions.get(fname)
+                    if old_info is None or new_info is None:
+                        continue
+                    delta = new_info.start_line - old_info.start_line
+                result.extend(self._shift_finding_lines(f, delta) for f in func_findings)
 
         # Add new findings for changed functions
         result.extend(new_findings)
@@ -288,6 +399,8 @@ class IncrementalAnalyzer:
                     content_hash=content_hash,
                     node_start_byte=node.start_byte,
                     node_end_byte=node.end_byte,
+                    start_column=node.start_point[1],
+                    node_type=node.type,
                 )
 
         for child in node.children:
@@ -313,3 +426,67 @@ class IncrementalAnalyzer:
                     return cast(bytes, child.text).decode()
 
         return ""
+
+    @staticmethod
+    def _can_slice_function(info: FunctionInfo, language: str, lines: list[str]) -> bool:
+        """Return whether a function can be scanned as a standalone sparse slice."""
+        if not (1 <= info.start_line <= len(lines)):
+            return False
+
+        start_text = lines[info.start_line - 1].lstrip()
+        if language == "python":
+            return info.node_type == "function_definition" and info.start_column == 0
+
+        if language in {"javascript", "typescript"}:
+            if info.node_type == "method_definition":
+                return False
+            return start_text.startswith(
+                (
+                    "function ",
+                    "async function ",
+                    "export function ",
+                    "export async function ",
+                    "const ",
+                    "let ",
+                    "var ",
+                    "export const ",
+                    "export let ",
+                    "export var ",
+                )
+            )
+
+        return False
+
+    @staticmethod
+    def _is_context_line(line: str, language: str) -> bool:
+        """Keep lightweight context lines needed by alias/import-based rules."""
+        stripped = line.strip()
+        if language == "python":
+            return stripped.startswith(("import ", "from "))
+        if language in {"javascript", "typescript"}:
+            return stripped.startswith("import ") or "require(" in stripped
+        return False
+
+    @classmethod
+    def _shift_finding_lines(cls, finding: dict, delta: int) -> dict:
+        """Return a copy of a finding with line-based fields shifted."""
+        shifted = deepcopy(finding)
+        if delta == 0:
+            return shifted
+
+        for key in ("line", "start_line", "end_line", "taint_source_line"):
+            value = shifted.get(key)
+            if isinstance(value, int) and value > 0:
+                shifted[key] = value + delta
+
+        related_locations = shifted.get("related_locations")
+        if isinstance(related_locations, list):
+            for location in related_locations:
+                if not isinstance(location, dict):
+                    continue
+                for key in ("start_line", "end_line", "line"):
+                    value = location.get(key)
+                    if isinstance(value, int) and value > 0:
+                        location[key] = value + delta
+
+        return shifted

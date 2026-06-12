@@ -1541,8 +1541,52 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
     except RuntimeError as e:
         logger.debug("Resolving rules_dirs: %s", e)
 
+    def _run_scan_with_timeout(scan_source: str) -> list[dict]:
+        # P1-3：单次扫描超时，避免巨型或复杂文件拖死
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(
+                    scan_document,
+                    scan_source,
+                    file_path,
+                    extra_rule_dirs,
+                    rules_allowed_root,
+                )
+                return cast(list[dict], future.result(timeout=SCAN_TIMEOUT_SECONDS))
+        except concurrent.futures.TimeoutError:
+            logger.warning(
+                "Scan timed out after %.0fs for %s",
+                SCAN_TIMEOUT_SECONDS,
+                file_path,
+            )
+            return []
+
+    def _rescan_affected_file(affected_file_path: str) -> None:
+        """Rescan an importer affected by an export signature change."""
+        affected_path = Path(affected_file_path)
+        try:
+            affected_uri = _file_path_to_uri(affected_path)
+        except ValueError:
+            logger.debug("Skip affected file with invalid URI path: %s", affected_file_path)
+            return
+
+        try:
+            affected_doc = server.workspace.get_text_document(affected_uri)
+            affected_source = affected_doc.source
+        except (RuntimeError, KeyError):
+            try:
+                affected_source = affected_path.read_text(encoding="utf-8")
+            except OSError as e:
+                logger.debug("Skip unreadable affected file %s: %s", affected_file_path, e)
+                return
+
+        _incremental_analyzer.invalidate(affected_file_path)
+        _validate_document(server, affected_uri, affected_source)
+
     # O5: 增量分析 — 检测是否只有部分函数变化，尝试复用缓存
+    findings: list[dict] = []
     _incremental_used = False
+    _scan_performed = False
     changed_funcs, full_rescan = _incremental_analyzer.get_changed_functions(file_path, source, language)
     if not full_rescan and not changed_funcs:
         # 完全未变化 — 使用缓存结果
@@ -1552,25 +1596,36 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
             _incremental_used = True
             logger.debug("Incremental: using cached findings for %s", file_path)
 
-    if not _incremental_used:
-        # P1-3：单次扫描超时，避免巨型或复杂文件拖死
-        try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(
-                    scan_document,
-                    source,
+    if not full_rescan and changed_funcs:
+        partial_source = _incremental_analyzer.build_partial_source(file_path, source, language, changed_funcs)
+        if partial_source is not None:
+            logger.debug("Incremental: scanning changed functions for %s: %s", file_path, changed_funcs)
+            try:
+                partial_findings = _run_scan_with_timeout(partial_source)
+            except ScanError as e:
+                logger.debug("Partial incremental scan failed for %s, falling back to full scan: %s", file_path, e)
+            else:
+                partial_findings = _incremental_analyzer.filter_findings_for_functions(
                     file_path,
-                    extra_rule_dirs,
-                    rules_allowed_root,
+                    source,
+                    language,
+                    changed_funcs,
+                    partial_findings,
                 )
-                findings = future.result(timeout=SCAN_TIMEOUT_SECONDS)
-        except concurrent.futures.TimeoutError:
-            logger.warning(
-                "Scan timed out after %.0fs for %s",
-                SCAN_TIMEOUT_SECONDS,
-                file_path,
-            )
-            findings = []
+                findings = _incremental_analyzer.merge_partial_findings(
+                    file_path,
+                    changed_funcs,
+                    partial_findings,
+                    code=source,
+                    language=language,
+                )
+                _incremental_used = True
+                _scan_performed = True
+
+    if not _incremental_used:
+        try:
+            findings = _run_scan_with_timeout(source)
+            _scan_performed = True
         except ScanError as e:
             logger.warning("Scan error for %s: %s", file_path, e)
             try:
@@ -1583,17 +1638,19 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
             server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
             return
 
+    if _scan_performed:
         # O5: 更新增量缓存
         _incremental_analyzer.update_cache(file_path, source, language, findings)
 
         # O5: 更新依赖追踪 & 检查是否需要重扫导入方
         project_root_str = getattr(_workspace_ctx, "_project_path", None) or str(Path(file_path).parent)
         _dependency_tracker.update_imports(file_path, source, language, project_root_str)
-        if _dependency_tracker.update_export_hash(file_path, source):
+        had_export_hash = _dependency_tracker.has_export_hash(file_path)
+        if _dependency_tracker.update_export_hash(file_path, source) and had_export_hash:
             affected = _dependency_tracker.get_affected_files(file_path) - {file_path}
             for affected_fp in affected:
                 logger.info("O5: export change in %s triggers rescan of %s", file_path, affected_fp)
-                _incremental_analyzer.invalidate(affected_fp)
+                _rescan_affected_file(affected_fp)
 
     # 合并跨文件分析结果
     cross_file_findings = _workspace_ctx.get_cross_file_findings(file_path)

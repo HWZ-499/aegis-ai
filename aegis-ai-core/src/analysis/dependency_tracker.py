@@ -87,6 +87,10 @@ class DependencyTracker:
         self._export_hashes[file_path] = new_hash
         return new_hash != old_hash
 
+    def has_export_hash(self, file_path: str) -> bool:
+        """Return whether this file already has a recorded export signature."""
+        return file_path in self._export_hashes
+
     def get_affected_files(self, changed_file: str) -> set[str]:
         """
         Return the set of files that need rescanning because they import
