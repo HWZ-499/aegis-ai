@@ -13,6 +13,11 @@ suite("AI Preflight Helpers", () => {
     assert.ok(message?.includes("DEEPSEEK_API_KEY"));
   });
 
+  test("defaults to Ollama without API key", () => {
+    const message = getAiConfigurationError("", {}, true);
+    assert.strictEqual(message, undefined);
+  });
+
   test("accepts Ollama without API key", () => {
     const message = getAiConfigurationError("ollama", {}, true);
     assert.strictEqual(message, undefined);

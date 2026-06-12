@@ -775,7 +775,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       cwd: cwd,
       env: {
         ...process.env,
-        AI_PROVIDER: config.get<string>("ai.provider", "deepseek"),
+        AI_PROVIDER: config.get<string>("ai.provider", "ollama"),
       },
     },
   };
@@ -806,7 +806,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
         ?? config.get<string[]>("excludePatterns", []),
       disabled_rules: config.get<string[]>("disabledRules", []),
       ai_enabled: config.get<boolean>("ai.enabled", true),
-      ai_provider: config.get<string>("ai.provider", "deepseek"),
+      ai_provider: config.get<string>("ai.provider", "ollama"),
       scan_on_save: config.get<boolean>("scanOnSave", true),
       scan_on_change: config.get<boolean>("scanOnChange", true),
       experimental_cross_file: config.get<boolean>("experimental.crossFileAnalysis", false),

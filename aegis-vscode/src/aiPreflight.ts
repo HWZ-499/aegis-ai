@@ -7,7 +7,7 @@ export function getAiConfigurationError(
     return "Aegis AI fixes are disabled in settings (aegisAI.ai.enabled = false).";
   }
 
-  switch ((provider || "deepseek").toLowerCase()) {
+  switch ((provider || "ollama").toLowerCase()) {
     case "deepseek":
       return env.DEEPSEEK_API_KEY ? undefined : "Missing DEEPSEEK_API_KEY for DeepSeek AI fixes.";
     case "openai":
