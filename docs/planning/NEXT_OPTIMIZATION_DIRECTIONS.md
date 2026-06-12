@@ -1,10 +1,21 @@
 # Aegis AI — 下一阶段技术优化方向详细规划
 
-> **创建日期**: 2026-03-17 | **文档版本**: 1.0 | **当前版本**: 扩展 v0.3.0 / 核心 v1.2.0
+> **创建日期**: 2026-03-17 | **文档版本**: 1.1 | **当前版本**: 扩展 v0.6.7 / 核心 v1.4.0
 >
 > 本文档是 Aegis AI 从 Marketplace 发布后的**前瞻性技术演进路线**，
 > 聚焦于产品差异化、用户留存、工程质量与长期架构。
 > 与 `CRITICAL_REVIEW_AND_ROADMAP.md`（技术债务修复）和 `PROMOTION_STRATEGY.md`（推广）互补。
+
+## 2026-06-12 状态同步
+
+| 编号 | 方向 | 状态 | 当前证据 |
+|------|------|------|----------|
+| **O1** | Inline Suppression UX | **已完成** | LSP Code Action 支持 ignore / baseline，扫描结果已过滤 suppressed findings，VS Code 侧已有 baseline tree 与状态刷新 |
+| **O2** | AI 修复 Diff Preview | **已完成** | `aegisAI.previewFix` 通过 LSP `aegis/generateFix` 生成补丁，使用 Diff Editor 预览，并提供 Apply / Dismiss |
+| **O3** | Dataflow 可视化 | **已完成** | LSP `aegis/getTaintPath`、`taintPathWebview.ts`、编辑器高亮和无 taint path 的上下文隐藏已落地 |
+| **O4** | GitHub Advanced Security 集成 | **已完成** | SARIF 输出包含 codeFlows，GitHub Actions 上传 SARIF；PR 模式保存增量 JSON 并在评论中展示新增问题 |
+| **O5** | 增量扫描性能优化 | **部分完成** | CLI/LSP 已有增量入口与性能基准，函数级依赖重扫仍需继续推进 |
+| **O6-O10** | Gateway / rules / IDE / dashboard / tech debt | **待继续推进** | 已有局部基础能力，但未达到本路线图完整验收口径 |
 
 ---
 
@@ -47,18 +58,18 @@
 
 ### 1.2 优先级矩阵
 
-| 编号 | 方向 | 影响 | 工作量 | 优先级 | 阶段 |
-|------|------|------|--------|--------|------|
-| **O1** | Inline Suppression UX | 🟥 极高 — 用户留存 | 中（3-5 天） | **P0** | 第 1 阶段 |
-| **O2** | AI 修复 Diff Preview | 🟧 高 — 信任度 | 小（2-3 天） | **P0** | 第 1 阶段 |
-| **O3** | Dataflow 可视化 | 🟥 极高 — 差异化 | 大（1-2 周） | **P1** | 第 2 阶段 |
-| **O4** | GHAS 集成 | 🟧 高 — 生态 | 中（3-5 天） | **P1** | 第 2 阶段 |
-| **O5** | 增量扫描优化 | 🟧 高 — 大项目 | 大（1-2 周） | **P1** | 第 2 阶段 |
-| **O6** | LLM Gateway 抽象 | 🟨 中 — 扩展性 | 中（3-5 天） | **P2** | 第 3 阶段 |
-| **O7** | 自定义规则生态 | 🟨 中 — 社区 | 大（1-2 周） | **P2** | 第 3 阶段 |
-| **O8** | 多 IDE 扩展 | 🟧 高 — 用户量 | 大（2-4 周） | **P2** | 第 3 阶段 |
-| **O9** | Security Dashboard | 🟨 中 — 体验 | 大（1-2 周） | **P3** | 第 4 阶段 |
-| **O10** | 技术债务攻坚 | 🟧 高 — 质量 | 持续 | **持续** | 所有阶段 |
+| 编号 | 方向 | 影响 | 工作量 | 优先级 | 阶段 | 状态 |
+|------|------|------|--------|--------|------|------|
+| **O1** | Inline Suppression UX | 🟥 极高 — 用户留存 | 中（3-5 天） | **P0** | 第 1 阶段 | **已完成** |
+| **O2** | AI 修复 Diff Preview | 🟧 高 — 信任度 | 小（2-3 天） | **P0** | 第 1 阶段 | **已完成** |
+| **O3** | Dataflow 可视化 | 🟥 极高 — 差异化 | 大（1-2 周） | **P1** | 第 2 阶段 | **已完成** |
+| **O4** | GHAS 集成 | 🟧 高 — 生态 | 中（3-5 天） | **P1** | 第 2 阶段 | **已完成** |
+| **O5** | 增量扫描优化 | 🟧 高 — 大项目 | 大（1-2 周） | **P1** | 第 2 阶段 | 部分完成 |
+| **O6** | LLM Gateway 抽象 | 🟨 中 — 扩展性 | 中（3-5 天） | **P2** | 第 3 阶段 | 待推进 |
+| **O7** | 自定义规则生态 | 🟨 中 — 社区 | 大（1-2 周） | **P2** | 第 3 阶段 | 部分完成 |
+| **O8** | 多 IDE 扩展 | 🟧 高 — 用户量 | 大（2-4 周） | **P2** | 第 3 阶段 | 部分完成 |
+| **O9** | Security Dashboard | 🟨 中 — 体验 | 大（1-2 周） | **P3** | 第 4 阶段 | 未开始 |
+| **O10** | 技术债务攻坚 | 🟧 高 — 质量 | 持续 | **持续** | 所有阶段 | 持续推进 |
 
 ### 1.3 阶段规划总览
 
@@ -199,12 +210,12 @@ async def add_to_baseline(params: dict) -> dict:
 
 ### 2.5 验收标准
 
-- [ ] 在任意 Aegis diagnostic 上点灯泡，菜单中出现 "Ignore" 和 "Add to baseline" 选项
-- [ ] 选择 "Ignore" 后当前行上方出现正确注释，再次保存后该 finding 消失
-- [ ] 选择 "Add to baseline" 后工作区根目录出现/更新 `.aegis-baseline.json`
-- [ ] TreeView 中 suppressed findings 灰显
-- [ ] Status Bar 计数不含 suppressed findings
-- [ ] 删除注释或 baseline 条目后 finding 重新出现
+- [x] 在任意 Aegis diagnostic 上点灯泡，菜单中出现 "Ignore" 和 "Add to baseline" 选项
+- [x] 选择 "Ignore" 后当前行上方出现正确注释，再次保存后该 finding 消失
+- [x] 选择 "Add to baseline" 后工作区根目录出现/更新 `.aegis-baseline.json`
+- [x] TreeView 中 suppressed findings 灰显
+- [x] Status Bar 计数不含 suppressed findings
+- [x] 删除注释或 baseline 条目后 finding 重新出现
 
 ---
 
@@ -335,11 +346,11 @@ async def generate_fix(params: dict) -> dict | None:
 
 ### 3.5 验收标准
 
-- [ ] 在 High/Critical finding 上点灯泡出现 "Preview AI Fix" 选项
-- [ ] 点击后 Diff Editor 展示修复前后对比，变化行清晰高亮
-- [ ] 用户可选择 Apply（应用修改）或 Dismiss（取消）
-- [ ] Apply 后原文件被正确修改，saving 触发重新扫描
-- [ ] 网络异常或 AI 返回空时有友好提示
+- [x] 在 High/Critical finding 上点灯泡出现 "Preview AI Fix" 选项
+- [x] 点击后 Diff Editor 展示修复前后对比，变化行清晰高亮
+- [x] 用户可选择 Apply（应用修改）或 Dismiss（取消）
+- [x] Apply 后原文件被正确修改，saving 触发重新扫描
+- [x] 网络异常或 AI 返回空时有友好提示
 
 ---
 
@@ -579,12 +590,12 @@ Webview (HTML/CSS)                          Editor Decorations
 
 ### 4.6 验收标准
 
-- [ ] TreeView 中的 finding 右键可选 "Show Taint Path"
-- [ ] Webview 面板展示 source → [中间节点] → sink 的完整路径
-- [ ] 点击任意节点跳转到对应代码位置
-- [ ] 编辑器中 taint path 涉及的行有视觉高亮
-- [ ] 没有 taint path 的 finding（如 regex 规则）不显示此选项
-- [ ] Webview 有 CSP 保护，无外部脚本依赖
+- [x] TreeView 中的 finding 右键可选 "Show Taint Path"
+- [x] Webview 面板展示 source → [中间节点] → sink 的完整路径
+- [x] 点击任意节点跳转到对应代码位置
+- [x] 编辑器中 taint path 涉及的行有视觉高亮
+- [x] 没有 taint path 的 finding（如 regex 规则）不显示此选项
+- [x] Webview 有 CSP 保护，无外部脚本依赖
 
 ---
 
@@ -683,11 +694,11 @@ jobs:
 
 ### 5.4 验收标准
 
-- [ ] `aegis-scan --format sarif` 输出满足 GitHub SARIF schema 2.1.0
-- [ ] 使用模板 workflow 后，GitHub Security tab 展示 Aegis findings
-- [ ] PR 模式仅报告新引入的问题
-- [ ] SARIF 中包含 codeFlows（GitHub UI 可展示 dataflow）
-- [ ] 文档包含完整配置步骤
+- [x] `aegis-scan --format sarif` 输出满足 GitHub SARIF schema 2.1.0
+- [x] 使用模板 workflow 后，GitHub Security tab 展示 Aegis findings
+- [x] PR 模式仅报告新引入的问题
+- [x] SARIF 中包含 codeFlows（GitHub UI 可展示 dataflow）
+- [x] 文档包含完整配置步骤
 
 ---
 
@@ -1377,4 +1388,5 @@ graph TD
 
 | 日期 | 变更内容 |
 |------|----------|
+| 2026-06-12 | 状态同步：O1-O4 推进为已完成；O4 PR 增量扫描输出 JSON 并在 PR 评论中展示新增问题 |
 | 2026-03-17 | 初版：O1-O10 十大优化方向详细规划 |
