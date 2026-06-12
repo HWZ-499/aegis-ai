@@ -11,6 +11,12 @@ export interface ProcessResult {
   stderr: string;
 }
 
+interface PythonCommand {
+  command: string;
+  argsPrefix: string[];
+  label: string;
+}
+
 export type RunProcessLike = (
   file: string,
   args: readonly string[],
@@ -94,6 +100,92 @@ function directoryExists(candidate: string): boolean {
   } catch {
     return false;
   }
+}
+
+function toPythonCommand(command: string, argsPrefix: string[] = []): PythonCommand {
+  return {
+    command,
+    argsPrefix,
+    label: [command, ...argsPrefix].join(" "),
+  };
+}
+
+function isDefaultPythonPath(pythonPath: string): boolean {
+  const normalized = pythonPath.trim().toLowerCase();
+  return normalized === "" || normalized === "python" || normalized === "python.exe";
+}
+
+function pythonInstallVersionScore(candidate: string): number {
+  const match = candidate.match(/Python(\d)(\d{2})/i);
+  if (!match) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  return Number(match[1]) * 100 + Number(match[2]);
+}
+
+function getWindowsPythonInstallCandidates(): string[] {
+  if (os.platform() !== "win32") {
+    return [];
+  }
+
+  const roots = [
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "Python") : undefined,
+    process.env.ProgramFiles,
+    process.env["ProgramFiles(x86)"],
+  ].filter((value): value is string => Boolean(value));
+
+  const candidates: string[] = [];
+  for (const root of roots) {
+    if (!directoryExists(root)) {
+      continue;
+    }
+    for (const entry of fs.readdirSync(root)) {
+      if (!/^Python\d+$/i.test(entry)) {
+        continue;
+      }
+      const pythonExe = path.join(root, entry, "python.exe");
+      if (fileExists(pythonExe)) {
+        candidates.push(pythonExe);
+      }
+    }
+  }
+
+  return candidates.sort((left, right) => pythonInstallVersionScore(left) - pythonInstallVersionScore(right));
+}
+
+function uniquePythonCommands(candidates: PythonCommand[]): PythonCommand[] {
+  const seen = new Set<string>();
+  const unique: PythonCommand[] = [];
+  for (const candidate of candidates) {
+    const key = `${candidate.command}\0${candidate.argsPrefix.join("\0")}`.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    unique.push(candidate);
+  }
+  return unique;
+}
+
+function getPythonCandidates(pythonPath: string): PythonCommand[] {
+  const configured = pythonPath.trim();
+  if (!isDefaultPythonPath(configured)) {
+    return [toPythonCommand(configured)];
+  }
+
+  const candidates = [toPythonCommand(configured || "python"), toPythonCommand("python3")];
+  if (os.platform() === "win32") {
+    candidates.push(...getWindowsPythonInstallCandidates().map((candidate) => toPythonCommand(candidate)));
+    candidates.push(toPythonCommand("py", ["-3"]));
+  }
+  return uniquePythonCommands(candidates);
+}
+
+function formatProcessError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
 
 export function getBundledBackendPath(extensionPath: string): string | undefined {
@@ -222,19 +314,57 @@ function isStampCurrent(stampPath: string, expected: BackendStamp): boolean {
 }
 
 async function assertSupportedPython(
-  pythonPath: string,
+  python: PythonCommand,
   runProcess: RunProcessLike,
   logMessages: string[],
 ): Promise<void> {
   const startedAt = Date.now();
-  const result = await runProcess(pythonPath, ["--version"], { timeout: 5000 });
+  const result = await runProcess(python.command, [...python.argsPrefix, "--version"], { timeout: 5000 });
   const versionOutput = (result.stdout || result.stderr).trim();
   if (!isPythonVersionSupported(versionOutput)) {
     const parsed = parsePythonVersion(versionOutput);
     const detected = parsed ? parsed.raw : versionOutput || "unknown";
     throw new Error(`Python 3.10 or newer is required for Aegis. Detected: ${detected}.`);
   }
-  logMessages.push(`[Aegis] ${versionOutput} found (${Date.now() - startedAt}ms)`);
+  logMessages.push(`[Aegis] ${versionOutput} found via ${python.label} (${Date.now() - startedAt}ms)`);
+}
+
+async function resolveSupportedPython(
+  pythonPath: string,
+  runProcess: RunProcessLike,
+  logMessages: string[],
+): Promise<PythonCommand> {
+  const candidates = getPythonCandidates(pythonPath);
+  const tried: string[] = [];
+  const unsupported: string[] = [];
+  let lastError: string | undefined;
+
+  for (const candidate of candidates) {
+    tried.push(candidate.label);
+    const beforeCount = logMessages.length;
+    try {
+      await assertSupportedPython(candidate, runProcess, logMessages);
+      return candidate;
+    } catch (error) {
+      const message = formatProcessError(error);
+      lastError = message;
+      unsupported.push(`${candidate.label}: ${message}`);
+      if (logMessages.length === beforeCount) {
+        logMessages.push(`[Aegis] Python probe failed for ${candidate.label}: ${message}`);
+      }
+    }
+  }
+
+  throw new Error(
+    [
+      "Python 3.10 or newer is required for Aegis, but no supported interpreter was found.",
+      `Tried: ${tried.join(", ")}.`,
+      lastError ? `Last error: ${lastError}` : "",
+      unsupported.length > 0 ? `Probe details: ${unsupported.join("; ")}` : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
 }
 
 async function bootstrapBundledBackend(input: {
@@ -245,8 +375,6 @@ async function bootstrapBundledBackend(input: {
   serverModule: string;
 }): Promise<BackendLaunch> {
   const logMessages: string[] = [];
-  await assertSupportedPython(input.pythonPath, input.runProcess, logMessages);
-
   const backendStateDir = getBackendStateDir(input.globalStoragePath);
   const managedBackendPath = getManagedBackendPath(input.globalStoragePath);
   const venvPython = getVenvPythonPath(input.globalStoragePath);
@@ -256,16 +384,31 @@ async function bootstrapBundledBackend(input: {
   logMessages.push(`[Aegis] Backend stamp check completed (${Date.now() - stampStartedAt}ms)`);
   fs.mkdirSync(backendStateDir, { recursive: true });
 
+  let canReuseExistingBackend = false;
   if (fileExists(venvPython) && directoryExists(managedBackendPath) && isStampCurrent(stampPath, expectedStamp)) {
+    try {
+      await assertSupportedPython(toPythonCommand(venvPython), input.runProcess, logMessages);
+      canReuseExistingBackend = true;
+    } catch (error) {
+      logMessages.push(
+        `[Aegis] Existing bundled backend environment is not usable; rebuilding. ${formatProcessError(error)}`,
+      );
+    }
+  }
+
+  if (canReuseExistingBackend) {
     logMessages.push(`[Aegis] Using existing bundled backend environment: ${venvPython}`);
   } else {
+    const systemPython = await resolveSupportedPython(input.pythonPath, input.runProcess, logMessages);
     const venvDir = path.dirname(path.dirname(venvPython));
     const stageStartedAt = Date.now();
     stageBundledBackend(input.backendPath, managedBackendPath);
     logMessages.push(`[Aegis] Bundled backend staged (${Date.now() - stageStartedAt}ms)`);
     logMessages.push(`[Aegis] Creating bundled backend environment: ${venvDir}`);
     const venvStartedAt = Date.now();
-    await input.runProcess(input.pythonPath, ["-m", "venv", venvDir], { timeout: BACKEND_TIMEOUT_MS });
+    await input.runProcess(systemPython.command, [...systemPython.argsPrefix, "-m", "venv", venvDir], {
+      timeout: BACKEND_TIMEOUT_MS,
+    });
     logMessages.push(`[Aegis] Python venv created (${Date.now() - venvStartedAt}ms)`);
     const pipUpgradeStartedAt = Date.now();
     await input.runProcess(venvPython, ["-m", "pip", "install", "--upgrade", "pip"], {
@@ -302,10 +445,10 @@ async function createWorkspaceLaunch(input: BackendLaunchInput, runProcess: RunP
   }
 
   const logMessages = [...cwdResolution.logMessages];
-  await assertSupportedPython(input.pythonPath, runProcess, logMessages);
+  const python = await resolveSupportedPython(input.pythonPath, runProcess, logMessages);
   return {
-    pythonPath: input.pythonPath,
-    args: ["-m", input.serverModule],
+    pythonPath: python.command,
+    args: [...python.argsPrefix, "-m", input.serverModule],
     cwd: cwdResolution.cwd,
     source: "workspace",
     logMessages,

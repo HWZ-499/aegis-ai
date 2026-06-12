@@ -222,4 +222,111 @@ suite("backendBootstrap", () => {
     assert.ok(calls.some((call) => call.includes("python -m venv")));
     assert.ok(calls.some((call) => call.includes("-m pip install")));
   });
+
+  test("falls back to Windows local Python install when python is not on PATH", async function () {
+    if (os.platform() !== "win32") {
+      this.skip();
+    }
+
+    const originalLocalAppData = process.env.LOCALAPPDATA;
+    const localAppData = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-localappdata-"));
+    const pythonExe = path.join(localAppData, "Programs", "Python", "Python311", "python.exe");
+    fs.mkdirSync(path.dirname(pythonExe), { recursive: true });
+    fs.writeFileSync(pythonExe, "", "utf8");
+    process.env.LOCALAPPDATA = localAppData;
+
+    try {
+      const extensionPath = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-ext-"));
+      const globalStoragePath = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-storage-"));
+      createBundledBackend(extensionPath);
+      const calls: string[] = [];
+      const runProcess: RunProcessLike = async (file, args) => {
+        calls.push([file, ...args].join(" "));
+        if (file === "python" || file === "python3" || file === "py") {
+          throw new Error(`${file} unavailable`);
+        }
+        if (file === pythonExe && args.includes("--version")) {
+          return { stdout: "Python 3.11.9", stderr: "" };
+        }
+        if (file === pythonExe && args[0] === "-m" && args[1] === "venv") {
+          fs.mkdirSync(path.dirname(getVenvPythonPath(globalStoragePath)), { recursive: true });
+          fs.writeFileSync(getVenvPythonPath(globalStoragePath), "", "utf8");
+        }
+        return { stdout: "", stderr: "" };
+      };
+
+      await ensureBackendLaunch({
+        explicitCwd: "",
+        extensionPath,
+        globalStoragePath,
+        preferBundledBackend: true,
+        pythonPath: "python",
+        serverModule: "src.lsp",
+        workspaceFolders: [],
+        runProcess,
+      });
+
+      assert.ok(calls.some((call) => call.startsWith("python --version")));
+      assert.ok(calls.some((call) => call.startsWith(`${pythonExe} --version`)));
+      assert.ok(calls.some((call) => call.startsWith(`${pythonExe} -m venv`)));
+    } finally {
+      if (originalLocalAppData === undefined) {
+        delete process.env.LOCALAPPDATA;
+      } else {
+        process.env.LOCALAPPDATA = originalLocalAppData;
+      }
+    }
+  });
+
+  test("reuses current managed venv without requiring system python on PATH", async () => {
+    const extensionPath = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-ext-"));
+    const globalStoragePath = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-storage-"));
+    createBundledBackend(extensionPath, "same-fingerprint");
+    const firstRunProcess: RunProcessLike = async (file, args) => {
+      if (args[0] === "-m" && args[1] === "venv") {
+        fs.mkdirSync(path.dirname(getVenvPythonPath(globalStoragePath)), { recursive: true });
+        fs.writeFileSync(getVenvPythonPath(globalStoragePath), "", "utf8");
+      }
+      return { stdout: args.includes("--version") ? "Python 3.11.9" : "", stderr: "" };
+    };
+
+    await ensureBackendLaunch({
+      explicitCwd: "",
+      extensionPath,
+      globalStoragePath,
+      preferBundledBackend: true,
+      pythonPath: "python",
+      serverModule: "src.lsp",
+      workspaceFolders: [],
+      runProcess: firstRunProcess,
+    });
+
+    const calls: string[] = [];
+    const secondRunProcess: RunProcessLike = async (file, args) => {
+      calls.push([file, ...args].join(" "));
+      if (file === "python") {
+        throw new Error("python unavailable");
+      }
+      if (file === getVenvPythonPath(globalStoragePath) && args.includes("--version")) {
+        return { stdout: "Python 3.11.9", stderr: "" };
+      }
+      return { stdout: "", stderr: "" };
+    };
+
+    const launch = await ensureBackendLaunch({
+      explicitCwd: "",
+      extensionPath,
+      globalStoragePath,
+      preferBundledBackend: true,
+      pythonPath: "python",
+      serverModule: "src.lsp",
+      workspaceFolders: [],
+      runProcess: secondRunProcess,
+    });
+
+    assert.strictEqual(launch.pythonPath, getVenvPythonPath(globalStoragePath));
+    assert.ok(calls.every((call) => !call.startsWith("python ")));
+    assert.ok(!calls.some((call) => call.includes("-m venv")));
+    assert.ok(!calls.some((call) => call.includes("-m pip install")));
+  });
 });

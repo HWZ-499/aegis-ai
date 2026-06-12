@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.6.7] - 2026-06-11
+
+### Fixed
+- Added review-required C/C++ local fix previews for conditional `TerminateThread(...)` / `SuspendThread(...)` calls such as `if(!TerminateThread(...))`, so these findings no longer fall through to a generic no-replacement AI result.
+- Logged `Preview AI Fix` request and result details to the Aegis output channel, including rule id and line range, to make remaining fix-routing issues diagnosable from VS Code.
+
+## [0.6.6] - 2026-06-11
+
+### Fixed
+- Fixed C/C++ Preview AI Fix requests that could still return "AI reviewed this finding but did not return a safe replacement" when the rule id arrived wrapped by VS Code UI text such as `Aegis AI(BUFFER_OVERFLOW)`.
+- Normalized local C/C++ fix rule ids in both the VS Code command path and bundled backend before deciding whether a deterministic local fix can be generated.
+
+## [0.6.5] - 2026-06-11
+
+### Fixed
+- Fixed backend startup when VS Code cannot resolve `python --version` from its process PATH.
+- The bundled backend launcher now falls back to `python3`, common Windows Python install paths under `%LOCALAPPDATA%\Programs\Python`, and then the Windows `py -3` launcher.
+- Existing managed bundled backend virtual environments are reused without requiring the system `python` command to still be available on PATH.
+
+## [0.6.4] - 2026-06-11
+
+### Fixed
+- Added deterministic local C/C++ fix previews for narrow rule cases where no AI provider is needed: bounded `cin >> char[]`, assignment in conditions, nested pointer null guards, critical-section release mismatches, and review-required standalone `SuspendThread` / `TerminateThread` calls.
+- Let the VS Code Preview AI Fix command try local C/C++ fixes before blocking on AI provider configuration.
+
+### Changed
+- C/C++ thread lifecycle fixes are intentionally marked review-required because replacing direct thread suspension or termination usually needs a cooperative cancellation/pause design rather than a one-line semantic rewrite.
+
+## [0.6.3] - 2026-06-11
+
+### Added
+- Added bundled C/C++ basic scanner rules for thread lifecycle risks, assignment inside conditions, nested pointer null dereferences, and critical-section lock mismatches.
+
+### Fixed
+- Added local C/C++ `strcpy` fallback fix previews when the destination can be proven to be a visible fixed `char[N]` array or struct/class array member.
+
+## [0.6.2] - 2026-06-11
+
+### Added
+- Packaged C/C++ activation, document selectors, file watchers, and bundled backend support for C/C++ basic scanning in VS Code.
+
 ## [0.6.1] - 2026-05-25
 
 ### Changed

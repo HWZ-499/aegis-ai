@@ -9,6 +9,8 @@ test_ai_provider.py - AIAnalyzer 多提供商支持单元测试
 - 构造函数参数覆盖
 """
 
+import json
+
 import pytest
 
 # 清理测试中可能影响结果的环境变量的辅助函数
@@ -34,7 +36,7 @@ def clean_env(monkeypatch):
     yield
 
 
-from src.scanner.ai_analyzer import AIAnalysisResult, AIAnalyzer
+from src.scanner.ai_analyzer import AIAnalysisResult, AIAnalyzer, build_local_fix_analysis
 
 
 class TestResolveProviderDefaults:
@@ -238,3 +240,338 @@ class TestAiResponseErrors:
         )
         assert result.error_code == "provider_unavailable"
         assert result.error_message is not None
+
+    def test_parse_response_accepts_code_alias_and_strips_markdown_fence(self):
+        analyzer = AIAnalyzer(enabled=False)
+        result = analyzer._parse_ai_response(
+            json.dumps(
+                {
+                    "confidence": 0.91,
+                    "risk_level": "High",
+                    "explanation": "Bounded copy is required.",
+                    "replacement_code": "```cpp\nstrncpy(name, src, sizeof(name) - 1);\n```",
+                    "fix_start_line": 12,
+                    "fix_end_line": 12,
+                }
+            ),
+            {"severity": "High", "start_line": 10, "end_line": 10},
+        )
+
+        assert result.fixed_code == "strncpy(name, src, sizeof(name) - 1);"
+        assert result.fix_start_line == 12
+        assert result.fix_end_line == 12
+
+
+class TestCppBufferOverflowAiFixFallback:
+    def test_cpp_cin_char_array_gets_local_width_replacement_without_ai(self):
+        analyzer = AIAnalyzer(enabled=False)
+        source = """void loop() {
+    char name[20] = {'\\0'};
+    int time = 0;
+    cin>>name>>time;
+}
+"""
+
+        result = analyzer.analyze_finding(
+            {
+                "type": "BUFFER_OVERFLOW",
+                "severity": "Critical",
+                "line": 4,
+                "start_line": 4,
+                "end_line": 4,
+                "details": "C/C++: cin 写入固定 char[20] 数组 `name`，未限制输入长度",
+                "file": "test.cpp",
+                "language": "cpp",
+            },
+            language="cpp",
+            source_code=source,
+        )
+
+        assert result.error_code is None
+        assert result.fixed_code == "    cin.width(sizeof(name));\n    cin >> name >> time;"
+        assert result.requires_review is True
+
+    def test_cpp_strcpy_member_array_gets_local_safe_replacement(self, monkeypatch):
+        analyzer = AIAnalyzer(api_key="test-key", enabled=True)
+
+        def no_ai_fix(finding, rich_ctx=None, language=None):
+            return AIAnalysisResult(
+                is_true_positive=True,
+                confidence=0.4,
+                risk_level="Critical",
+                explanation="AI did not return code.",
+                fix_suggestion=None,
+                requires_review=True,
+                fixed_code=None,
+                fix_start_line=finding.get("line"),
+                fix_end_line=finding.get("line"),
+                error_code="no_applicable_fix",
+                error_message="AI reviewed this finding but did not return a safe replacement.",
+            )
+
+        monkeypatch.setattr(analyzer, "_call_ai_analysis", no_ai_fix)
+        source = """typedef struct PCB {
+    char name[20];
+} PCB, *pPCB;
+
+void createProcess(pPCB newPcb, char *name) {
+    strcpy(newPcb->name, name);
+}
+"""
+        vuln_line = 6
+
+        result = analyzer.analyze_finding(
+            {
+                "type": "BUFFER_OVERFLOW",
+                "severity": "Critical",
+                "line": vuln_line,
+                "start_line": vuln_line,
+                "end_line": vuln_line,
+                "details": "C/C++: 发现 BUFFER_OVERFLOW 风险 - strcpy(newPcb->name,name);",
+                "file": "test.cpp",
+                "language": "cpp",
+            },
+            language="cpp",
+            source_code=source,
+        )
+
+        assert result.error_code is None
+        assert result.fixed_code == (
+            "    strncpy(newPcb->name, name, sizeof(newPcb->name) - 1);\n"
+            "    newPcb->name[sizeof(newPcb->name) - 1] = '\\0';"
+        )
+        assert result.fix_start_line == vuln_line
+        assert result.fix_end_line == vuln_line
+        assert result.requires_review is True
+
+    def test_cpp_strcpy_member_array_accepts_wrapped_rule_id(self):
+        source = """typedef struct PCB {
+    char name[20];
+} PCB, *pPCB;
+
+void createProcess(pPCB newPcb, char *name) {
+    strcpy(newPcb->name, name);
+}
+"""
+
+        result = build_local_fix_analysis(
+            {
+                "type": "Aegis AI(BUFFER_OVERFLOW)",
+                "severity": "Critical",
+                "line": 6,
+                "start_line": 6,
+                "end_line": 6,
+                "details": "C/C++: 发现 BUFFER_OVERFLOW 风险 - strcpy(newPcb->name,name);",
+                "file": "test.cpp",
+                "language": "cpp",
+            },
+            source,
+            "cpp",
+        )
+
+        assert result is not None
+        assert result.fixed_code == (
+            "    strncpy(newPcb->name, name, sizeof(newPcb->name) - 1);\n"
+            "    newPcb->name[sizeof(newPcb->name) - 1] = '\\0';"
+        )
+
+    def test_cpp_strcpy_pointer_destination_keeps_no_applicable_fix(self, monkeypatch):
+        analyzer = AIAnalyzer(api_key="test-key", enabled=True)
+
+        def no_ai_fix(finding, rich_ctx=None, language=None):
+            return AIAnalysisResult(
+                is_true_positive=True,
+                confidence=0.4,
+                risk_level="Critical",
+                explanation="AI did not return code.",
+                fix_suggestion=None,
+                requires_review=True,
+                fixed_code=None,
+                fix_start_line=finding.get("line"),
+                fix_end_line=finding.get("line"),
+                error_code="no_applicable_fix",
+                error_message="AI reviewed this finding but did not return a safe replacement.",
+            )
+
+        monkeypatch.setattr(analyzer, "_call_ai_analysis", no_ai_fix)
+        source = """void copyName(char *dst, char *src) {
+    strcpy(dst, src);
+}
+"""
+
+        result = analyzer.analyze_finding(
+            {
+                "type": "BUFFER_OVERFLOW",
+                "severity": "Critical",
+                "line": 2,
+                "start_line": 2,
+                "end_line": 2,
+                "details": "C/C++: 发现 BUFFER_OVERFLOW 风险 - strcpy(dst, src);",
+                "file": "test.cpp",
+                "language": "cpp",
+            },
+            language="cpp",
+            source_code=source,
+        )
+
+        assert result.fixed_code is None
+        assert result.error_code == "no_applicable_fix"
+
+    def test_cpp_assignment_condition_gets_local_comparison_replacement_without_ai(self):
+        analyzer = AIAnalyzer(enabled=False)
+        source = """void check() {
+    if(currentPcb->flag=1)
+        return;
+}
+"""
+
+        result = analyzer.analyze_finding(
+            {
+                "type": "ASSIGNMENT_IN_CONDITION",
+                "severity": "Medium",
+                "line": 2,
+                "start_line": 2,
+                "end_line": 2,
+                "details": "C/C++: 条件表达式中出现赋值运算",
+                "file": "test.cpp",
+                "language": "cpp",
+            },
+            language="cpp",
+            source_code=source,
+        )
+
+        assert result.error_code is None
+        assert result.fixed_code == "    if(currentPcb->flag == 1)"
+
+    def test_cpp_null_deref_gets_local_inner_guard_without_ai(self):
+        analyzer = AIAnalyzer(enabled=False)
+        source = """void schedule() {
+    if(pReadyList!=NULL)
+        pReadyList->head=pReadyList->head->next;
+}
+"""
+
+        result = analyzer.analyze_finding(
+            {
+                "type": "NULL_DEREFERENCE",
+                "severity": "High",
+                "line": 3,
+                "start_line": 3,
+                "end_line": 3,
+                "details": "C/C++: 只检查 `pReadyList` 后继续解引用 `pReadyList->head`",
+                "file": "test.cpp",
+                "language": "cpp",
+            },
+            language="cpp",
+            source_code=source,
+        )
+
+        assert result.error_code is None
+        assert result.fixed_code == (
+            "        if (pReadyList->head != NULL) {\n            pReadyList->head=pReadyList->head->next;\n        }"
+        )
+
+    def test_cpp_lock_mismatch_gets_local_matching_leave_replacement_without_ai(self):
+        analyzer = AIAnalyzer(enabled=False)
+        source = """void schedule() {
+    EnterCriticalSection(&cs_ReadyList);
+    LeaveCriticalSection(&cs_SaveInfo);
+}
+"""
+
+        result = analyzer.analyze_finding(
+            {
+                "type": "LOCK_MISMATCH",
+                "severity": "High",
+                "line": 3,
+                "start_line": 3,
+                "end_line": 3,
+                "details": "C/C++: 第 2 行进入 `cs_ReadyList`，但这里释放 `cs_SaveInfo`，可能导致死锁",
+                "file": "test.cpp",
+                "language": "cpp",
+            },
+            language="cpp",
+            source_code=source,
+        )
+
+        assert result.error_code is None
+        assert result.fixed_code == "    LeaveCriticalSection(&cs_ReadyList);"
+
+    def test_cpp_suspend_thread_gets_review_block_without_ai(self):
+        analyzer = AIAnalyzer(enabled=False)
+        source = """void schedule() {
+    SuspendThread(runPCB->hThis);
+}
+"""
+
+        result = analyzer.analyze_finding(
+            {
+                "type": "THREAD_LIFECYCLE_RISK",
+                "severity": "High",
+                "line": 2,
+                "start_line": 2,
+                "end_line": 2,
+                "details": "C/C++: SuspendThread 可能在线程持锁时强制中断",
+                "file": "test.cpp",
+                "language": "cpp",
+            },
+            language="cpp",
+            source_code=source,
+        )
+
+        assert result.error_code is None
+        assert result.fixed_code is not None
+        assert "Original unsafe call kept for review" in result.fixed_code
+        assert "// SuspendThread(runPCB->hThis);" in result.fixed_code
+
+    def test_cpp_terminate_thread_condition_gets_review_branch_without_ai(self):
+        analyzer = AIAnalyzer(enabled=False)
+        source = """void schedule() {
+    if(!TerminateThread(runPCB->hThis,1))
+    {
+        return;
+    }
+}
+"""
+
+        result = analyzer.analyze_finding(
+            {
+                "type": "THREAD_LIFECYCLE_RISK",
+                "severity": "High",
+                "line": 2,
+                "start_line": 2,
+                "end_line": 2,
+                "details": "C/C++: TerminateThread 可能在线程持锁时强制终止",
+                "file": "test.cpp",
+                "language": "cpp",
+            },
+            language="cpp",
+            source_code=source,
+        )
+
+        assert result.error_code is None
+        assert result.fixed_code is not None
+        assert "Original unsafe condition kept for review" in result.fixed_code
+        assert "// if(!TerminateThread(runPCB->hThis,1))" in result.fixed_code
+        assert result.fixed_code.endswith("    if (true)")
+        assert result.confidence < 0.5
+
+    def test_buffer_overflow_prompt_includes_cpp_replacement_contract(self):
+        analyzer = AIAnalyzer(enabled=False)
+        prompt = analyzer._build_analysis_prompt(
+            {
+                "type": "BUFFER_OVERFLOW",
+                "severity": "Critical",
+                "line": 6,
+                "start_line": 6,
+                "end_line": 6,
+                "details": "strcpy(newPcb->name, name)",
+                "file": "test.cpp",
+            },
+            rich_ctx={"vuln_snippet": "    strcpy(newPcb->name, name);", "actual_start_line": 6},
+            language="cpp",
+        )
+
+        assert '"fix_start_line": 6' in prompt
+        assert "只包含 fix_start_line 到 fix_end_line 的替换代码" in prompt
+        assert "strncpy(dst, src, sizeof(dst) - 1)" in prompt

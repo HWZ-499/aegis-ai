@@ -98,10 +98,36 @@ function getGlobalConfigurationValue<T>(
 }
 
 function getDiagnosticRuleId(diagnostic: Diagnostic): string {
-  if (typeof diagnostic.code === "string") {
-    return diagnostic.code;
+  const rawCode =
+    typeof diagnostic.code === "string"
+      ? diagnostic.code
+      : (diagnostic.code as { value?: string } | undefined)?.value ?? "UNKNOWN";
+  return normalizeRuleId(rawCode);
+}
+
+const LOCAL_FIX_RULE_IDS = new Set<string>([
+  "BUFFER_OVERFLOW",
+  "ASSIGNMENT_IN_CONDITION",
+  "NULL_DEREFERENCE",
+  "LOCK_MISMATCH",
+  "THREAD_LIFECYCLE_RISK",
+]);
+
+function normalizeRuleId(rawRuleId: string | undefined): string {
+  const raw = rawRuleId?.trim() || "UNKNOWN";
+  const upper = raw.toUpperCase();
+  for (const ruleId of LOCAL_FIX_RULE_IDS) {
+    const escaped = ruleId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const boundary = new RegExp(`(^|[^A-Z0-9_])${escaped}([^A-Z0-9_]|$)`);
+    if (boundary.test(upper)) {
+      return ruleId;
+    }
   }
-  return (diagnostic.code as { value?: string } | undefined)?.value ?? "UNKNOWN";
+  return raw;
+}
+
+function canAttemptLocalFix(ruleId: string): boolean {
+  return LOCAL_FIX_RULE_IDS.has(normalizeRuleId(ruleId));
 }
 
 function buildLineReplacementRange(
@@ -414,18 +440,9 @@ export async function activate(context: ExtensionContext): Promise<void> {
         editor = await window.showTextDocument(document);
       }
 
-      const runtimeConfig = workspace.getConfiguration("aegisAI");
-      const aiProvider = runtimeConfig.get<string>("ai.provider", "deepseek");
-      const aiEnabled = runtimeConfig.get<boolean>("ai.enabled", true);
-      const aiConfigError = getAiConfigurationError(aiProvider, process.env, aiEnabled);
-      if (aiConfigError) {
-        window.showWarningMessage(`Aegis: ${aiConfigError}`);
-        return;
-      }
-
       // Find the requested Aegis diagnostic, or fall back to the cursor position.
       const allDiags = languages.getDiagnostics(editor.document.uri);
-      const requestedRuleId = args?.rule_id;
+      const requestedRuleId = args?.rule_id ? normalizeRuleId(args.rule_id) : undefined;
       const requestedLine = args?.start_line;
       const aegisDiag = requestedLine
         ? allDiags.find(
@@ -448,9 +465,22 @@ export async function activate(context: ExtensionContext): Promise<void> {
       const requestStartLine = args?.start_line ?? aegisDiag.range.start.line + 1;
       const requestEndLine = args?.end_line ?? aegisDiag.range.end.line + 1;
       const requestMessage = args?.message ?? aegisDiag.message.substring(0, 500);
+      if (!canAttemptLocalFix(ruleId)) {
+        const runtimeConfig = workspace.getConfiguration("aegisAI");
+        const aiProvider = runtimeConfig.get<string>("ai.provider", "deepseek");
+        const aiEnabled = runtimeConfig.get<boolean>("ai.enabled", true);
+        const aiConfigError = getAiConfigurationError(aiProvider, process.env, aiEnabled);
+        if (aiConfigError) {
+          window.showWarningMessage(`Aegis: ${aiConfigError}`);
+          return;
+        }
+      }
       const targetDocument = editor.document;
       const originalSource = targetDocument.getText();
       const originalVersion = targetDocument.version;
+      outputChannel.appendLine(
+        `[Aegis] generateFix request: rule=${ruleId}, line=${requestStartLine}-${requestEndLine}, uri=${targetDocument.uri.toString()}`
+      );
 
       // Request AI fix from LSP server
       const result = await window.withProgress(
@@ -473,6 +503,10 @@ export async function activate(context: ExtensionContext): Promise<void> {
 
       const fixFailure = getGenerateFixFailure(result);
       if (fixFailure) {
+        const errorCode = result && "error_code" in result ? result.error_code : "empty_result";
+        outputChannel.appendLine(
+          `[Aegis] generateFix failed: rule=${ruleId}, line=${requestStartLine}-${requestEndLine}, code=${errorCode}, message=${fixFailure.message}`
+        );
         if (fixFailure.level === "error") {
           window.showErrorMessage(fixFailure.message);
         } else if (fixFailure.level === "warning") {
@@ -483,9 +517,15 @@ export async function activate(context: ExtensionContext): Promise<void> {
         return;
       }
       if (!isGenerateFixSuccess(result)) {
+        outputChannel.appendLine(
+          `[Aegis] generateFix returned no replacement: rule=${ruleId}, line=${requestStartLine}-${requestEndLine}`
+        );
         window.showInformationMessage("Aegis: AI reviewed this finding but did not return a safe replacement.");
         return;
       }
+      outputChannel.appendLine(
+        `[Aegis] generateFix succeeded: rule=${ruleId}, line=${result.start_line}-${result.end_line}, confidence=${result.confidence}`
+      );
 
       // Build the full fixed version of the file
       const lines = originalSource.split("\n");

@@ -44,6 +44,10 @@ VULN_SEVERITY = {
     "HARDCODED_CREDENTIALS": "High",
     "BUFFER_OVERFLOW": "Critical",
     "FORMAT_STRING": "High",
+    "THREAD_LIFECYCLE_RISK": "High",
+    "ASSIGNMENT_IN_CONDITION": "Medium",
+    "NULL_DEREFERENCE": "High",
+    "LOCK_MISMATCH": "High",
     "NOSQL_INJECTION": "High",
     "OPEN_REDIRECT": "Medium",  # CWE-601：任意 URL 跳转，与 XSS 危害模型不同
 }
@@ -691,6 +695,26 @@ _CPP_STRCPY_LITERAL_RE = re.compile(
 )
 _CPP_CIN_RE = re.compile(r"\bcin\b")
 _CPP_STREAM_EXTRACT_RE = re.compile(r">>\s*(?P<name>[A-Za-z_]\w*)")
+_CPP_THREAD_CONTROL_RE = re.compile(r"\b(?P<api>TerminateThread|SuspendThread)\s*\(", re.IGNORECASE)
+_CPP_CONDITION_RE = re.compile(r"\b(?P<keyword>if|while)\s*\((?P<condition>.*)\)")
+_CPP_ASSIGNMENT_OPERATOR_RE = re.compile(r"(?<![=!<>+\-*/%&|^])=(?!=)")
+_CPP_NESTED_POINTER_RE = re.compile(r"\b(?P<base>[A-Za-z_]\w*)\s*->\s*(?P<field>[A-Za-z_]\w*)\s*->")
+_CPP_SHALLOW_GUARD_RE = re.compile(
+    r"\bif\s*\(\s*(?P<base>[A-Za-z_]\w*)\s*(?:!=\s*(?:NULL|nullptr|0))?\s*\)",
+    re.IGNORECASE,
+)
+_CPP_CRITICAL_ENTER_RE = re.compile(r"\bEnterCriticalSection\s*\(\s*&(?P<name>[A-Za-z_]\w*)\s*\)")
+_CPP_CRITICAL_LEAVE_RE = re.compile(r"\bLeaveCriticalSection\s*\(\s*&(?P<name>[A-Za-z_]\w*)\s*\)")
+
+
+def _cpp_finding(line: int, vuln_type: str, details: str, *, severity: str | None = None) -> dict[str, Any]:
+    return {
+        "line": line,
+        "type": vuln_type,
+        "severity": severity or VULN_SEVERITY.get(vuln_type, "Medium"),
+        "content": details,
+        "confidence": "Medium",
+    }
 
 
 def _cpp_char_array_sizes(code_content: str) -> dict[str, int]:
@@ -822,6 +846,136 @@ def _scan_cpp_cin_into_char_arrays(code_content: str) -> list[dict[str, Any]]:
         if reported_line:
             continue
 
+    return findings
+
+
+def _scan_cpp_thread_lifecycle_risks(code_content: str) -> list[dict[str, Any]]:
+    """Detect direct thread termination/suspension APIs that can leave shared state inconsistent."""
+    findings: list[dict[str, Any]] = []
+    for line_idx, line in enumerate(code_content.split("\n"), 1):
+        code_only = _strip_comments_and_strings(line, "cpp")
+        match = _CPP_THREAD_CONTROL_RE.search(code_only)
+        if not match:
+            continue
+        api = match.group("api")
+        findings.append(
+            _cpp_finding(
+                line_idx,
+                "THREAD_LIFECYCLE_RISK",
+                f"C/C++: {api} 可能在线程持锁或修改共享状态时强制中断，造成资源泄漏或死锁 - {line.strip()[:60]}",
+            )
+        )
+    return findings
+
+
+def _scan_cpp_assignment_in_conditions(code_content: str) -> list[dict[str, Any]]:
+    """Detect accidental assignment inside if/while conditions."""
+    findings: list[dict[str, Any]] = []
+    for line_idx, line in enumerate(code_content.split("\n"), 1):
+        code_only = _strip_comments_and_strings(line, "cpp")
+        match = _CPP_CONDITION_RE.search(code_only)
+        if not match:
+            continue
+        condition = match.group("condition")
+        if not _CPP_ASSIGNMENT_OPERATOR_RE.search(condition):
+            continue
+        findings.append(
+            _cpp_finding(
+                line_idx,
+                "ASSIGNMENT_IN_CONDITION",
+                f"C/C++: 条件表达式中出现赋值运算，可能导致状态/权限判断失效 - {line.strip()[:60]}",
+            )
+        )
+    return findings
+
+
+def _cpp_recent_condition(lines: list[str], line_idx: int, base: str) -> str | None:
+    lookback_start = max(0, line_idx - 5)
+    for prev_idx in range(line_idx - 1, lookback_start - 1, -1):
+        code_only = _strip_comments_and_strings(lines[prev_idx], "cpp")
+        if not code_only:
+            continue
+        if "if" not in code_only or base not in code_only:
+            continue
+        match = _CPP_CONDITION_RE.search(code_only)
+        if match:
+            return match.group("condition")
+    return None
+
+
+def _cpp_condition_guards_inner_pointer(condition: str, base: str, field: str) -> bool:
+    normalized = re.sub(r"\s+", "", condition)
+    inner_expr = f"{base}->{field}"
+    if inner_expr in normalized:
+        return True
+    # Common linked-list style guard in the course samples: count > 0 implies head is expected to exist.
+    return bool(re.search(rf"\b{re.escape(base)}\s*->\s*\w*(?:num|count)\w*\s*>\s*0\b", condition, re.IGNORECASE))
+
+
+def _scan_cpp_nested_pointer_null_derefs(code_content: str) -> list[dict[str, Any]]:
+    """Detect nested pointer dereferences guarded only by the outer pointer."""
+    findings: list[dict[str, Any]] = []
+    lines = code_content.split("\n")
+    for line_idx, line in enumerate(lines):
+        code_only = _strip_comments_and_strings(line, "cpp")
+        if not code_only:
+            continue
+        for match in _CPP_NESTED_POINTER_RE.finditer(code_only):
+            base = match.group("base")
+            field = match.group("field")
+            condition = _cpp_recent_condition(lines, line_idx, base)
+            if not condition:
+                continue
+            if _cpp_condition_guards_inner_pointer(condition, base, field):
+                continue
+            if not _CPP_SHALLOW_GUARD_RE.search(f"if({condition})"):
+                continue
+            findings.append(
+                _cpp_finding(
+                    line_idx + 1,
+                    "NULL_DEREFERENCE",
+                    (
+                        f"C/C++: 只检查 `{base}` 后继续解引用 `{base}->{field}`，"
+                        f"`{field}` 为空时可能崩溃 - {line.strip()[:60]}"
+                    ),
+                )
+            )
+            break
+    return findings
+
+
+def _scan_cpp_critical_section_mismatches(code_content: str) -> list[dict[str, Any]]:
+    """Detect simple EnterCriticalSection/LeaveCriticalSection object mismatches."""
+    findings: list[dict[str, Any]] = []
+    stack: list[tuple[str, int]] = []
+    for line_idx, line in enumerate(code_content.split("\n"), 1):
+        code_only = _strip_comments_and_strings(line, "cpp")
+        enter_match = _CPP_CRITICAL_ENTER_RE.search(code_only)
+        if enter_match:
+            stack.append((enter_match.group("name"), line_idx))
+            continue
+
+        leave_match = _CPP_CRITICAL_LEAVE_RE.search(code_only)
+        if not leave_match:
+            continue
+        leave_name = leave_match.group("name")
+        if not stack:
+            continue
+        enter_name, enter_line = stack[-1]
+        if leave_name == enter_name:
+            stack.pop()
+            continue
+        findings.append(
+            _cpp_finding(
+                line_idx,
+                "LOCK_MISMATCH",
+                (
+                    f"C/C++: 第 {enter_line} 行进入 `{enter_name}`，但这里释放 `{leave_name}`，"
+                    f"可能导致临界区未释放或死锁 - {line.strip()[:60]}"
+                ),
+            )
+        )
+        stack.clear()
     return findings
 
 
@@ -1967,6 +2121,10 @@ def scan_code_locally(code_content, file_path=None):
 
     if language == "cpp":
         findings.extend(_scan_cpp_cin_into_char_arrays(code_content))
+        findings.extend(_scan_cpp_thread_lifecycle_risks(code_content))
+        findings.extend(_scan_cpp_assignment_in_conditions(code_content))
+        findings.extend(_scan_cpp_nested_pointer_null_derefs(code_content))
+        findings.extend(_scan_cpp_critical_section_mismatches(code_content))
         findings = filter_cpp_findings(code_content, findings)
 
     return findings

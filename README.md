@@ -3,7 +3,7 @@
 [![Security Scan](https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml/badge.svg)](https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml)
 [![License: MIT](https://opensource.org/licenses/MIT)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-v0.6.1-brightgreen.svg)](https://marketplace.visualstudio.com/items?itemName=wen-zai.aegis-ai-security)
+[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-v0.6.2-brightgreen.svg)](https://marketplace.visualstudio.com/items?itemName=wen-zai.aegis-ai-security)
 
 **Find and review SQL injection, XSS, RCE, and 7+ more vulnerability types as you code.** Aegis is a local-first SAST stack for VS Code / Cursor with Tree-sitter AST analysis, taint tracking, AI-assisted fixes, and baseline/suppression workflows.
 
@@ -19,7 +19,7 @@
 | **1-second diagnostics** | Feedback within 1 sec of save, no CI needed |
 | **DeepSeek/OpenAI/Ollama/custom AI code gen** | Framework-aware patches (mysql2, Sequelize, SQLAlchemy, etc.) |
 | **10+ vulnerability types** | SQL/NoSQL injection, XSS, RCE, path traversal, deserialization, SSRF, open redirect, hardcoded credentials |
-| **6 languages in 1 tool** | JS/TS, Python, PHP, Java, Go — see capability matrix below |
+| **6 AST languages + C/C++ basic scanning** | JS/TS, Python, PHP, Java, Go with AST/taint; C/C++ basic diagnostics — see capability matrix below |
 | **Real-world validated** | 100% F1 on OWASP NodeGoat, 92% F1 on Django 3.2 core |
 | **GitHub Actions ready** | SARIF report, automated PR comments, CI/CD integration |
 
@@ -271,7 +271,7 @@ aegis-ai/
 ├── aegis-ai-core/              # Python 核心引擎
 │   ├── src/
 │   │   ├── analysis/           # 静态分析引擎
-│   │   │   ├── analyzers/      # 语言分析器（JS/TS/Python/PHP/Java/Go）
+│   │   │   ├── analyzers/      # 语言分析器（JS/TS/Python/PHP/Java/Go；C/C++ basic）
 │   │   │   ├── taint/          # 污点分析（TaintAnalyzer、CrossFileAnalyzer）
 │   │   │   ├── rules/          # 漏洞规则（SQL/XSS/RCE/NoSQL/反序列化 等）
 │   │   │   ├── cfg/            # 控制流图 + 支配树（Dominator Tree）
@@ -302,7 +302,7 @@ aegis-ai/
 |------|------|
 | IDE 扩展 | TypeScript, VSCode API, vscode-languageclient |
 | LSP Server | Python, pygls, lsprotocol |
-| 静态分析 | Tree-sitter AST（JS/TS/Python/PHP/Java/Go 全部完整 AST 分析）|
+| 静态分析 | Tree-sitter AST（JS/TS/Python/PHP/Java/Go 全部完整 AST 分析）；C/C++ basic analyzer |
 | 污点分析 | 自研 TaintGraph + Dominator Tree（单文件内）|
 | AI 修复 | DeepSeek API（兼容 OpenAI SDK）|
 | RAG 知识库 | ChromaDB + sentence-transformers（实验性，可选，已从核心依赖移除）|
@@ -333,13 +333,13 @@ aegis-ai/
 
 ## 基准测试结果
 
-在多个真实漏洞靶场上的测试结果（2026-03-13 最新评估）：
+在多个真实漏洞靶场上的测试结果（DVWA 为 2026-06-09 复评，其余沿用已归档评估）：
 
 | 目标 | 语言 | 扫描文件 | Recall | Precision | F1 |
 |------|------|---------|--------|-----------|-----|
 | **NodeGoat (OWASP)** | JavaScript | 9 | **100%** | **100%** | **1.00** |
 | django-3.2-core | Python | 97 | 92.3% | 92.3% | **0.92** |
-| DVWA | PHP | 177 | 100% | 53.3% | **0.70** |
+| DVWA | PHP | 177 | 100% | 57.1% | **0.73** |
 | flask-2.3.2 | Python | 0* | 66.7% | 50.0% | 0.57 |
 
 *\*flask-2.3.2 的漏洞在配置解析逻辑中，scanner 当前不扫描 .cfg 文件*
@@ -359,13 +359,13 @@ aegis-ai/
 
 ### 已完成
 
-- 核心静态分析引擎（JS/TS/Python/PHP/Java/Go 全部完整 AST + 污点分析）
+- 核心静态分析引擎（JS/TS/Python/PHP/Java/Go 全部完整 AST + 污点分析；C/C++ 基础诊断）
 - 污点分析系统（TaintGraph + Guard Clause + Dominator Tree）
 - LSP Server（实时诊断 + Code Action + Status Bar）
 - AI 精准修复（框架感知 prompt + rich context 提取，置信度 >= 0.75 直接替换）
 - **多 AI 提供商支持**：DeepSeek（默认）、OpenAI、Ollama（本地免费离线）、自定义端点
 - VSCode/Cursor 扩展（含 Findings TreeView、Status Bar、命令面板）
-- 真实靶场基准测试（NodeGoat、DVWA、Django、Flask），**NodeGoat F1 达到 1.00（12 TP / 0 FP）**
+- 真实靶场基准测试（NodeGoat、DVWA、Django、Flask），**NodeGoat F1 达到 1.00（12 TP / 0 FP）**，DVWA 当前 F1 0.73（24 TP / 18 FP / 0 FN）
 - `tests/rules/` 正/负样本测试套件（9 类漏洞，85 个参数化测试用例，430 总测试通过）
 - **SSRF 检测（CWE-918）**：Python（requests/urllib/httpx）+ JavaScript（fetch/axios/http.get）
 - **内联抑制注释**：`# aegis-ignore` / `// aegis-ignore` 支持行末和行上方两种格式，可按漏洞类型过滤
@@ -402,4 +402,4 @@ MIT License
 
 ---
 
-*最后更新: 2026-04-16 — v1.4.0 工程可信度收口，默认测试分层、ruff/mypy 门禁、文档/发布口径对齐*
+*最后更新: 2026-06-09 — 同步 C/C++ 基础扫描、VS Code bundled backend 复用与 DVWA 复评指标*

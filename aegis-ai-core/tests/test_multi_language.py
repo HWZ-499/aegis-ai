@@ -336,6 +336,95 @@ void createProcess(pPCB newPcb, char *name) {
     assert any(finding.get("type") == "BUFFER_OVERFLOW" and finding.get("line") == 6 for finding in findings)
 
 
+def test_cpp_unsafe_thread_termination_reported():
+    """C/C++ 基础规则应提示直接终止线程的资源一致性风险。"""
+    code = """
+void stop(HANDLE hThread) {
+    TerminateThread(hThread, 0);
+}
+"""
+
+    findings = analyze_c_cpp(code, "test.cpp")
+
+    assert any(finding.get("type") == "THREAD_LIFECYCLE_RISK" and finding.get("line") == 3 for finding in findings)
+
+
+def test_cpp_assignment_inside_condition_reported():
+    """条件表达式中的单等号赋值容易造成权限/状态判断失效。"""
+    code = """
+void run(pPCB currentPcb) {
+    if(currentPcb->flag=1) {
+        currentPcb->flag = 0;
+    }
+}
+"""
+
+    findings = analyze_c_cpp(code, "test.cpp")
+
+    assert any(finding.get("type") == "ASSIGNMENT_IN_CONDITION" and finding.get("line") == 3 for finding in findings)
+
+
+def test_cpp_nested_pointer_deref_after_shallow_guard_reported():
+    """只判断外层指针不为空时，继续解引用内层指针应提示空指针风险。"""
+    code = """
+void schedule(pList pReadyList) {
+    if(pReadyList) {
+        pReadyList->head = pReadyList->head->next;
+    }
+}
+"""
+
+    findings = analyze_c_cpp(code, "test.cpp")
+
+    assert any(finding.get("type") == "NULL_DEREFERENCE" and finding.get("line") == 4 for finding in findings)
+
+
+def test_cpp_nested_pointer_deref_with_inner_guard_not_reported():
+    """明确检查内层指针后，不应报告嵌套指针空解引用。"""
+    code = """
+void schedule(pList pReadyList) {
+    if(pReadyList && pReadyList->head != NULL) {
+        pReadyList->head = pReadyList->head->next;
+    }
+}
+"""
+
+    findings = analyze_c_cpp(code, "test.cpp")
+
+    assert not any(finding.get("type") == "NULL_DEREFERENCE" for finding in findings)
+
+
+def test_cpp_critical_section_mismatch_reported():
+    """Enter/Leave 临界区对象不一致时应提示死锁风险。"""
+    code = """
+void schedule() {
+    EnterCriticalSection(&cs_ReadyList);
+    doWork();
+    LeaveCriticalSection(&cs_SaveInfo);
+}
+"""
+
+    findings = analyze_c_cpp(code, "test.cpp")
+
+    assert any(finding.get("type") == "LOCK_MISMATCH" and finding.get("line") == 5 for finding in findings)
+
+
+def test_cpp_nested_critical_sections_matched_not_reported():
+    """正常嵌套进入/退出临界区不应误报。"""
+    code = """
+void schedule() {
+    EnterCriticalSection(&cs_ReadyList);
+    EnterCriticalSection(&cs_SaveInfo);
+    LeaveCriticalSection(&cs_SaveInfo);
+    LeaveCriticalSection(&cs_ReadyList);
+}
+"""
+
+    findings = analyze_c_cpp(code, "test.cpp")
+
+    assert not any(finding.get("type") == "LOCK_MISMATCH" for finding in findings)
+
+
 def test_multi_language_project_scan():
     """测试多语言项目扫描"""
     print("\n" + "=" * 70)

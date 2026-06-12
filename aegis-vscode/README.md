@@ -4,9 +4,9 @@
 
 Real-time SAST scanning for VS Code / Cursor using Tree-sitter AST + taint analysis + AI-driven patches. No CI pipeline. No regex guessing. Framework-aware code generation.
 
-Supports: **JavaScript / TypeScript / Python / PHP / Java / Go**
+Supports: **JavaScript / TypeScript / Python / PHP / Java / Go / C/C++ basic scanning**
 
-> **v0.6.1** — Latest packaged build. [See what changed →](CHANGELOG.md)
+> **v0.6.7** — Latest packaged build. [See what changed →](CHANGELOG.md)
 
 ---
 

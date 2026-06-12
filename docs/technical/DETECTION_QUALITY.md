@@ -92,7 +92,7 @@ python -m pytest tests/test_acceptance_benchmark.py -v
 
 若要对 NodeGoat 等真实项目做 Recall/Precision 评估，需提供 **ground-truth**（预期漏洞列表）。参见：
 
-- `scripts/evaluate_project.py`：对指定项目目录 + ground-truth 列表跑扫描并输出 Recall/Precision/F1。  
+- `scripts/benchmark/evaluate_project.py`：对指定项目目录 + ground-truth 列表跑扫描并输出 Recall/Precision/F1。
 - `src/scanner/benchmark.py` 中 `evaluate_project_against_ground_truth()`：接口与格式说明。  
 
 Ground-truth 格式：每项 `{"file": str, "line": int, "type": str}`，`file` 可为路径后缀或 glob。
@@ -136,7 +136,34 @@ Ground-truth 格式：每项 `{"file": str, "line": int, "type": str}`，`file` 
 
 ---
 
-## 8. 最新阶段收口快照（2026-04-23）
+## 8. 最新真实项目评估快照（2026-06-09）
+
+DVWA 当前复评命令:
+
+```powershell
+cd c:\Users\HT341\aegis-ai\aegis-ai-core
+python scripts/benchmark/evaluate_project.py --project-dir real_world_targets/DVWA --ground-truth scripts/data/ground_truth_dvwa.json
+```
+
+结果已归档到:
+
+- `aegis-ai-core/scripts/reports/evaluate_DVWA_2026-06-09.md`
+- `aegis-ai-core/scripts/reports/evaluate_DVWA_2026-06-09.json`
+
+当前指标:
+
+| 目标 | TP | FP | FN | TN | Recall | Precision | F1 |
+|------|----|----|----|----|--------|-----------|----|
+| DVWA | 24 | 18 | 0 | 3 | 100.0% | 57.1% | 0.73 |
+
+本轮状态说明:
+
+- PHP SQLi 数字 guard 降噪已进入主线；strict digit guard 后的 DVWA BAC medium `user_id` 查询不再按 SQLi 计入 TP。
+- 剩余 FP 主要在 XSS、SQLi 和 Path Traversal；继续治理时仍需避免压掉 ground-truth 未标注但真实可疑的弱点。
+
+---
+
+## 9. 阶段收口快照（2026-04-23）
 
 本轮多阶段收口报告已落盘：
 
@@ -156,7 +183,7 @@ Ground-truth 格式：每项 `{"file": str, "line": int, "type": str}`，`file` 
 
 ---
 
-## 9. Round 6 真实项目基准扩展（2026-04-23）
+## 10. Round 6 真实项目基准扩展（2026-04-23）
 
 新增了 Java/Go 的项目级 pilot benchmark 与对应 ground-truth：
 

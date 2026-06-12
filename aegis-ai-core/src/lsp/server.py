@@ -37,12 +37,13 @@ from ..scanner.smart_remediation import generate_smart_remediation
 
 # A：AI 修复建议（可选），与 CLI 共享 AIAnalyzer 实现
 try:
-    from ..scanner.ai_analyzer import AIAnalyzer
+    from ..scanner.ai_analyzer import AIAnalyzer, build_local_fix_analysis
 
     AI_ANALYZER_AVAILABLE = True
 except ImportError:
     AI_ANALYZER_AVAILABLE = False
     AIAnalyzer = None  # type: ignore[misc,assignment]
+    build_local_fix_analysis = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -1307,6 +1308,30 @@ def create_server() -> LanguageServer:
         except (RuntimeError, KeyError):
             return None
 
+        finding_like = {
+            "type": rule_id,
+            "severity": "High",
+            "file": file_path,
+            "line": start_line,
+            "start_line": start_line,
+            "end_line": end_line,
+            "details": message,
+            "language": lang,
+        }
+        if AI_ANALYZER_AVAILABLE and build_local_fix_analysis is not None:
+            local_result = build_local_fix_analysis(finding_like, source, lang)
+            if local_result is not None and local_result.fixed_code:
+                return {
+                    "uri": fix_uri,
+                    "rule_id": rule_id,
+                    "fixed_code": local_result.fixed_code,
+                    "confidence": local_result.confidence,
+                    "fix_suggestion": local_result.fix_suggestion or "",
+                    "start_line": local_result.fix_start_line or start_line,
+                    "end_line": local_result.fix_end_line or end_line,
+                    "requires_review": local_result.requires_review,
+                }
+
         # 尝试从 AI 缓存获取
         ai_analyzer_inst = getattr(server, "_ai_analyzer", None)
         if AI_ANALYZER_AVAILABLE and ai_analyzer_inst is None:
@@ -1327,16 +1352,6 @@ def create_server() -> LanguageServer:
         result = ai_cache.get(cache_key) if ai_cache else None
 
         if result is None:
-            finding_like = {
-                "type": rule_id,
-                "severity": "High",
-                "file": file_path,
-                "line": start_line,
-                "start_line": start_line,
-                "end_line": end_line,
-                "details": message,
-                "language": lang,
-            }
             try:
                 result = ai_analyzer_inst.analyze_finding(
                     finding_like,
