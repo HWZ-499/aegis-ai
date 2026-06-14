@@ -274,6 +274,16 @@
           "enum": ["deepseek", "openai", "ollama", "custom"],
           "description": "AI provider for fix suggestions. The extension passes this value to the Python server as AI_PROVIDER."
         },
+        "aegisAI.ai.model": {
+          "type": "string",
+          "default": "",
+          "description": "Optional AI model override for fix suggestions. Leave empty to use the provider default."
+        },
+        "aegisAI.ai.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional OpenAI-compatible endpoint URL for the selected AI provider. API keys should stay in environment variables or .env."
+        },
         "aegisAI.experimental.crossFileAnalysis": {
           "type": "boolean",
           "default": false,

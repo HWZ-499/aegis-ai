@@ -12,9 +12,51 @@ logger = logging.getLogger(__name__)
 class LLMProviderError(RuntimeError):
     """Raised when a provider cannot complete a generation request."""
 
+    def __init__(self, message: str, *, error_code: str = "provider_error") -> None:
+        super().__init__(message)
+        self.error_code = error_code
+
 
 class AllProvidersFailedError(LLMProviderError):
     """Raised when every configured provider fails or is unavailable."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="all_providers_failed")
+
+
+class LLMProviderConfigurationError(LLMProviderError):
+    """Raised when a provider is missing required configuration."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="not_configured")
+
+
+class LLMProviderAuthenticationError(LLMProviderError):
+    """Raised when a provider rejects credentials or permissions."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="authentication")
+
+
+class LLMProviderRateLimitError(LLMProviderError):
+    """Raised when a provider rate limit is hit."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="rate_limit")
+
+
+class LLMProviderTimeoutError(LLMProviderError):
+    """Raised when a provider request times out or cannot connect."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="timeout")
+
+
+class LLMProviderServerError(LLMProviderError):
+    """Raised when a provider returns a transient server-side failure."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="server_error")
 
 
 @dataclass(frozen=True)
@@ -87,12 +129,12 @@ class OpenAICompatibleProvider:
     def generate(self, request: LLMRequest) -> LLMResponse:
         """Call an OpenAI-compatible chat completion endpoint."""
         if not self.is_configured():
-            raise LLMProviderError(f"Provider {self.name} is not configured")
+            raise LLMProviderConfigurationError(f"Provider {self.name} is not configured")
 
         try:
             import openai
         except ImportError as exc:
-            raise LLMProviderError(f"OpenAI-compatible dependency is unavailable: {exc}") from exc
+            raise LLMProviderConfigurationError(f"OpenAI-compatible dependency is unavailable: {exc}") from exc
 
         model = request.model or self.default_model
         try:
@@ -108,10 +150,28 @@ class OpenAICompatibleProvider:
                 timeout=request.timeout,
             )
         except Exception as exc:
-            raise LLMProviderError(f"Provider {self.name} request failed: {type(exc).__name__}: {exc}") from exc
+            raise self._classify_error(exc) from exc
 
         content = response.choices[0].message.content or ""
         return LLMResponse(content=content, provider=self.name, model=model)
+
+    def _classify_error(self, exc: Exception) -> LLMProviderError:
+        """Map common OpenAI-compatible SDK failures to stable categories."""
+        message = f"Provider {self.name} request failed: {type(exc).__name__}: {exc}"
+        error_type = type(exc).__name__.lower()
+        status_code = getattr(exc, "status_code", None)
+
+        if isinstance(exc, TimeoutError) or "timeout" in error_type:
+            return LLMProviderTimeoutError(message)
+        if "authentication" in error_type or "permissiondenied" in error_type or "permission" in error_type:
+            return LLMProviderAuthenticationError(message)
+        if "ratelimit" in error_type or "rate_limit" in error_type:
+            return LLMProviderRateLimitError(message)
+        if "connection" in error_type:
+            return LLMProviderTimeoutError(message)
+        if isinstance(status_code, int) and status_code >= 500:
+            return LLMProviderServerError(message)
+        return LLMProviderError(message)
 
 
 class LLMGateway:
@@ -178,12 +238,15 @@ class LLMGateway:
         for name in self._ordered_provider_names(preferred_provider, fallback_order):
             provider = self._providers[name]
             if not provider.is_configured():
-                errors.append(f"{name}: not configured")
+                errors.append(f"{name}(not_configured): not configured")
                 continue
             try:
                 return provider.generate(request)
             except Exception as exc:
-                message = f"{name}: {exc}"
+                if isinstance(exc, LLMProviderError):
+                    message = f"{name}({exc.error_code}): {exc}"
+                else:
+                    message = f"{name}: {exc}"
                 errors.append(message)
                 logger.warning("LLM provider failed, trying fallback if available: %s", message)
 

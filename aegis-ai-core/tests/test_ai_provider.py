@@ -15,6 +15,21 @@ import pytest
 
 # 清理测试中可能影响结果的环境变量的辅助函数
 _PROVIDER_ENV_KEYS = [
+    "AEGIS_AI_API_KEY",
+    "AEGIS_AI_BASE_URL",
+    "AEGIS_AI_MODEL",
+    "AEGIS_AI_PROVIDER",
+    "AEGIS_AI_PROVIDER_FALLBACK_ORDER",
+    "AEGIS_DEEPSEEK_API_KEY",
+    "AEGIS_DEEPSEEK_BASE_URL",
+    "AEGIS_DEEPSEEK_MODEL",
+    "AEGIS_ENV_FILE",
+    "AEGIS_OPENAI_API_KEY",
+    "AEGIS_OPENAI_BASE_URL",
+    "AEGIS_OPENAI_MODEL",
+    "AEGIS_OLLAMA_API_KEY",
+    "AEGIS_OLLAMA_BASE_URL",
+    "AEGIS_OLLAMA_MODEL",
     "AI_PROVIDER",
     "DEEPSEEK_API_KEY",
     "DEEPSEEK_BASE_URL",
@@ -64,6 +79,50 @@ class TestResolveProviderDefaults:
     def test_constructor_model_override(self):
         provider, key, base, model = AIAnalyzer._resolve_provider(None, None, "deepseek-reasoner")
         assert model == "deepseek-reasoner"
+
+    def test_dotenv_provider_config_is_used(self, tmp_path, monkeypatch):
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "AI_PROVIDER=custom\nAI_BASE_URL=https://llm.example.test/v1\nAI_API_KEY=dotenv-key\nAI_MODEL=secure-model\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+
+        provider, key, base, model = AIAnalyzer._resolve_provider(None, None, None)
+
+        assert provider == "custom"
+        assert key == "dotenv-key"
+        assert base == "https://llm.example.test/v1"
+        assert model == "secure-model"
+
+    def test_environment_overrides_dotenv_config(self, tmp_path, monkeypatch):
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "AI_PROVIDER=openai\nOPENAI_API_KEY=dotenv-openai-key\nOPENAI_MODEL=from-dotenv\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("AI_PROVIDER", "ollama")
+        monkeypatch.setenv("OLLAMA_MODEL", "from-env")
+
+        provider, key, base, model = AIAnalyzer._resolve_provider(None, None, None)
+
+        assert provider == "ollama"
+        assert key == "ollama"
+        assert "11434" in base
+        assert model == "from-env"
+
+    def test_prefixed_env_is_supported(self, monkeypatch):
+        monkeypatch.setenv("AEGIS_AI_PROVIDER", "custom")
+        monkeypatch.setenv("AEGIS_AI_BASE_URL", "https://prefixed.example.test/v1")
+        monkeypatch.setenv("AEGIS_AI_API_KEY", "prefixed-key")
+
+        provider, key, base, model = AIAnalyzer._resolve_provider(None, None, None)
+
+        assert provider == "custom"
+        assert key == "prefixed-key"
+        assert base == "https://prefixed.example.test/v1"
+        assert model == "gpt-4o-mini"
 
 
 class TestOllamaProvider:

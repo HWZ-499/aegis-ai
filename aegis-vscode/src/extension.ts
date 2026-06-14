@@ -29,7 +29,7 @@ import {
   WorkspaceConfiguration,
 } from "vscode";
 import { FindingsTreeProvider } from "./findingsTreeProvider";
-import { getAiConfigurationError } from "./aiPreflight";
+import { getAiConfigurationError, getAiServerEnvironment } from "./aiPreflight";
 import { GenerateFixResponse, getGenerateFixFailure, isGenerateFixSuccess } from "./aiFixResult";
 import {
   BaselineEntryNode,
@@ -236,6 +236,9 @@ function refreshStatusBarFromDiagnostics(): void {
  */
 export async function activate(context: ExtensionContext): Promise<void> {
   const config = workspace.getConfiguration("aegisAI");
+  const workspaceEnvFile = workspace.workspaceFolders?.[0]
+    ? Uri.joinPath(workspace.workspaceFolders[0].uri, ".env").fsPath
+    : undefined;
 
   // Check if extension is enabled
   if (!config.get<boolean>("enabled", true)) {
@@ -467,9 +470,18 @@ export async function activate(context: ExtensionContext): Promise<void> {
       const requestMessage = args?.message ?? aegisDiag.message.substring(0, 500);
       if (!canAttemptLocalFix(ruleId)) {
         const runtimeConfig = workspace.getConfiguration("aegisAI");
-        const aiProvider = runtimeConfig.get<string>("ai.provider", "deepseek");
+        const aiProvider = runtimeConfig.get<string>("ai.provider", "ollama");
+        const aiProcessEnv = getAiServerEnvironment(
+          {
+            provider: aiProvider,
+            model: runtimeConfig.get<string>("ai.model", ""),
+            baseUrl: runtimeConfig.get<string>("ai.baseUrl", ""),
+            envFile: workspaceEnvFile,
+          },
+          process.env,
+        );
         const aiEnabled = runtimeConfig.get<boolean>("ai.enabled", true);
-        const aiConfigError = getAiConfigurationError(aiProvider, process.env, aiEnabled);
+        const aiConfigError = getAiConfigurationError(aiProvider, aiProcessEnv, aiEnabled);
         if (aiConfigError) {
           window.showWarningMessage(`Aegis: ${aiConfigError}`);
           return;
@@ -754,6 +766,15 @@ export async function activate(context: ExtensionContext): Promise<void> {
 
   outputChannel.appendLine(`[Aegis] Backend source: ${backendLaunch.source}`);
   outputChannel.appendLine(`[Aegis] Python: ${backendLaunch.pythonPath}, Module: ${serverModule}`);
+  const aiProcessEnv = getAiServerEnvironment(
+    {
+      provider: config.get<string>("ai.provider", "ollama"),
+      model: config.get<string>("ai.model", ""),
+      baseUrl: config.get<string>("ai.baseUrl", ""),
+      envFile: workspaceEnvFile,
+    },
+    process.env,
+  );
 
   if (!cwd) {
     outputChannel.appendLine(
@@ -773,10 +794,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     args: backendLaunch.args,
     options: {
       cwd: cwd,
-      env: {
-        ...process.env,
-        AI_PROVIDER: config.get<string>("ai.provider", "ollama"),
-      },
+      env: aiProcessEnv,
     },
   };
 
