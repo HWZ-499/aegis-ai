@@ -28,7 +28,7 @@ from ..ai import (
     AllProvidersFailedError,
     LLMGateway,
     LLMRequest,
-    OpenAICompatibleProvider,
+    build_default_gateway,
     resolve_fallback_order,
 )
 
@@ -918,50 +918,7 @@ class AIAnalyzer:
         config: AIProviderConfig,
     ) -> LLMGateway:
         """Create the default gateway with built-in OpenAI-compatible providers."""
-
-        def _provider_value(name: str, env_name: str, fallback: str) -> str:
-            if config.provider == name:
-                return cast(str, config.api_base)
-            return cast(str, config.get(env_name, fallback) or "")
-
-        def _provider_key(name: str, env_name: str, fallback: str | None = None) -> str | None:
-            if config.provider == name:
-                return cast(str | None, config.api_key)
-            return cast(str | None, config.get(env_name) or fallback)
-
-        def _provider_model(name: str, env_name: str, fallback: str) -> str:
-            if config.provider == name:
-                return cast(str, config.model)
-            return cast(str, config.get(env_name, fallback) or fallback)
-
-        providers = [
-            OpenAICompatibleProvider(
-                name="ollama",
-                api_key=_provider_key("ollama", "OLLAMA_API_KEY", "ollama"),
-                base_url=_provider_value("ollama", "OLLAMA_BASE_URL", "http://localhost:11434/v1"),
-                default_model=_provider_model("ollama", "OLLAMA_MODEL", "llama3"),
-                requires_api_key=False,
-            ),
-            OpenAICompatibleProvider(
-                name="deepseek",
-                api_key=_provider_key("deepseek", "DEEPSEEK_API_KEY"),
-                base_url=_provider_value("deepseek", "DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
-                default_model=_provider_model("deepseek", "DEEPSEEK_MODEL", "deepseek-chat"),
-            ),
-            OpenAICompatibleProvider(
-                name="openai",
-                api_key=_provider_key("openai", "OPENAI_API_KEY"),
-                base_url=_provider_value("openai", "OPENAI_BASE_URL", "https://api.openai.com/v1"),
-                default_model=_provider_model("openai", "OPENAI_MODEL", "gpt-4o-mini"),
-            ),
-            OpenAICompatibleProvider(
-                name="custom",
-                api_key=_provider_key("custom", "AI_API_KEY"),
-                base_url=_provider_value("custom", "AI_BASE_URL", ""),
-                default_model=_provider_model("custom", "AI_MODEL", "gpt-4o-mini"),
-            ),
-        ]
-        return LLMGateway(providers, fallback_order=config.fallback_order)
+        return cast(LLMGateway, build_default_gateway(config))
 
     def __init__(
         self,

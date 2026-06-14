@@ -1,5 +1,6 @@
 """AI provider gateway primitives."""
 
+from .builtin_providers import build_default_gateway
 from .llm_gateway import (
     AllProvidersFailedError,
     LLMGateway,
@@ -15,11 +16,14 @@ from .llm_gateway import (
     OpenAICompatibleProvider,
 )
 from .provider_config import AIProviderConfig, resolve_fallback_order
+from .smoke import DEFAULT_SMOKE_PROMPT, LLMGatewaySmokeResult, run_llm_gateway_smoke
 
 __all__ = [
     "AIProviderConfig",
     "AllProvidersFailedError",
+    "DEFAULT_SMOKE_PROMPT",
     "LLMGateway",
+    "LLMGatewaySmokeResult",
     "LLMProvider",
     "LLMProviderAuthenticationError",
     "LLMProviderConfigurationError",
@@ -30,5 +34,7 @@ __all__ = [
     "LLMProviderServerError",
     "LLMProviderTimeoutError",
     "OpenAICompatibleProvider",
+    "build_default_gateway",
     "resolve_fallback_order",
+    "run_llm_gateway_smoke",
 ]
