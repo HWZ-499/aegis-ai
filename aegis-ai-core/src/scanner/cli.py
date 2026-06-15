@@ -13,6 +13,7 @@ from src.scanner.incremental_scanner import IncrementalScanner
 from src.scanner.project_scanner import ProjectScanner
 from src.scanner.rag_enhancer import RAGEnhancer
 from src.scanner.report_generator import ReportGenerator
+from src.scanner.rules_cli import run_rules_command
 from src.scanner.taint_enhancer import TAINT_ANALYSIS_AVAILABLE, TaintEnhancer, enhance_scan_results
 
 # 跨文件分析
@@ -44,8 +45,12 @@ def _build_ai_code_contexts(results: dict[str, list[dict]], project_path: Path) 
     return code_contexts
 
 
-def main():
+def main(argv: list[str] | None = None):
     """命令行主函数"""
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ["rules"]:
+        sys.exit(run_rules_command(argv[1:]))
+
     parser = argparse.ArgumentParser(
         description="Aegis SAST 安全扫描工具 — JavaScript/TypeScript、Python 深度 AST 检测；Java/C/Go 基础正则检测",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -138,7 +143,7 @@ def main():
         help="额外 DSL 规则目录（可多次指定）；项目内 .aegis/rules 存在时会自动加载",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     # 验证项目路径
     project_path = Path(args.project_path).resolve()

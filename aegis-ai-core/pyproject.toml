@@ -70,6 +70,7 @@ Repository = "https://github.com/HWZ-499/aegis-ai"
 Issues = "https://github.com/HWZ-499/aegis-ai/issues"
 
 [project.scripts]
+aegis = "src.scanner.cli:main"
 aegis-lsp = "src.lsp.__main__:main"
 aegis-scan = "src.scanner.cli:main"
 
