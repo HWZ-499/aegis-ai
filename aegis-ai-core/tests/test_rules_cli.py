@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from src.analysis.dsl.rule_schema import DslRule
 from src.scanner.rules_cli import run_embedded_rule_tests, run_rules_command
 
@@ -15,6 +17,43 @@ def test_rules_init_writes_skeleton_with_embedded_tests(tmp_path: Path, capsys) 
     assert "tests:" in text
     assert "expect_findings: 1" in text
     assert "Created DSL rule skeleton" in capsys.readouterr().out
+
+
+def test_rules_init_type_lang_writes_testable_template(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = run_rules_command(["init", "--type", "sqli", "--lang", "python"])
+
+    rule_path = tmp_path / ".aegis" / "rules" / "python.sql-injection.yaml"
+    assert exit_code == 0
+    assert rule_path.exists()
+    text = rule_path.read_text(encoding="utf-8")
+    assert "id: dsl.python.sql-injection-custom" in text
+    assert "vuln_type: SQL_INJECTION" in text
+    assert "Created DSL rule skeleton" in capsys.readouterr().out
+    assert run_rules_command(["test", str(rule_path), "--quiet"]) == 0
+
+
+@pytest.mark.parametrize(
+    ("rule_type", "language"),
+    [
+        ("sqli", "python"),
+        ("xss", "python"),
+        ("rce", "python"),
+        ("path-traversal", "python"),
+        ("hardcoded-credentials", "python"),
+        ("sqli", "javascript"),
+        ("xss", "javascript"),
+        ("path-traversal", "javascript"),
+    ],
+)
+def test_rules_init_type_templates_are_self_testing(tmp_path: Path, rule_type: str, language: str) -> None:
+    rule_path = tmp_path / f"{language}-{rule_type}.yaml"
+
+    init_exit_code = run_rules_command(["init", str(rule_path), "--type", rule_type, "--lang", language])
+
+    assert init_exit_code == 0
+    assert run_rules_command(["test", str(rule_path), "--quiet"]) == 0
 
 
 def test_rules_init_refuses_overwrite_without_force(tmp_path: Path) -> None:
