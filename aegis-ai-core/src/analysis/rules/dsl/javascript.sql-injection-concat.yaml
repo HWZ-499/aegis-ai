@@ -12,3 +12,12 @@ patterns:
     metavariables:
       SQL:
         regex: '(?i)\b(?:req|request)\.(?:query|body|params)\b|\b(?:location|document\.cookie)\b'
+tests:
+  - name: detects JavaScript SELECT concatenation
+    code: |
+      db.query("SELECT" + req.query.id)
+    expect_findings: 1
+  - name: skips JavaScript parameterized query
+    code: |
+      db.query("SELECT * FROM users WHERE id = ?", [req.query.id])
+    expect_findings: 0

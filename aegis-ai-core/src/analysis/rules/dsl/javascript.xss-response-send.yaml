@@ -12,3 +12,12 @@ patterns:
     metavariables:
       EXPR:
         regex: '(?i)\b(?:req|request)\.(?:query|body|params|cookies|headers)\b|\b(?:location\.(?:search|hash)|document\.cookie|window\.name)\b'
+tests:
+  - name: detects request data in res.send
+    code: |
+      res.send(req.query.name)
+    expect_findings: 1
+  - name: skips local variable in res.send
+    code: |
+      res.send(profileName)
+    expect_findings: 0

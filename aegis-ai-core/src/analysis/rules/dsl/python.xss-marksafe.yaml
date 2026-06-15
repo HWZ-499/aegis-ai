@@ -7,4 +7,15 @@ patterns:
   - pattern: mark_safe($EXPR)
     where:
       file_not_regex: "(?i)test|fixture"
+tests:
+  - name: detects mark_safe wrapping request data
+    code: |
+      mark_safe(request.GET["name"])
+    file_path: app/views.py
+    expect_findings: 1
+  - name: skips escaped request data
+    code: |
+      escape(request.GET["name"])
+    file_path: app/views.py
+    expect_findings: 0
 

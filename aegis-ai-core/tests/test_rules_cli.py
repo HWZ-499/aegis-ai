@@ -107,3 +107,15 @@ def test_run_embedded_rule_tests_uses_boolean_expectations(tmp_path: Path) -> No
 
     assert errors == []
     assert [result.passed for result in results] == [True, True]
+
+
+def test_builtin_dsl_rules_have_passing_embedded_tests(capsys) -> None:
+    rule_count = len(list(Path("src/analysis/rules/dsl").glob("*.yaml")))
+
+    exit_code = run_rules_command(["test", "src/analysis/rules/dsl", "--quiet"])
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert rule_count >= 5
+    assert "0 failed" in output
+    assert f"{rule_count} rule file(s)" in output
