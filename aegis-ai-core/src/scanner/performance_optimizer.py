@@ -97,31 +97,33 @@ class ScanCache:
             hasher.update(b"\0")
         return hasher.hexdigest()[:12]
 
-    def _get_cache_key(self, file_path: Path) -> str:
+    def _get_cache_key(self, file_path: Path, rules_version_hash: str | None = None) -> str:
         """
         生成缓存键
 
         Args:
             file_path: 文件路径
+            rules_version_hash: 本轮扫描复用的规则版本哈希；未传入时即时计算。
 
         Returns:
             缓存键（包含文件哈希和规则版本）
         """
         file_hash = self._get_file_hash(file_path)
-        rules_hash = self._get_rules_version_hash()
+        rules_hash = rules_version_hash if rules_version_hash is not None else self._get_rules_version_hash()
         return f"{file_path.name}_{file_hash}_{rules_hash}"
 
-    def get_cached_result(self, file_path: Path) -> list[dict] | None:
+    def get_cached_result(self, file_path: Path, rules_version_hash: str | None = None) -> list[dict] | None:
         """
         获取缓存的扫描结果
 
         Args:
             file_path: 文件路径
+            rules_version_hash: 本轮扫描复用的规则版本哈希。
 
         Returns:
             缓存的扫描结果，如果不存在或已过期则返回 None
         """
-        cache_key = self._get_cache_key(file_path)
+        cache_key = self._get_cache_key(file_path, rules_version_hash=rules_version_hash)
         cache_file = self.cache_dir / f"{cache_key}.json"
 
         if not cache_file.exists():
@@ -154,15 +156,16 @@ class ScanCache:
 
         return None
 
-    def save_result(self, file_path: Path, findings: list[dict]):
+    def save_result(self, file_path: Path, findings: list[dict], rules_version_hash: str | None = None):
         """
         保存扫描结果到缓存
 
         Args:
             file_path: 文件路径
             findings: 扫描结果
+            rules_version_hash: 本轮扫描复用的规则版本哈希。
         """
-        cache_key = self._get_cache_key(file_path)
+        cache_key = self._get_cache_key(file_path, rules_version_hash=rules_version_hash)
         cache_file = self.cache_dir / f"{cache_key}.json"
 
         try:
@@ -389,11 +392,12 @@ class PerformanceOptimizer:
         results = {}
         files_to_scan = []
         cached_results = {}
+        rules_version_hash = self.cache._get_rules_version_hash() if self.use_cache and self.cache else None
 
         # 1. 检查缓存
         if self.use_cache and self.cache:
             for file_path in file_paths:
-                cached = self.cache.get_cached_result(file_path)
+                cached = self.cache.get_cached_result(file_path, rules_version_hash=rules_version_hash)
                 if cached is not None:
                     cached_results[file_path] = cached
                 else:
@@ -419,7 +423,7 @@ class PerformanceOptimizer:
                 if self.use_cache and self.cache:
                     for file_path, findings in scanned_results.items():
                         if should_cache_result is None or should_cache_result(file_path, findings):
-                            self.cache.save_result(file_path, findings)
+                            self.cache.save_result(file_path, findings, rules_version_hash=rules_version_hash)
             else:
                 # 顺序扫描
                 scanned_results = {}
@@ -434,7 +438,7 @@ class PerformanceOptimizer:
                         and self.cache
                         and (should_cache_result is None or should_cache_result(file_path, findings))
                     ):
-                        self.cache.save_result(file_path, findings)
+                        self.cache.save_result(file_path, findings, rules_version_hash=rules_version_hash)
 
                     if progress_callback:
                         progress_callback(idx, total_files, file_path)
