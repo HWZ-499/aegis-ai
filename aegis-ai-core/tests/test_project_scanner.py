@@ -118,6 +118,45 @@ def test_scan_project_applies_extra_java_dsl_rules(tmp_path: Path) -> None:
     )
 
 
+def test_scan_project_cache_invalidates_when_custom_dsl_rule_changes(tmp_path: Path) -> None:
+    """Project scan cache must be invalidated when project DSL rules change."""
+    rules_dir = tmp_path / ".aegis" / "rules"
+    _write_custom_rule(
+        rules_dir,
+        rule_id="dsl.php.custom-cache-sensitive",
+        language="php",
+        pattern="not_present($ARG)",
+        vuln_type="CUSTOM_CACHE_RISK",
+    )
+    app = tmp_path / "app.php"
+    app.write_text("<?php\n$input = $_GET['x'];\ndangerous_php($input);\n", encoding="utf-8")
+
+    first_scanner = ProjectScanner(str(tmp_path), use_cache=True, use_parallel=False)
+    first_results = first_scanner.scan_project()
+
+    assert not any(
+        finding.get("rule_id") == "dsl.php.custom-cache-sensitive"
+        for findings in first_results.values()
+        for finding in findings
+    )
+
+    _write_custom_rule(
+        rules_dir,
+        rule_id="dsl.php.custom-cache-sensitive",
+        language="php",
+        pattern="dangerous_php($ARG)",
+        vuln_type="CUSTOM_CACHE_RISK",
+    )
+
+    second_scanner = ProjectScanner(str(tmp_path), use_cache=True, use_parallel=False)
+    second_results = second_scanner.scan_project()
+
+    assert any(
+        finding.get("type") == "CUSTOM_CACHE_RISK" and finding.get("rule_id") == "dsl.php.custom-cache-sensitive"
+        for finding in second_results["app.php"]
+    )
+
+
 def test_scan_project_resets_state_and_returns_stable_snapshots(tmp_path: Path) -> None:
     """同一个 ProjectScanner 实例重复扫描时不应累计旧状态或回写旧结果。"""
     file_path = tmp_path / "app.py"

@@ -170,6 +170,7 @@ class ProjectScanner:
                 max_workers=max_workers,
                 use_cache=use_cache,
                 use_parallel=use_parallel,
+                rule_dirs=self._extra_rule_dirs,
             )
         else:
             self.optimizer = None

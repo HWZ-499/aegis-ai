@@ -22,7 +22,12 @@ class ScanCache:
     缓存已扫描文件的结果，避免重复扫描
     """
 
-    def __init__(self, cache_dir: str | None = None, ttl_hours: int = 24):
+    def __init__(
+        self,
+        cache_dir: str | None = None,
+        ttl_hours: int = 24,
+        rule_dirs: list[Path] | None = None,
+    ):
         """
         初始化缓存管理器
 
@@ -37,6 +42,7 @@ class ScanCache:
 
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.ttl_hours = ttl_hours
+        self.rule_dirs = tuple(path.resolve() for path in rule_dirs or [])
 
     def _get_file_hash(self, file_path: Path) -> str:
         """
@@ -52,23 +58,44 @@ class ScanCache:
             content = f.read()
             return hashlib.md5(content).hexdigest()
 
-    def _get_rules_version_hash(self) -> str:
-        """
-        计算规则版本哈希（security_rules.py + analysis/rules 下所有 .py），
-        规则变更后缓存自动失效。
-        """
+    def _iter_rule_version_files(self) -> list[Path]:
+        """Return rule definition files that should invalidate scan cache."""
         analysis_dir = Path(__file__).resolve().parent.parent / "analysis"
-        hashes = []
+        files: list[Path] = []
         if (analysis_dir / "security_rules.py").exists():
-            hashes.append(self._get_file_hash(analysis_dir / "security_rules.py"))
+            files.append(analysis_dir / "security_rules.py")
         rules_dir = analysis_dir / "rules"
         if rules_dir.exists():
-            for py in sorted(rules_dir.rglob("*.py")):
-                hashes.append(self._get_file_hash(py))
-        if not hashes:
+            files.extend(rules_dir.rglob("*.py"))
+            files.extend(rules_dir.rglob("*.yaml"))
+            files.extend(rules_dir.rglob("*.yml"))
+        for rule_dir in self.rule_dirs:
+            if not rule_dir.is_dir():
+                continue
+            files.extend(rule_dir.rglob("*.yaml"))
+            files.extend(rule_dir.rglob("*.yml"))
+        return sorted(set(files))
+
+    def _get_rules_version_hash(self) -> str:
+        """
+        计算规则版本哈希（内置规则 + 内置 DSL + 项目自定义 DSL），
+        规则变更后缓存自动失效。
+        """
+        rule_files = self._iter_rule_version_files()
+        if not rule_files:
             return ""
-        combined = hashlib.md5("".join(hashes).encode()).hexdigest()
-        return combined[:12]
+        hasher = hashlib.md5()
+        for rule_file in rule_files:
+            try:
+                file_hash = self._get_file_hash(rule_file)
+            except OSError as exc:
+                logger.debug("计算规则版本时跳过不可读文件 %s: %s", rule_file, exc)
+                continue
+            hasher.update(str(rule_file).encode("utf-8"))
+            hasher.update(b"\0")
+            hasher.update(file_hash.encode("ascii"))
+            hasher.update(b"\0")
+        return hasher.hexdigest()[:12]
 
     def _get_cache_key(self, file_path: Path) -> str:
         """
@@ -310,6 +337,7 @@ class PerformanceOptimizer:
         max_workers: int | None = None,
         use_cache: bool = True,
         use_parallel: bool = True,
+        rule_dirs: list[Path] | None = None,
     ):
         """
         初始化性能优化器
@@ -326,7 +354,7 @@ class PerformanceOptimizer:
         self.cache: ScanCache | None
         self.parallel_scanner: ParallelScanner | None
         if use_cache:
-            self.cache = ScanCache(cache_dir)
+            self.cache = ScanCache(cache_dir, rule_dirs=rule_dirs)
         else:
             self.cache = None
 
