@@ -10,4 +10,15 @@ patterns:
         not_regex: '^(?!(?:req|request|location|document|window)\b)[A-Za-z_$][A-Za-z0-9_$]*(?:\[[''"][^''"]+[''"]\]|\.[A-Za-z_$][A-Za-z0-9_$]*)+\s*;?$'
     where:
       file_not_regex: "(?i)test|fixture"
+tests:
+  - name: detects request data assigned to innerHTML
+    code: |
+      element.innerHTML = req.query.name
+    file_path: app/routes/profile.js
+    expect_findings: 1
+  - name: skips non-request object property assignment
+    code: |
+      element.innerHTML = profile.displayName
+    file_path: app/routes/profile.js
+    expect_findings: 0
 

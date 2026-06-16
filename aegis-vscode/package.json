@@ -266,13 +266,23 @@
         "aegisAI.ai.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable AI-powered fix suggestions. Requires AI env vars and a VS Code reload after changes."
+          "description": "Enable AI-powered fix suggestions. Ollama runs locally without an API key; remote providers require matching AI env vars and a VS Code reload after changes."
         },
         "aegisAI.ai.provider": {
           "type": "string",
-          "default": "deepseek",
+          "default": "ollama",
           "enum": ["deepseek", "openai", "ollama", "custom"],
           "description": "AI provider for fix suggestions. The extension passes this value to the Python server as AI_PROVIDER."
+        },
+        "aegisAI.ai.model": {
+          "type": "string",
+          "default": "",
+          "description": "Optional AI model override for fix suggestions. Leave empty to use the provider default."
+        },
+        "aegisAI.ai.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional OpenAI-compatible endpoint URL for the selected AI provider. API keys should stay in environment variables or .env."
         },
         "aegisAI.experimental.crossFileAnalysis": {
           "type": "boolean",

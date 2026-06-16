@@ -12,3 +12,12 @@ patterns:
   - pattern: $CURSOR.execute(f"SELECT $SQL{$EXPR}")
   - pattern: $CURSOR.execute(f'SELECT {$EXPR}')
   - pattern: $CURSOR.execute(f'SELECT $SQL{$EXPR}')
+tests:
+  - name: detects Python percent-formatted SELECT
+    code: |
+      cursor.execute("SELECT * FROM users WHERE name = '%s'" % name)
+    expect_findings: 1
+  - name: skips Python parameterized query
+    code: |
+      cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    expect_findings: 0

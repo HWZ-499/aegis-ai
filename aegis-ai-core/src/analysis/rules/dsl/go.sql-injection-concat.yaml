@@ -6,3 +6,12 @@ vuln_type: SQL_INJECTION
 patterns:
   - pattern: $DB.Query("SELECT" + $EXPR)
   - pattern: $DB.Exec("DELETE" + $EXPR)
+tests:
+  - name: detects Go SELECT concatenation
+    code: |
+      db.Query("SELECT" + userInput)
+    expect_findings: 1
+  - name: skips Go parameterized query
+    code: |
+      db.Query("SELECT * FROM users WHERE id = ?", id)
+    expect_findings: 0

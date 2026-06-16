@@ -15,6 +15,21 @@ import pytest
 
 # 清理测试中可能影响结果的环境变量的辅助函数
 _PROVIDER_ENV_KEYS = [
+    "AEGIS_AI_API_KEY",
+    "AEGIS_AI_BASE_URL",
+    "AEGIS_AI_MODEL",
+    "AEGIS_AI_PROVIDER",
+    "AEGIS_AI_PROVIDER_FALLBACK_ORDER",
+    "AEGIS_DEEPSEEK_API_KEY",
+    "AEGIS_DEEPSEEK_BASE_URL",
+    "AEGIS_DEEPSEEK_MODEL",
+    "AEGIS_ENV_FILE",
+    "AEGIS_OPENAI_API_KEY",
+    "AEGIS_OPENAI_BASE_URL",
+    "AEGIS_OPENAI_MODEL",
+    "AEGIS_OLLAMA_API_KEY",
+    "AEGIS_OLLAMA_BASE_URL",
+    "AEGIS_OLLAMA_MODEL",
     "AI_PROVIDER",
     "DEEPSEEK_API_KEY",
     "DEEPSEEK_BASE_URL",
@@ -25,6 +40,8 @@ _PROVIDER_ENV_KEYS = [
     "AI_BASE_URL",
     "AI_API_KEY",
     "AI_MODEL",
+    "AI_PROVIDER_FALLBACK_ORDER",
+    "OLLAMA_API_KEY",
 ]
 
 
@@ -36,15 +53,17 @@ def clean_env(monkeypatch):
     yield
 
 
+from src.ai import LLMGateway, LLMRequest, LLMResponse
 from src.scanner.ai_analyzer import AIAnalysisResult, AIAnalyzer, build_local_fix_analysis
 
 
 class TestResolveProviderDefaults:
-    def test_default_is_deepseek(self):
+    def test_default_is_ollama(self):
         provider, key, base, model = AIAnalyzer._resolve_provider(None, None, None)
-        assert provider == "deepseek"
-        assert "deepseek.com" in base
-        assert model == "deepseek-chat"
+        assert provider == "ollama"
+        assert "11434" in base
+        assert key == "ollama"
+        assert model == "llama3"
 
     def test_deepseek_api_key_from_env(self, monkeypatch):
         monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-test-key")
@@ -60,6 +79,50 @@ class TestResolveProviderDefaults:
     def test_constructor_model_override(self):
         provider, key, base, model = AIAnalyzer._resolve_provider(None, None, "deepseek-reasoner")
         assert model == "deepseek-reasoner"
+
+    def test_dotenv_provider_config_is_used(self, tmp_path, monkeypatch):
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "AI_PROVIDER=custom\nAI_BASE_URL=https://llm.example.test/v1\nAI_API_KEY=dotenv-key\nAI_MODEL=secure-model\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+
+        provider, key, base, model = AIAnalyzer._resolve_provider(None, None, None)
+
+        assert provider == "custom"
+        assert key == "dotenv-key"
+        assert base == "https://llm.example.test/v1"
+        assert model == "secure-model"
+
+    def test_environment_overrides_dotenv_config(self, tmp_path, monkeypatch):
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "AI_PROVIDER=openai\nOPENAI_API_KEY=dotenv-openai-key\nOPENAI_MODEL=from-dotenv\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("AI_PROVIDER", "ollama")
+        monkeypatch.setenv("OLLAMA_MODEL", "from-env")
+
+        provider, key, base, model = AIAnalyzer._resolve_provider(None, None, None)
+
+        assert provider == "ollama"
+        assert key == "ollama"
+        assert "11434" in base
+        assert model == "from-env"
+
+    def test_prefixed_env_is_supported(self, monkeypatch):
+        monkeypatch.setenv("AEGIS_AI_PROVIDER", "custom")
+        monkeypatch.setenv("AEGIS_AI_BASE_URL", "https://prefixed.example.test/v1")
+        monkeypatch.setenv("AEGIS_AI_API_KEY", "prefixed-key")
+
+        provider, key, base, model = AIAnalyzer._resolve_provider(None, None, None)
+
+        assert provider == "custom"
+        assert key == "prefixed-key"
+        assert base == "https://prefixed.example.test/v1"
+        assert model == "gpt-4o-mini"
 
 
 class TestOllamaProvider:
@@ -136,12 +199,14 @@ class TestCustomProvider:
 
 
 class TestAnalyzerInit:
-    def test_disabled_without_key(self):
+    def test_explicit_remote_provider_disabled_without_key(self, monkeypatch):
+        monkeypatch.setenv("AI_PROVIDER", "deepseek")
         analyzer = AIAnalyzer(enabled=True)
-        # No key available → should be disabled
+        # Remote providers still require credentials.
         assert analyzer.enabled is False
 
-    def test_disabled_without_key_returns_structured_config_error(self):
+    def test_explicit_remote_provider_without_key_returns_structured_config_error(self, monkeypatch):
+        monkeypatch.setenv("AI_PROVIDER", "deepseek")
         analyzer = AIAnalyzer(enabled=True)
         result = analyzer.analyze_finding(
             {
@@ -155,6 +220,11 @@ class TestAnalyzerInit:
         assert result.error_code == "provider_not_configured"
         assert result.error_message is not None
         assert "provider" in result.error_message.lower()
+
+    def test_default_ollama_provider_is_enabled_without_key(self):
+        analyzer = AIAnalyzer(enabled=True)
+        assert analyzer.enabled is True
+        assert analyzer.provider == "ollama"
 
     def test_enabled_with_deepseek_key(self, monkeypatch):
         monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-key")
@@ -219,6 +289,57 @@ class TestAiAnalysisCache:
         assert second.fixed_code == "fixed 2"
         assert repeated_second is second
         assert len(calls) == 2
+
+
+class TestGatewayIntegration:
+    def test_analyzer_uses_registered_provider_without_call_path_changes(self, monkeypatch):
+        monkeypatch.setenv("AI_PROVIDER", "fake")
+
+        class FakeProvider:
+            name = "fake"
+            default_model = "fake-model"
+            supports_streaming = False
+
+            def is_configured(self):
+                return True
+
+            def generate(self, request: LLMRequest) -> LLMResponse:
+                assert request.messages[-1]["role"] == "user"
+                return LLMResponse(
+                    content=json.dumps(
+                        {
+                            "is_false_positive": False,
+                            "confidence": 0.93,
+                            "risk_level": "High",
+                            "explanation": "Use parameters.",
+                            "fixed_code": "cursor.execute(query, (user_id,))",
+                            "fix_start_line": 10,
+                            "fix_end_line": 10,
+                        }
+                    ),
+                    provider="fake",
+                    model="fake-model",
+                )
+
+        analyzer = AIAnalyzer(enabled=True, llm_gateway=LLMGateway([FakeProvider()]))
+        result = analyzer.analyze_finding(
+            {
+                "type": "SQL_INJECTION",
+                "severity": "High",
+                "line": 10,
+                "start_line": 10,
+                "end_line": 10,
+                "details": "Potential SQL injection",
+                "file": "app.py",
+                "language": "python",
+            },
+            language="python",
+            source_code='query = "SELECT * FROM users WHERE id = " + user_id\ncursor.execute(query)\n',
+        )
+
+        assert result.error_code is None
+        assert result.fixed_code == "cursor.execute(query, (user_id,))"
+        assert result.requires_review is False
 
 
 class TestAiResponseErrors:

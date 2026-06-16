@@ -72,6 +72,22 @@ class DslPattern(BaseModel):
     where: WhereClause | None = None
 
 
+class DslRuleTestCase(BaseModel):
+    """Embedded executable example for a DSL rule.
+
+    Attributes:
+        name: Human-readable test case name.
+        code: Source snippet to match.
+        file_path: Optional virtual file path used for path-based filters.
+        expect_findings: Expected finding count, or a boolean match expectation.
+    """
+
+    name: str = "case"
+    code: str
+    file_path: str | None = None
+    expect_findings: int | bool = True
+
+
 class DslRule(BaseModel):
     """完整的 DSL 规则定义。
 
@@ -82,6 +98,7 @@ class DslRule(BaseModel):
         message: 用户可见描述，用于 Diagnostic.message / 详情。
         vuln_type: Finding 中的 type 字段，例如 HARDCODED_CREDENTIALS。
         patterns: 多个 DslPattern，任一匹配即视为触发。
+        tests: 可选的内嵌规则样例，用于 `aegis rules test`。
     """
 
     id: str
@@ -90,6 +107,7 @@ class DslRule(BaseModel):
     message: str
     vuln_type: str
     patterns: list[DslPattern]
+    tests: list[DslRuleTestCase] = Field(default_factory=list)
 
     @field_validator("language")
     @classmethod
@@ -118,4 +136,4 @@ class DslRule(BaseModel):
         return value.upper()
 
 
-__all__ = ["MetaVarConstraint", "WhereClause", "DslPattern", "DslRule"]
+__all__ = ["MetaVarConstraint", "WhereClause", "DslPattern", "DslRule", "DslRuleTestCase"]

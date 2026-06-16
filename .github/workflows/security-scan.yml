@@ -103,6 +103,7 @@ jobs:
       security-events: write
       actions: read
       contents: read
+      issues: write
 
     steps:
       - uses: actions/checkout@v6
@@ -180,7 +181,7 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           cd aegis-ai-core
-          python -m src.scanner.cli . --incremental --base-ref origin/main --format json --no-fail-on-findings 2>/dev/null || true
+          python -m src.scanner.cli . --incremental --base-ref origin/${{ github.base_ref }} --format json --output incremental-results.json --no-fail-on-findings 2>/dev/null || true
         continue-on-error: true
 
       - name: Ensure SARIF exists
@@ -224,7 +225,34 @@ jobs:
               const results = report.runs[0]?.results || [];
               const critical = results.filter(r => r.level === 'error').length;
               const warning = results.filter(r => r.level === 'warning').length;
-              const comment = `## Security Scan Results\n\n- Critical: ${critical}\n- Warning: ${warning}\n- Total: ${results.length}\n\n[View full report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+              const incrementalPath = path.join('aegis-ai-core', 'incremental-results.json');
+              const lines = [
+                '## Security Scan Results',
+                '',
+                '- Critical: ' + critical,
+                '- Warning: ' + warning,
+                '- Total: ' + results.length,
+              ];
+
+              if (fs.existsSync(incrementalPath)) {
+                const incremental = JSON.parse(fs.readFileSync(incrementalPath, 'utf8'));
+                const summary = incremental.summary || {};
+                const severityStats = incremental.severity_stats || {};
+                const newTotal = summary.total_issues ?? Object.values(incremental.results || {}).reduce((sum, findings) => sum + findings.length, 0);
+                lines.push(
+                  '',
+                  '### New Issues in This PR',
+                  '',
+                  '- New total: ' + newTotal,
+                  '- Critical: ' + (severityStats.critical || severityStats.Critical || 0),
+                  '- High: ' + (severityStats.high || severityStats.High || 0),
+                  '- Medium: ' + (severityStats.medium || severityStats.Medium || 0),
+                  '- Low: ' + (severityStats.low || severityStats.Low || 0)
+                );
+              }
+
+              lines.push('', `[View full report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`);
+              const comment = lines.join('\n');
               github.rest.issues.createComment({
                 issue_number: context.issue.number,
                 owner: context.repo.owner,

@@ -78,6 +78,8 @@ def test_export_hash_tracks_signatures_after_first_200_lines(tmp_path: Path) -> 
     base_code = "\n".join(["# filler"] * 220 + ["def late_api(value):", "    return value"])
     changed_code = "\n".join(["# filler"] * 220 + ["def late_api(value, default=None):", "    return value"])
 
+    assert tracker.has_export_hash(str(target)) is False
     assert tracker.update_export_hash(str(target), base_code) is True
+    assert tracker.has_export_hash(str(target)) is True
     assert tracker.update_export_hash(str(target), base_code) is False
     assert tracker.update_export_hash(str(target), changed_code) is True

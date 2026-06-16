@@ -18,11 +18,19 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
+
+from ..ai import (
+    AIProviderConfig,
+    AllProvidersFailedError,
+    LLMGateway,
+    LLMRequest,
+    build_default_gateway,
+    resolve_fallback_order,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -861,9 +869,9 @@ class AIAnalyzer:
     - 修复代码生成
 
     支持的 AI 提供商（通过 AI_PROVIDER 环境变量或自动检测）：
-    - deepseek（默认）：设置 DEEPSEEK_API_KEY，或 AI_PROVIDER=deepseek
+    - ollama（默认本地优先）：设置 OLLAMA_BASE_URL（默认 http://localhost:11434/v1），或 AI_PROVIDER=ollama
+    - deepseek：设置 DEEPSEEK_API_KEY，或 AI_PROVIDER=deepseek
     - openai：设置 OPENAI_API_KEY，或 AI_PROVIDER=openai
-    - ollama（本地，免费，保护隐私）：设置 OLLAMA_BASE_URL（默认 http://localhost:11434/v1），或 AI_PROVIDER=ollama
     - custom：设置 AI_PROVIDER=custom，同时设置 AI_BASE_URL 和 AI_API_KEY
 
     AI 漏斗策略：
@@ -880,14 +888,6 @@ class AIAnalyzer:
         "cache_enabled": True,  # 是否启用缓存
     }
 
-    # 各提供商的默认模型
-    _PROVIDER_DEFAULT_MODELS: dict[str, str] = {
-        "deepseek": "deepseek-chat",
-        "openai": "gpt-4o-mini",
-        "ollama": "llama3",
-        "custom": "gpt-4o-mini",
-    }
-
     @staticmethod
     def _resolve_provider(
         api_key: str | None,
@@ -900,50 +900,25 @@ class AIAnalyzer:
         优先级：
         1. 显式 AI_PROVIDER 环境变量
         2. 构造函数传入的 api_base（视为自定义提供商）
-        3. 可用的 API Key（DEEPSEEK_API_KEY > OPENAI_API_KEY）
-        4. OLLAMA_BASE_URL（无需 API Key 的本地部署）
-        5. 降级为 deepseek（即使无密钥也保持原有行为）
+        3. 构造函数 api_key（视为 DeepSeek 兼容密钥）
+        4. 可用的 API Key（DEEPSEEK_API_KEY > OPENAI_API_KEY）
+        5. 降级为 ollama（本地优先，无需 API Key）
         """
-        provider = os.getenv("AI_PROVIDER", "").lower().strip()
-        resolved_key: str | None
-
-        if provider == "ollama" or (not provider and os.getenv("OLLAMA_BASE_URL")):
-            resolved_provider = "ollama"
-            resolved_base = (
-                cast(str, api_base) if api_base else os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-            )
-            resolved_key = api_key or "ollama"  # Ollama 不需要真实 API Key
-            resolved_model = cast(str, model) if model else os.getenv("OLLAMA_MODEL", "llama3")
-            return resolved_provider, resolved_key, resolved_base, resolved_model
-
-        # OpenAI：显式指定，或无 DeepSeek Key 时自动降级
-        has_openai_only = (
-            not provider and not api_key and bool(os.getenv("OPENAI_API_KEY")) and not os.getenv("DEEPSEEK_API_KEY")
+        return cast(
+            tuple[str, str | None, str, str], AIProviderConfig.from_sources(api_key, api_base, model).as_tuple()
         )
-        if provider == "openai" or has_openai_only:
-            resolved_provider = "openai"
-            resolved_base = (
-                cast(str, api_base) if api_base else os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-            )
-            resolved_key = api_key or os.getenv("OPENAI_API_KEY")
-            resolved_model = cast(str, model) if model else os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-            return resolved_provider, resolved_key, resolved_base, resolved_model
 
-        if provider == "custom":
-            resolved_provider = "custom"
-            resolved_base = cast(str, api_base) if api_base else os.getenv("AI_BASE_URL", "")
-            resolved_key = api_key or os.getenv("AI_API_KEY")
-            resolved_model = cast(str, model) if model else os.getenv("AI_MODEL", "gpt-4o-mini")
-            return resolved_provider, resolved_key, resolved_base, resolved_model
+    @staticmethod
+    def _resolve_fallback_order(preferred_provider: str) -> list[str]:
+        """Resolve provider fallback order from env or local-first defaults."""
+        return cast(list[str], resolve_fallback_order(preferred_provider))
 
-        # 默认：DeepSeek（兼容 OpenAI SDK）
-        resolved_provider = "deepseek"
-        resolved_base = (
-            cast(str, api_base) if api_base else os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-        )
-        resolved_key = api_key or os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")
-        resolved_model = cast(str, model) if model else os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
-        return resolved_provider, resolved_key, resolved_base, resolved_model
+    @staticmethod
+    def _build_default_gateway(
+        config: AIProviderConfig,
+    ) -> LLMGateway:
+        """Create the default gateway with built-in OpenAI-compatible providers."""
+        return cast(LLMGateway, build_default_gateway(config))
 
     def __init__(
         self,
@@ -951,6 +926,7 @@ class AIAnalyzer:
         api_base: str | None = None,
         model: str | None = None,
         enabled: bool = True,
+        llm_gateway: LLMGateway | None = None,
     ) -> None:
         """
         初始化 AI 分析器。
@@ -960,6 +936,7 @@ class AIAnalyzer:
             api_base: API 基础 URL（覆盖自动推断的端点）
             model: 模型名称（覆盖各提供商的默认模型）
             enabled: 是否启用 AI 分析
+            llm_gateway: 可选的外部 provider gateway，用于测试或注册自定义 provider
 
         提供商选择（按优先级）：
             - 设置 AI_PROVIDER=ollama + 可选 OLLAMA_BASE_URL → 使用本地 Ollama（免费、保护隐私）
@@ -967,10 +944,12 @@ class AIAnalyzer:
             - 设置 AI_PROVIDER=deepseek + DEEPSEEK_API_KEY → 使用 DeepSeek（默认）
             - 设置 AI_PROVIDER=custom + AI_BASE_URL + AI_API_KEY → 使用自定义兼容端点
         """
-        self.provider, self.api_key, self.api_base, self.model = self._resolve_provider(api_key, api_base, model)
-        # Ollama 本地模式无需真实 API Key，视为已启用
-        is_ollama = self.provider == "ollama"
-        self.enabled = enabled and (bool(self.api_key) or is_ollama)
+        self.provider_config = AIProviderConfig.from_sources(api_key, api_base, model)
+        self.provider, self.api_key, self.api_base, self.model = self.provider_config.as_tuple()
+        self._model_override = model
+        self._fallback_order = self.provider_config.fallback_order
+        self.llm_gateway = llm_gateway or self._build_default_gateway(self.provider_config)
+        self.enabled = enabled and self.llm_gateway.has_configured_provider([self.provider])
 
         # 分析缓存
         self._cache: dict[str, AIAnalysisResult] = {}
@@ -980,7 +959,7 @@ class AIAnalyzer:
         else:
             logger.warning(
                 "AI 分析器未启用（缺少 API 密钥或已禁用）。"
-                "提示：设置 AI_PROVIDER=ollama 可使用本地免费 LLM，无需 API Key。"
+                "提示：默认 AI_PROVIDER=ollama 可使用本地免费 LLM，无需 API Key。"
             )
 
     def should_analyze(self, finding: dict[str, Any]) -> bool:
@@ -1199,42 +1178,36 @@ class AIAnalyzer:
             AI 分析结果
         """
         try:
-            import openai
-
-            client = openai.OpenAI(
-                api_key=self.api_key,
-                base_url=self.api_base,
-            )
-
             prompt = self._build_analysis_prompt(finding, rich_ctx=rich_ctx, language=language)
-
-            response = client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "你是专业的安全代码审计专家，擅长识别和修复 Web 应用安全漏洞。"
-                            "分析时必须严格按照用户要求的 JSON 格式返回结果，"
-                            "不得在 JSON 外添加任何说明文字或 markdown 代码块标记。"
-                        ),
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.3,
-                max_tokens=2000,
-                timeout=30,
+            response = self.llm_gateway.generate(
+                LLMRequest(
+                    model=self._model_override,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "你是专业的安全代码审计专家，擅长识别和修复 Web 应用安全漏洞。"
+                                "分析时必须严格按照用户要求的 JSON 格式返回结果，"
+                                "不得在 JSON 外添加任何说明文字或 markdown 代码块标记。"
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.3,
+                    max_tokens=2000,
+                    timeout=30,
+                ),
+                preferred_provider=self.provider,
+                fallback_order=self._fallback_order,
             )
+            return self._parse_ai_response(response.content, finding)
 
-            content = response.choices[0].message.content or ""
-            return self._parse_ai_response(content, finding)
-
-        except ImportError as e:
-            logger.warning("AI 提供商依赖不可用: %s", e)
+        except AllProvidersFailedError as e:
+            logger.warning("AI provider gateway failed: %s", e)
             return self._error_analysis(
                 finding,
                 "provider_unavailable",
-                f"AI provider dependencies are unavailable: {e}",
+                f"AI provider request failed: {e}",
             )
         except (RuntimeError, KeyError, ValueError, OSError) as e:
             logger.warning("AI 分析失败: %s", e)
