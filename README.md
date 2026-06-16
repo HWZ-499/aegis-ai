@@ -1,405 +1,129 @@
-# Aegis AI — Real-time SAST Scanner + AI Auto-Fix
+# Aegis AI
 
-[![Security Scan](https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml/badge.svg)](https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml)
-[![License: MIT](https://opensource.org/licenses/MIT)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-v0.6.2-brightgreen.svg)](https://marketplace.visualstudio.com/items?itemName=wen-zai.aegis-ai-security)
+<p align="center">
+  <img src=".github/assets/aegis-product-hero.svg" alt="Aegis AI product overview" width="920">
+</p>
 
-**Find and review SQL injection, XSS, RCE, and 7+ more vulnerability types as you code.** Aegis is a local-first SAST stack for VS Code / Cursor with Tree-sitter AST analysis, taint tracking, AI-assisted fixes, and baseline/suppression workflows.
+<p align="center">
+  <strong>Real-time security scanning for VS Code and Cursor, with AI-assisted fixes.</strong>
+</p>
 
-✓ **单文件实时诊断** | ✓ **AI 辅助修复** | ✓ **Baseline / Suppression** | ✓ **6 种主语言**
+<p align="center">
+  <a href="https://marketplace.visualstudio.com/items?itemName=wen-zai.aegis-ai-security">Install the VS Code extension</a>
+  ·
+  <a href="docs/VERIFICATION_GUIDE.md">Verify locally</a>
+  ·
+  <a href="docs/technical/DETECTION_QUALITY.md">Detection quality</a>
+</p>
 
----
+<p align="center">
+  <a href="https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml"><img alt="Security Scan" src="https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml/badge.svg"></a>
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-2563eb">
+  <img alt="VS Code 0.6.1" src="https://img.shields.io/badge/VS%20Code-0.6.1-16a34a">
+  <img alt="License MIT" src="https://img.shields.io/badge/License-MIT-111827">
+</p>
 
-## Why Aegis?
+## What It Does
 
-| Feature | Benefit |
-|---------|----------|
-| **Tree-sitter AST + TaintGraph** | No regex guessing — real data-flow analysis |
-| **1-second diagnostics** | Feedback within 1 sec of save, no CI needed |
-| **DeepSeek/OpenAI/Ollama/custom AI code gen** | Framework-aware patches (mysql2, Sequelize, SQLAlchemy, etc.) |
-| **10+ vulnerability types** | SQL/NoSQL injection, XSS, RCE, path traversal, deserialization, SSRF, open redirect, hardcoded credentials |
-| **6 AST languages + C/C++ basic scanning** | JS/TS, Python, PHP, Java, Go with AST/taint; C/C++ basic diagnostics — see capability matrix below |
-| **Real-world validated** | 100% F1 on OWASP NodeGoat, 92% F1 on Django 3.2 core |
-| **GitHub Actions ready** | SARIF report, automated PR comments, CI/CD integration |
+Aegis AI catches common application security issues while you write code. It runs locally through an LSP backend, surfaces diagnostics inside the editor, and can generate framework-aware fix suggestions through DeepSeek, OpenAI, Ollama, or a custom compatible endpoint.
 
----
+| Capability | Product behavior |
+|---|---|
+| Real-time IDE scanning | Diagnostics appear in VS Code / Cursor on save or command-triggered scans. |
+| AST + taint analysis | Tree-sitter parsing and source-to-sink reasoning reduce regex-only noise. |
+| AI-assisted remediation | Fix previews and remediation comments are available from editor actions. |
+| Suppression workflow | `.aegis-baseline.json` and `aegis-ignore` keep accepted risk separate from fixed code. |
+| CI-ready output | CLI supports JSON, HTML, Markdown, and SARIF report flows. |
 
-## 能力矩阵
+## Coverage
 
-| 状态 | 当前能力 |
-|------|----------|
-| **已支持** | CLI / VS Code / Cursor 实时扫描；单文件 AST + 规则分析；baseline 抑制；`aegis-ignore`；AI 精准修复 / 示例修复 / 注释建议 |
-| **实验性** | 跨文件依赖图、跨文件结果合并、Ollama / custom provider 私有化接入 |
-| **规划中** | 默认启用的跨文件污点传播、更稳的多 IDE 支持、发布后一致性自动审计扩展到更多元数据 |
+| Language | Status |
+|---|---|
+| JavaScript / TypeScript | AST rules, taint-aware checks, IDE and CLI support |
+| Python | AST rules, framework-aware sources and sinks, IDE and CLI support |
+| PHP | AST rules plus focused supplemental checks for legacy PHP patterns |
+| Java / Go | Core multi-language rule support |
+| C / C++ | Basic scan path support; not yet full AST or taint coverage |
 
-## Quick Start
+Detected categories include SQL injection, NoSQL injection, XSS, command execution, path traversal, deserialization, SSRF, open redirect, hardcoded credentials, and buffer overflow patterns.
 
-### 1. 安装 VS Code / Cursor 扩展
+## Install
 
-1. 打开 VS Code → Extensions → 搜索 `Aegis AI Security Scanner`
-2. 点击 **Install**（扩展 ID：`wen-zai.aegis-ai-security`）
-3. 确保本机安装 Python `>=3.10`，并且 `python --version` 或 `python3 --version` 可用
+For normal use, install the extension from the Marketplace:
 
-商店版扩展会自动携带 Aegis Python 后端，并在首次启动时创建 VS Code 管理的独立虚拟环境；普通用户不需要 clone 本仓库，也不需要配置 `aegisAI.serverCwd`。
+1. Open VS Code or Cursor.
+2. Search for `Aegis AI Security Scanner`.
+3. Install `wen-zai.aegis-ai-security`.
+4. Open a supported file and run `Aegis: Scan Current File` or save the file.
 
-### 2. Python 核心开发 / CLI 使用
+The extension bundles the Python backend and creates its own managed runtime. Most users do not need to clone this repository.
 
-```bash
-git clone https://github.com/HWZ-499/aegis-ai.git
-cd aegis-ai/aegis-ai-core
-pip install -e .
-```
+## Optional AI Fixes
 
-开发环境使用：
-
-```bash
-pip install -e .[dev]
-```
-
-> Python 版本要求与 `aegis-ai-core/pyproject.toml` 一致：`>=3.10`
-
-高级/开发场景可以强制使用本地 core：
-
-```json
-{
-  "aegisAI.pythonPath": "python",
-  "aegisAI.serverCwd": "/absolute/path/to/aegis-ai-core"
-}
-```
-
-### 3. 配置 AI Provider（可选）
-
-PowerShell 最小配置示例：
+AI fixes are optional. Configure one provider when you want generated remediation suggestions:
 
 ```powershell
 $env:AI_PROVIDER = "deepseek"
 $env:DEEPSEEK_API_KEY = "your_key"
 
-# or OpenAI
-$env:AI_PROVIDER = "openai"
-$env:OPENAI_API_KEY = "your_key"
-
 # or local Ollama
 $env:AI_PROVIDER = "ollama"
 $env:OLLAMA_BASE_URL = "http://localhost:11434/v1"
-$env:OLLAMA_MODEL = "llama3"
-
-# or custom endpoint
-$env:AI_PROVIDER = "custom"
-$env:AI_BASE_URL = "https://your-gateway.example.com/v1"
-$env:AI_API_KEY = "your_key"
+$env:OLLAMA_MODEL = "qwen2.5-coder"
 ```
 
-### 4. 修复动作说明
+Code action requests are explicit user actions. Opening a file or viewing a diagnostic does not automatically send code to an AI provider.
 
-把光标放在 Aegis 诊断行，按 `Ctrl+.` 或点灯泡：
+## CLI
 
-| 动作 | 真实行为 |
-|------|----------|
-| `Aegis: 应用 AI 精准修复` | 直接替换漏洞代码，并触发复扫 |
-| `Aegis: 应用示例修复代码` | 用内置安全示例替换漏洞代码，并触发复扫 |
-| `Aegis: 插入修复建议注释` | 只插入说明注释，不会修复代码 |
-| `Aegis: 插入 AI 修复建议` | 只插入 AI 注释，不会修复代码 |
-| `Aegis: Add to baseline` | 把当前 finding 写入 `.aegis-baseline.json`，隐藏问题；**不是修复代码** |
-| `Aegis: Ignore this finding` | 插入 `aegis-ignore` 注释；这是 suppression，不是 fix |
+Use the Python core directly for local scans or CI:
 
-撤回 Aegis 生成的注释：
-
-- 立即用 `Ctrl+Z`
-- 或使用命令 `Aegis: Remove Inserted Remediation Comments`
-
----
-
-## CLI Usage
-
-```bash
+```powershell
 cd aegis-ai-core
+pip install -e .
 
-# 扫描指定目录，输出 JSON
-python -m src.scanner.cli /path/to/project --format json
-
-# 输出 HTML 报告
-python -m src.scanner.cli /path/to/project --format html --output report.html
-
-# 增量扫描（只扫描 Git 修改的文件）
-python -m src.scanner.cli . --incremental --format json
+python -m src.scanner.cli C:\path\to\project --format json
+python -m src.scanner.cli C:\path\to\project --format html --output report.html
+python -m src.scanner.cli C:\path\to\project --format sarif --output results.sarif
 ```
 
----
+## Quality Signals
 
-### 方式三：Python API
+Current tracked benchmark summary:
 
-```python
-from src.scanner.project_scanner import ProjectScanner
-from src.analysis.rule_engine import analyze_javascript, analyze_python
+| Target | Language | Recall | Precision | F1 |
+|---|---:|---:|---:|---:|
+| NodeGoat | JavaScript | 100.0% | 100.0% | 1.00 |
+| django-3.2-core | Python | 92.3% | 92.3% | 0.92 |
+| DVWA | PHP | 100.0% | 57.1% | 0.73 |
+| flask-2.3.2 | Python | 66.7% | 50.0% | 0.57 |
 
-# 扫描项目
-scanner = ProjectScanner("/path/to/project")
-results = scanner.scan_project(verbose=True)
+See [Detection Quality](docs/technical/DETECTION_QUALITY.md) for the evaluation workflow and regression process.
 
-# 单文件扫描
-findings = analyze_javascript(source_code, "app.js")
-for f in findings:
-    print(f"[{f['severity']}] {f['type']} at line {f['line']}: {f['details']}")
+## Repository
+
+| Path | Purpose |
+|---|---|
+| `aegis-ai-core/` | Python scanner, rule engine, LSP server, CLI, tests, benchmark scripts |
+| `aegis-vscode/` | VS Code / Cursor extension |
+| `docs/` | Verification and detection-quality documentation |
+| `.github/workflows/` | Release and benchmark automation |
+
+## Development
+
+```powershell
+cd aegis-ai-core
+python -m pytest tests/
+ruff check src tests
+ruff format --check src tests
+python scripts/typecheck_gate.py --group ci
+
+cd ..\aegis-vscode
+npm run check
 ```
 
----
+Rule behavior changes should include focused true-positive or false-positive fixtures under `aegis-ai-core/tests/rules/`.
 
-## 整体架构
+## License
 
-```mermaid
-graph TD
-    subgraph ide [IDE 层 - TypeScript]
-        A["VSCode/Cursor 扩展\nextension.ts"]
-        B["Status Bar\n$(shield) 就绪 / $(error) N个问题"]
-        C["Code Action\n灯泡修复按钮"]
-    end
-
-    subgraph engine [核心引擎层 - Python]
-        D["LSP Server\nserver.py / pygls"]
-        E["CLI Scanner\nscanner/cli.py"]
-        F["Rule Engine\nrule_engine.py"]
-        G["TaintAnalyzer\n污点分析 + Dominator Tree"]
-        H["AST Rules\nSQL/XSS/RCE/NoSQL/PHP 等"]
-        I["AI Analyzer\nai_analyzer.py"]
-    end
-
-    subgraph ai [AI 修复层]
-        J["rich context 提取\n函数签名 + import + 框架 + 变量"]
-        K["框架感知 Prompt\nmysql2 / mongoose / sqlalchemy 等"]
-        L["DeepSeek / OpenAI / Ollama / custom"]
-    end
-
-    A -- "LSP stdio" --> D
-    E --> F
-    D --> F
-    F --> G
-    F --> H
-    G --> H
-    H -- "Diagnostics" --> D
-    D -- "波浪线诊断" --> A
-    D --> B
-    C -- "codeAction 请求" --> D
-    D --> I
-    I --> J
-    J --> K
-    K --> L
-    L -- "fixed_code + confidence" --> D
-```
-
-## 扫描工作流
-
-```mermaid
-flowchart LR
-    Save["保存文件"] --> LSP["LSP Server\nscan_document()"]
-    LSP --> Parse["Tree-sitter\nAST 解析"]
-    Parse --> Taint["TaintAnalyzer\n污点追踪 + Guard Clause 净化"]
-    Taint --> Rules["漏洞规则匹配\nSQL / NoSQL / XSS / RCE..."]
-    Rules --> Diag["发布 Diagnostics\nIDE 波浪线 + Status Bar 更新"]
-
-    Diag --> UserAction["用户点击灯泡"]
-    UserAction --> CA["Code Action 请求"]
-    CA --> RichCtx["_extract_rich_context()\n提取函数签名 / import / 框架 / 近域变量"]
-    RichCtx --> Prompt["_build_analysis_prompt()\n框架感知 Prompt 构建"]
-    Prompt --> LLM["DeepSeek API 调用"]
-
-    LLM --> Conf{"confidence >= 0.75?"}
-    Conf -- "是" --> Replace["WorkspaceEdit\nreplaceRange 直接替换漏洞行"]
-    Conf -- "否" --> Comment["插入注释块\n修复建议参考"]
-```
-
-## 配置 AI 提供商
-
-Aegis AI 支持多种 AI 提供商进行智能代码修复，通过 `AI_PROVIDER` 环境变量选择：
-
-| 提供商 | 设置方式 | 适用场景 |
-|--------|---------|---------|
-| **DeepSeek**（默认）| `export DEEPSEEK_API_KEY=xxx` | 成本低，中文支持好 |
-| **OpenAI** | `export AI_PROVIDER=openai && export OPENAI_API_KEY=xxx` | GPT-4o 强推理能力 |
-| **Ollama**（本地免费）| `export AI_PROVIDER=ollama` | 离线使用，保护代码隐私 |
-| **自定义端点** | `export AI_PROVIDER=custom && export AI_BASE_URL=xxx && export AI_API_KEY=xxx` | 企业私有化部署 |
-
-### 使用本地 Ollama（免费，无需联网）
-
-```bash
-# 1. 安装并启动 Ollama
-brew install ollama && ollama serve
-
-# 2. 拉取模型
-ollama pull llama3  # 或 qwen2.5-coder, deepseek-r1 等
-
-# 3. 告知 Aegis 使用 Ollama
-export AI_PROVIDER=ollama
-# 可选：自定义模型（默认 llama3）
-export OLLAMA_MODEL=qwen2.5-coder
-
-# 4. 正常使用，无需 API Key
-aegis-scan ./your_project
-```
-
----
-
-## 内联抑制注释（aegis-ignore）
-
-对于误报或已知接受的风险，可在代码行添加 `aegis-ignore` 注释来抑制该行的告警：
-
-```python
-# 行末注释：抑制该行所有漏洞
-response = requests.get(trusted_internal_url)  # aegis-ignore
-
-# 行末注释：仅抑制该行的特定类型
-response = requests.get(validated_url)  # aegis-ignore: SSRF
-
-# 行上方注释：抑制下一行（适合代码较长时）
-# aegis-ignore: SQL_INJECTION
-cursor.execute(pre_validated_query)
-```
-
-同样适用于 JavaScript/TypeScript/Java/Go/PHP：
-
-```javascript
-const resp = await fetch(allowlistedUrl); // aegis-ignore: SSRF
-```
-
----
-
-
-
-```
-aegis-ai/
-├── aegis-ai-core/              # Python 核心引擎
-│   ├── src/
-│   │   ├── analysis/           # 静态分析引擎
-│   │   │   ├── analyzers/      # 语言分析器（JS/TS/Python/PHP/Java/Go；C/C++ basic）
-│   │   │   ├── taint/          # 污点分析（TaintAnalyzer、CrossFileAnalyzer）
-│   │   │   ├── rules/          # 漏洞规则（SQL/XSS/RCE/NoSQL/反序列化 等）
-│   │   │   ├── cfg/            # 控制流图 + 支配树（Dominator Tree）
-│   │   │   ├── dsl/            # DSL 规则引擎（YAML 自定义规则）
-│   │   │   └── base/           # 规则基类 + Finding 模型
-│   │   ├── lsp/                # LSP Server（pygls）
-│   │   ├── scanner/            # 扫描器、AI 分析器、RAG 增强、基线管理
-│   │   └── core/               # 配置管理（pydantic-settings）
-│   ├── scripts/                # 基准测试、评估、调试脚本
-│   ├── tests/                  # 测试套件（pytest）
-│   ├── data/                   # CVE 知识库数据
-│   └── requirements.txt
-│
-├── aegis-vscode/               # VSCode/Cursor 扩展（TypeScript）
-│   ├── src/extension.ts        # 扩展主文件
-│   ├── README.md               # Marketplace 展示页
-│   └── CHANGELOG.md            # 版本历史
-│
-├── docs/                       # 技术文档
-└── README.md
-```
-
----
-
-## 技术栈
-
-| 层级 | 技术 |
-|------|------|
-| IDE 扩展 | TypeScript, VSCode API, vscode-languageclient |
-| LSP Server | Python, pygls, lsprotocol |
-| 静态分析 | Tree-sitter AST（JS/TS/Python/PHP/Java/Go 全部完整 AST 分析）；C/C++ basic analyzer |
-| 污点分析 | 自研 TaintGraph + Dominator Tree（单文件内）|
-| AI 修复 | DeepSeek API（兼容 OpenAI SDK）|
-| RAG 知识库 | ChromaDB + sentence-transformers（实验性，可选，已从核心依赖移除）|
-| 配置管理 | pydantic-settings + .env |
-| CI/CD | GitHub Actions, SARIF |
-| 代码质量 | ruff（lint + format）, 分层 mypy 门禁（release gate + legacy report）, pytest |
-
----
-
-## 代码质量
-
-当前质量门按“默认快速回归 + 显式重测试”分层：
-
-- **默认回归**：`python -m pytest tests/` 跳过 `acceptance` / `benchmark` / `integration` 标记的重测试。
-- **Lint / Format**：`ruff check src tests` 与 `ruff format --check src tests` 覆盖正式源码和正式测试；故意脆弱样本、debug 脚本和靶场代码显式排除。
-- **类型检查**：`python scripts/typecheck_gate.py --group ci` 覆盖 LSP、扫描器、baseline、AI、CLI、报告、增量分析等发布主路径；legacy 模块保留报告型检查。
-- **扩展校验**：开发态使用 `npm run check` 做 TypeScript no-emit 校验；`out/` 和 `.vsix` 只作为构建/打包产物。
-
----
-
-## 已知局限
-
-| 问题 | 影响 | 状态 |
-|------|------|------|
-| `tree-sitter==0.21.3` 启动时产生 `FutureWarning` | 无功能影响，LSP 入口已过滤 | 已缓解 |
-
----
-
-## 基准测试结果
-
-在多个真实漏洞靶场上的测试结果（DVWA 为 2026-06-09 复评，其余沿用已归档评估）：
-
-| 目标 | 语言 | 扫描文件 | Recall | Precision | F1 |
-|------|------|---------|--------|-----------|-----|
-| **NodeGoat (OWASP)** | JavaScript | 9 | **100%** | **100%** | **1.00** |
-| django-3.2-core | Python | 97 | 92.3% | 92.3% | **0.92** |
-| DVWA | PHP | 177 | 100% | 57.1% | **0.73** |
-| flask-2.3.2 | Python | 0* | 66.7% | 50.0% | 0.57 |
-
-*\*flask-2.3.2 的漏洞在配置解析逻辑中，scanner 当前不扫描 .cfg 文件*
-
-**NodeGoat 历史进展**（主要指标 F1）：
-
-| 评估版本 | 日期 | NoSQL TP | 总 TP | FP | Recall | F1 |
-|---------|------|---------|--------|-----|--------|-----|
-| v1 | 2026-02-08 | 0 | 3 | 13 | 50% | 0.27 |
-| v3 | 2026-03-02 | 1 | 4 | 12 | 66.7% | 0.36 |
-| v6 | 2026-03-02 | 3 | 8 | 10 | 100% | 0.62 |
-| **v7 (当前)** | **2026-03-13** | **5** | **12** | **0** | **100%** | **1.00** |
-
----
-
-## 开发状态
-
-### 已完成
-
-- 核心静态分析引擎（JS/TS/Python/PHP/Java/Go 全部完整 AST + 污点分析；C/C++ 基础诊断）
-- 污点分析系统（TaintGraph + Guard Clause + Dominator Tree）
-- LSP Server（实时诊断 + Code Action + Status Bar）
-- AI 精准修复（框架感知 prompt + rich context 提取，置信度 >= 0.75 直接替换）
-- **多 AI 提供商支持**：DeepSeek（默认）、OpenAI、Ollama（本地免费离线）、自定义端点
-- VSCode/Cursor 扩展（含 Findings TreeView、Status Bar、命令面板）
-- 真实靶场基准测试（NodeGoat、DVWA、Django、Flask），**NodeGoat F1 达到 1.00（12 TP / 0 FP）**，DVWA 当前 F1 0.73（24 TP / 18 FP / 0 FN）
-- `tests/rules/` 正/负样本测试套件（9 类漏洞，85 个参数化测试用例，430 总测试通过）
-- **SSRF 检测（CWE-918）**：Python（requests/urllib/httpx）+ JavaScript（fetch/axios/http.get）
-- **内联抑制注释**：`# aegis-ignore` / `// aegis-ignore` 支持行末和行上方两种格式，可按漏洞类型过滤
-- 基线管理 + 增量扫描 + 自定义规则目录
-- v1.2.0 代码质量大扫除（异常处理、模块卫生、测试规范化）
-
-### 实验性功能
-
-- **DSL 规则引擎**：YAML 格式自定义规则（PoC 阶段，当前仅 4 条规则）
-
-### 规划中
-
-- 安装链路继续收口，减少 clone + pip install 的分发摩擦
-- DVWA / Flask 等真实靶场精度优化
-- 跨文件污点传播从实验性能力逐步升级为默认可信能力
-
----
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request。参与本项目即表示同意遵守我们的 [行为准则（Code of Conduct）](CODE_OF_CONDUCT.md)。安全相关问题请参见 [SECURITY.md](SECURITY.md)。
-
-在提交 PR 之前，请确保：
-1. 运行默认回归：`cd aegis-ai-core && python -m pytest tests/`
-2. 通过 Python 质量门：`cd aegis-ai-core && ruff check src tests && ruff format --check src tests && python scripts/typecheck_gate.py --group ci`
-3. 新规则需提供正样本（应报告）和负样本（不应报告）测试用例
-4. TypeScript 扩展修改后运行：`cd aegis-vscode && npm run check`
-
----
-
-## 许可证
-
-MIT License
-
----
-
-*最后更新: 2026-06-09 — 同步 C/C++ 基础扫描、VS Code bundled backend 复用与 DVWA 复评指标*
+MIT

@@ -1,0 +1,75 @@
+<svg width="1200" height="430" viewBox="0 0 1200 430" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Aegis AI product overview</title>
+  <desc id="desc">A product hero showing an editor, security diagnostics, AI fix preview, and benchmark cards.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="430" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="0.56" stop-color="#172554"/>
+      <stop offset="1" stop-color="#064E3B"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#F8FAFC"/>
+      <stop offset="1" stop-color="#E2E8F0"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#020617" flood-opacity="0.34"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="430" rx="34" fill="url(#bg)"/>
+  <path d="M82 82C174 14 306 6 397 62C480 113 548 102 646 62C749 20 893 22 1010 88C1084 130 1124 192 1142 256" stroke="#67E8F9" stroke-width="2" stroke-opacity="0.18"/>
+  <path d="M86 350C202 290 307 306 407 340C493 370 574 375 667 331C775 280 898 254 1069 313" stroke="#A7F3D0" stroke-width="2" stroke-opacity="0.16"/>
+
+  <g transform="translate(78 62)">
+    <text x="0" y="42" fill="#FFFFFF" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="44" font-weight="800">Aegis AI</text>
+    <text x="0" y="82" fill="#CBD5E1" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="22" font-weight="500">Real-time SAST scanner with AI-assisted fixes</text>
+    <g transform="translate(0 126)">
+      <rect x="0" y="0" width="144" height="42" rx="21" fill="#22C55E"/>
+      <text x="26" y="27" fill="#052E16" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="16" font-weight="800">IDE first</text>
+      <rect x="160" y="0" width="146" height="42" rx="21" fill="#DBEAFE"/>
+      <text x="186" y="27" fill="#1E3A8A" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="16" font-weight="800">Local-first</text>
+      <rect x="322" y="0" width="160" height="42" rx="21" fill="#FEF3C7"/>
+      <text x="348" y="27" fill="#78350F" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="16" font-weight="800">AST + taint</text>
+    </g>
+    <g transform="translate(0 210)">
+      <rect x="0" y="0" width="260" height="84" rx="18" fill="#0B1220" fill-opacity="0.56" stroke="#334155"/>
+      <text x="24" y="34" fill="#E2E8F0" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">Supported languages</text>
+      <text x="24" y="62" fill="#94A3B8" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15">JS/TS, Python, PHP, Java, Go</text>
+      <rect x="282" y="0" width="224" height="84" rx="18" fill="#0B1220" fill-opacity="0.56" stroke="#334155"/>
+      <text x="306" y="34" fill="#E2E8F0" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">AI providers</text>
+      <text x="306" y="62" fill="#94A3B8" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15">DeepSeek, OpenAI, Ollama</text>
+    </g>
+  </g>
+
+  <g filter="url(#shadow)" transform="translate(638 58)">
+    <rect x="0" y="0" width="486" height="312" rx="24" fill="url(#panel)"/>
+    <rect x="0" y="0" width="486" height="48" rx="24" fill="#E2E8F0"/>
+    <circle cx="30" cy="24" r="7" fill="#EF4444"/>
+    <circle cx="52" cy="24" r="7" fill="#F59E0B"/>
+    <circle cx="74" cy="24" r="7" fill="#22C55E"/>
+    <text x="104" y="30" fill="#334155" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">app.js</text>
+
+    <g transform="translate(28 76)" font-family="Consolas, Menlo, monospace" font-size="15">
+      <text x="0" y="0" fill="#64748B">1</text>
+      <text x="36" y="0" fill="#0F172A">app.get('/user', async (req, res) =&gt; {</text>
+      <text x="0" y="32" fill="#64748B">2</text>
+      <text x="36" y="32" fill="#B91C1C">const id = req.query.id</text>
+      <rect x="30" y="42" width="172" height="3" rx="1.5" fill="#EF4444"/>
+      <text x="0" y="64" fill="#64748B">3</text>
+      <text x="36" y="64" fill="#B91C1C">db.query('SELECT * FROM users WHERE id=' + id)</text>
+      <rect x="30" y="74" width="352" height="3" rx="1.5" fill="#EF4444"/>
+      <text x="0" y="96" fill="#64748B">4</text>
+      <text x="36" y="96" fill="#0F172A">})</text>
+    </g>
+
+    <g transform="translate(36 206)">
+      <rect x="0" y="0" width="198" height="68" rx="16" fill="#FEE2E2" stroke="#FCA5A5"/>
+      <text x="18" y="27" fill="#991B1B" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="800">SQL injection</text>
+      <text x="18" y="50" fill="#7F1D1D" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13">Source reaches query sink</text>
+    </g>
+    <g transform="translate(256 206)">
+      <rect x="0" y="0" width="194" height="68" rx="16" fill="#DCFCE7" stroke="#86EFAC"/>
+      <text x="18" y="27" fill="#166534" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="800">AI fix preview</text>
+      <text x="18" y="50" fill="#14532D" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13">Parameterized query</text>
+    </g>
+  </g>
+</svg>

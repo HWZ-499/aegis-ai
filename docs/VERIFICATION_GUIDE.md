@@ -62,7 +62,7 @@ python -m src.scanner.cli . --engine new --format json -o reports/self-scan.json
 | **vulnerable-nodejs-express-mysql** | 小型 Express+MySQL 故意漏洞 | 克隆后 `python -m src.scanner.cli <路径> --engine new -o reports/vuln-express-report.html -v` |
 | **Juice Shop** | OWASP 旗舰故意漏洞，体量大 | 克隆后 `python -m src.scanner.cli <路径> --engine new -o reports/juice-shop-report.html -v` |
 
-详细路径与更多目标见：**aegis-ai-core/docs/TEST_TARGETS.md**。
+真实目标和 ground-truth 数据位于 `aegis-ai-core/scripts/data/`；检测质量治理流程见 [Detection Quality](technical/DETECTION_QUALITY.md)。
 
 ### 3. 报告内容检查清单
 
