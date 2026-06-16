@@ -24,6 +24,7 @@ from src.lsp.server import (
     _get_remediation_for_rule,
     _is_path_excluded,
     _remediation_to_comment_text,
+    _resolve_lsp_rule_dirs,
     detect_language,
     finding_to_diagnostic,
     scan_document,
@@ -353,6 +354,38 @@ patterns:
             finding.get("type") == "CUSTOM_PHP_LSP_RISK" and finding.get("rule_id") == "dsl.php.lsp-dangerous-call"
             for finding in findings
         )
+
+
+def test_lsp_rule_dirs_auto_include_workspace_aegis_rules(tmp_path: Path):
+    """LSP should discover project-local .aegis/rules without client init options."""
+    rules_dir = tmp_path / ".aegis" / "rules"
+    rules_dir.mkdir(parents=True)
+    ctx = WorkspaceContext()
+    ctx.set_project_path(str(tmp_path))
+    ctx.configure({})
+
+    extra_rule_dirs, allowed_root = _resolve_lsp_rule_dirs(str(tmp_path / "app.py"), ctx)
+
+    assert allowed_root == tmp_path.resolve()
+    assert extra_rule_dirs == [rules_dir.resolve()]
+
+
+def test_lsp_rule_dirs_merge_init_options_and_skip_outside_workspace(tmp_path: Path):
+    """LSP rule dirs should be workspace-contained and deduplicated."""
+    default_rules = tmp_path / ".aegis" / "rules"
+    explicit_rules = tmp_path / "custom-rules"
+    outside_rules = tmp_path.parent / "outside-aegis-rules"
+    default_rules.mkdir(parents=True)
+    explicit_rules.mkdir()
+    outside_rules.mkdir(exist_ok=True)
+    ctx = WorkspaceContext()
+    ctx.set_project_path(str(tmp_path))
+    ctx.configure({"rules_dirs": ["custom-rules", str(outside_rules), ".aegis/rules"]})
+
+    extra_rule_dirs, allowed_root = _resolve_lsp_rule_dirs(str(tmp_path / "app.py"), ctx)
+
+    assert allowed_root == tmp_path.resolve()
+    assert extra_rule_dirs == [explicit_rules.resolve(), default_rules.resolve()]
 
 
 # ============================================================================

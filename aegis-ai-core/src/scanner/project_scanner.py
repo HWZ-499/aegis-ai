@@ -140,19 +140,16 @@ class ProjectScanner:
             extra_rule_dirs: 额外 DSL 规则目录（如 .aegis/rules），须在 project_path 下。
         """
         self.project_path = Path(project_path).resolve()
-        self._extra_rule_dirs: list[Path] = []
-        if extra_rule_dirs:
-            for d in extra_rule_dirs:
-                p = Path(d).resolve()
-                if not p.is_dir():
-                    continue
-                try:
-                    p.relative_to(self.project_path)
-                    self._extra_rule_dirs.append(p)
-                except ValueError:
-                    logger.warning("跳过规则目录（超出项目根）: %s", p)
         if not self.project_path.exists():
             raise ValueError(f"项目路径不存在: {project_path}")
+
+        self._extra_rule_dirs: list[Path] = []
+        for d in extra_rule_dirs or []:
+            self._add_extra_rule_dir(Path(d))
+
+        default_rules_dir = self.project_path / ".aegis" / "rules"
+        if default_rules_dir.is_dir():
+            self._add_extra_rule_dir(default_rules_dir)
 
         # 扫描引擎类型
         self.engine = engine if engine in ("legacy", "new") else "new"
@@ -207,6 +204,25 @@ class ProjectScanner:
         }
         self.supported_extensions = {**self._full_support, **self._partial_support}
         self._init_ignore_and_excluded(ignore_patterns)
+
+    def _add_extra_rule_dir(self, rule_dir: Path) -> None:
+        """Add a project-local DSL rule directory, skipping unsafe or duplicate paths."""
+        candidate = rule_dir if rule_dir.is_absolute() else self.project_path / rule_dir
+        try:
+            resolved = candidate.resolve()
+        except (OSError, RuntimeError) as exc:
+            logger.debug("跳过不可解析规则目录 %s: %s", rule_dir, exc)
+            return
+
+        if not resolved.is_dir():
+            return
+        try:
+            resolved.relative_to(self.project_path)
+        except ValueError:
+            logger.warning("跳过规则目录（超出项目根）: %s", resolved)
+            return
+        if resolved not in self._extra_rule_dirs:
+            self._extra_rule_dirs.append(resolved)
 
     def _reset_scan_state(self) -> None:
         """重置单次扫描的结果与统计，避免重复调用时状态泄漏。"""

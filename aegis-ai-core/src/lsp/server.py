@@ -840,6 +840,36 @@ def scan_document(
     return []
 
 
+def _resolve_lsp_rule_dirs(file_path: str, workspace_ctx: WorkspaceContext) -> tuple[list[Path] | None, Path | None]:
+    """Resolve LSP custom DSL rule directories within the active workspace root."""
+    root_str = getattr(workspace_ctx, "_project_path", None)
+    rules_allowed_root = Path(root_str).resolve() if root_str else Path(file_path).resolve().parent
+    raw_dirs = list(workspace_ctx._init_options.get("rules_dirs") or [])
+    raw_dirs.append(rules_allowed_root / ".aegis" / "rules")
+
+    resolved_dirs: list[Path] = []
+    for raw_dir in raw_dirs:
+        candidate = Path(raw_dir) if not isinstance(raw_dir, Path) else raw_dir
+        if not candidate.is_absolute():
+            candidate = rules_allowed_root / candidate
+        try:
+            resolved = candidate.resolve()
+        except (OSError, RuntimeError) as exc:
+            logger.debug("Skip unresolved rules_dir %s: %s", candidate, exc)
+            continue
+        if not resolved.is_dir():
+            continue
+        try:
+            resolved.relative_to(rules_allowed_root)
+        except ValueError:
+            logger.debug("Skip rules_dir outside workspace: %s", resolved)
+            continue
+        if resolved not in resolved_dirs:
+            resolved_dirs.append(resolved)
+
+    return (resolved_dirs or None, rules_allowed_root)
+
+
 # ---------------------------------------------------------------------------
 # Server 创建
 # ---------------------------------------------------------------------------
@@ -1525,27 +1555,11 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
     except RuntimeError as e:
         logger.debug("Failed to get document version: %s", e)
 
-    # 可选：从 initializationOptions.rules_dirs 解析额外规则目录
+    # Resolve initializationOptions.rules_dirs and the workspace-local .aegis/rules directory.
     extra_rule_dirs: list[Path] | None = None
     rules_allowed_root: Path | None = None
     try:
-        root_str = getattr(_workspace_ctx, "_project_path", None)
-        rules_allowed_root = Path(root_str) if root_str else Path(file_path).parent
-        raw_dirs = _workspace_ctx._init_options.get("rules_dirs") or []
-        if raw_dirs:
-            extra_rule_dirs = []
-            for d in raw_dirs:
-                p = Path(d) if not isinstance(d, Path) else Path(str(d))
-                if not p.is_absolute() and rules_allowed_root:
-                    p = rules_allowed_root / p
-                p = p.resolve()
-                if p.is_dir():
-                    try:
-                        if rules_allowed_root:
-                            p.relative_to(rules_allowed_root)
-                        extra_rule_dirs.append(p)
-                    except ValueError:
-                        logger.debug("Skip rules_dir outside workspace: %s", p)
+        extra_rule_dirs, rules_allowed_root = _resolve_lsp_rule_dirs(file_path, _workspace_ctx)
     except RuntimeError as e:
         logger.debug("Resolving rules_dirs: %s", e)
 

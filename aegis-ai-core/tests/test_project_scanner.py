@@ -76,7 +76,6 @@ def test_scan_project_applies_extra_php_dsl_rules(tmp_path: Path) -> None:
         str(tmp_path),
         use_cache=False,
         use_parallel=False,
-        extra_rule_dirs=[rules_dir],
     )
 
     results = scanner.scan_project()
@@ -108,7 +107,6 @@ def test_scan_project_applies_extra_java_dsl_rules(tmp_path: Path) -> None:
         str(tmp_path),
         use_cache=False,
         use_parallel=False,
-        extra_rule_dirs=[rules_dir],
     )
 
     results = scanner.scan_project()
