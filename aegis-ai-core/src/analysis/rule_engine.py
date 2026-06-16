@@ -527,7 +527,7 @@ def get_default_rules_for_language(
         return rules
 
     if language == "php":
-        return [
+        rules = [
             PhpSQLInjectionAstRule(),
             PhpRCEAstRule(),
             PhpXSSAstRule(),
@@ -537,9 +537,18 @@ def get_default_rules_for_language(
             PhpNoSQLInjectionAstRule(),
             PhpHardcodedCredentialsAstRule(),
         ]
+        if include_dsl:
+            rules.extend(
+                load_dsl_rules_for_language(
+                    "php",
+                    extra_dirs=extra_rule_dirs,
+                    allowed_root=rules_allowed_root,
+                )
+            )
+        return rules
 
     if language == "java":
-        return [
+        rules = [
             JavaRCEAstRule(),
             JavaSQLInjectionAstRule(),
             JavaXSSAstRule(),
@@ -549,6 +558,15 @@ def get_default_rules_for_language(
             JavaNoSQLInjectionAstRule(),
             JavaOpenRedirectAstRule(),
         ]
+        if include_dsl:
+            rules.extend(
+                load_dsl_rules_for_language(
+                    "java",
+                    extra_dirs=extra_rule_dirs,
+                    allowed_root=rules_allowed_root,
+                )
+            )
+        return rules
 
     if language == "go":
         rules = [
@@ -761,7 +779,13 @@ def analyze_c_cpp(code: str, file_path: Path | str) -> list[dict]:
     )
 
 
-def analyze_php(code: str, file_path: Path | str) -> list[dict]:
+def analyze_php(
+    code: str,
+    file_path: Path | str,
+    include_dsl: bool = True,
+    extra_rule_dirs: list[Path] | None = None,
+    rules_allowed_root: Path | None = None,
+) -> list[dict]:
     """
     分析单个 PHP 文件。
 
@@ -781,7 +805,14 @@ def analyze_php(code: str, file_path: Path | str) -> list[dict]:
     path = Path(file_path)
 
     # ── 1. AST 精确层 ──
-    results = _analyze_with("php", code, path)
+    results = _analyze_with(
+        "php",
+        code,
+        path,
+        include_dsl=include_dsl,
+        extra_rule_dirs=extra_rule_dirs,
+        rules_allowed_root=rules_allowed_root,
+    )
     ast_covered: set[tuple[int, str]] = set()
     ast_lines_by_type: dict[str, list[int]] = {}
     for f in results:

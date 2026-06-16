@@ -324,6 +324,36 @@ eval(userInput);
         findings = scan_document(vulnerable_code, "vuln.ts")
         assert len(findings) > 0
 
+    def test_php_uses_custom_dsl_rule_dirs(self, tmp_path: Path):
+        """LSP scan_document should pass custom DSL dirs through to PHP analysis."""
+        rules_dir = tmp_path / ".aegis" / "rules"
+        rules_dir.mkdir(parents=True)
+        (rules_dir / "php.custom.yaml").write_text(
+            """
+id: dsl.php.lsp-dangerous-call
+language: php
+severity: HIGH
+message: "Custom PHP LSP rule"
+vuln_type: CUSTOM_PHP_LSP_RISK
+patterns:
+  - pattern: dangerous_php($ARG)
+""",
+            encoding="utf-8",
+        )
+        source = "<?php\n$input = $_GET['x'];\ndangerous_php($input);\n"
+
+        findings = scan_document(
+            source,
+            str(tmp_path / "app.php"),
+            extra_rule_dirs=[rules_dir],
+            rules_allowed_root=tmp_path,
+        )
+
+        assert any(
+            finding.get("type") == "CUSTOM_PHP_LSP_RISK" and finding.get("rule_id") == "dsl.php.lsp-dangerous-call"
+            for finding in findings
+        )
+
 
 # ============================================================================
 # 5. severity 映射完整性

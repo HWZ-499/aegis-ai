@@ -802,7 +802,15 @@ def scan_document(
                 ),
             )
         elif language == "php":
-            return cast(list[dict[str, Any]], analyze_php(source, file_path))
+            return cast(
+                list[dict[str, Any]],
+                analyze_php(
+                    source,
+                    file_path,
+                    extra_rule_dirs=extra_rule_dirs,
+                    rules_allowed_root=rules_allowed_root,
+                ),
+            )
         elif language == "java":
             return cast(
                 list[dict[str, Any]],

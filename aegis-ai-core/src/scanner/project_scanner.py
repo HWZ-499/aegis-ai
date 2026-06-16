@@ -492,7 +492,12 @@ class ProjectScanner:
                     rules_allowed_root=root,
                 )
             elif language == "php" and self.engine == "new":
-                merged_findings = analyze_php_new(code, file_path_str)
+                merged_findings = analyze_php_new(
+                    code,
+                    file_path_str,
+                    extra_rule_dirs=extra,
+                    rules_allowed_root=root,
+                )
             elif language == "java" and self.engine == "new":
                 merged_findings = analyze_java_new(
                     code,

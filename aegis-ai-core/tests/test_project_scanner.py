@@ -5,6 +5,22 @@ import pytest
 from src.scanner.project_scanner import ProjectScanner
 
 
+def _write_custom_rule(rules_dir: Path, *, rule_id: str, language: str, pattern: str, vuln_type: str) -> None:
+    rules_dir.mkdir(parents=True, exist_ok=True)
+    (rules_dir / f"{language}.custom.yaml").write_text(
+        f"""
+id: {rule_id}
+language: {language}
+severity: HIGH
+message: "Custom {language} rule"
+vuln_type: {vuln_type}
+patterns:
+  - pattern: {pattern}
+""",
+        encoding="utf-8",
+    )
+
+
 def test_default_scan_keeps_business_like_source_directories(tmp_path: Path) -> None:
     """默认配置不应静默跳过常见业务源码目录。"""
     for rel in ("lib/app.py", "public/app.js", "static/handler.py", "resources/main.go"):
@@ -41,6 +57,67 @@ def test_default_scan_still_skips_dependency_and_build_directories(tmp_path: Pat
     assert "node_modules/pkg/index.js" not in discovered_rel
     assert "dist/app.js" not in discovered_rel
     assert "build/main.py" not in discovered_rel
+
+
+def test_scan_project_applies_extra_php_dsl_rules(tmp_path: Path) -> None:
+    """ProjectScanner should pass custom DSL dirs through the PHP analyzer."""
+    rules_dir = tmp_path / ".aegis" / "rules"
+    _write_custom_rule(
+        rules_dir,
+        rule_id="dsl.php.custom-dangerous-call",
+        language="php",
+        pattern="dangerous_php($ARG)",
+        vuln_type="CUSTOM_PHP_RISK",
+    )
+    app = tmp_path / "app.php"
+    app.write_text("<?php\n$input = $_GET['x'];\ndangerous_php($input);\n", encoding="utf-8")
+
+    scanner = ProjectScanner(
+        str(tmp_path),
+        use_cache=False,
+        use_parallel=False,
+        extra_rule_dirs=[rules_dir],
+    )
+
+    results = scanner.scan_project()
+
+    findings = results["app.php"]
+    assert any(
+        finding.get("type") == "CUSTOM_PHP_RISK" and finding.get("rule_id") == "dsl.php.custom-dangerous-call"
+        for finding in findings
+    )
+
+
+def test_scan_project_applies_extra_java_dsl_rules(tmp_path: Path) -> None:
+    """ProjectScanner should merge custom DSL rules into Java default rules."""
+    rules_dir = tmp_path / ".aegis" / "rules"
+    _write_custom_rule(
+        rules_dir,
+        rule_id="dsl.java.custom-dangerous-call",
+        language="java",
+        pattern="dangerousJava($ARG)",
+        vuln_type="CUSTOM_JAVA_RISK",
+    )
+    app = tmp_path / "App.java"
+    app.write_text(
+        "class App { void run(String input) { dangerousJava(input); } }\n",
+        encoding="utf-8",
+    )
+
+    scanner = ProjectScanner(
+        str(tmp_path),
+        use_cache=False,
+        use_parallel=False,
+        extra_rule_dirs=[rules_dir],
+    )
+
+    results = scanner.scan_project()
+
+    findings = results["App.java"]
+    assert any(
+        finding.get("type") == "CUSTOM_JAVA_RISK" and finding.get("rule_id") == "dsl.java.custom-dangerous-call"
+        for finding in findings
+    )
 
 
 def test_scan_project_resets_state_and_returns_stable_snapshots(tmp_path: Path) -> None:
