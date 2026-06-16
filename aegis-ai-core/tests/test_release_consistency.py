@@ -9,17 +9,21 @@ def _write_minimal_consistent_repo(repo: Path) -> Path:
     src_dir.mkdir(parents=True)
 
     (repo / "README.md").write_text(
-        "# Aegis\nrequires-python >=3.10\n`pip install -e .[dev]`\ndeepseek openai ollama custom\nOLLAMA_BASE_URL=x\nDEEPSEEK_API_KEY=x\nOPENAI_API_KEY=x\n已支持 实验性 规划中\n.aegis-baseline.json 不是修复代码\n",
+        "# Aegis\nPython 3.10+\n`pip install -e .[dev]`\ndeepseek openai ollama custom\nOLLAMA_BASE_URL=x\nDEEPSEEK_API_KEY=x\nOPENAI_API_KEY=x\n.aegis-baseline.json not a fix\n",
         encoding="utf-8",
     )
     (repo / "aegis-vscode").mkdir()
     (repo / "aegis-vscode" / "README.md").write_text(
-        "# Extension\nv0.5.1\nDEEPSEEK_API_KEY=x\nOPENAI_API_KEY=x\nOLLAMA_BASE_URL=http://localhost:11434/v1\n",
+        "# Extension\nv0.5.1\n已支持 实验性 规划中\nDEEPSEEK_API_KEY=x\nOPENAI_API_KEY=x\nOLLAMA_BASE_URL=http://localhost:11434/v1\n",
         encoding="utf-8",
     )
     (repo / "docs" / "technical").mkdir(parents=True, exist_ok=True)
-    (repo / "docs" / "technical" / "TECHNICAL_DESIGN_DOCUMENT.md").write_text(
-        "已支持 | 实验性 | 规划中\n",
+    (repo / "docs" / "technical" / "DETECTION_QUALITY.md").write_text(
+        "Recall Precision F1\n",
+        encoding="utf-8",
+    )
+    (repo / "docs" / "VERIFICATION_GUIDE.md").write_text(
+        "python -m pytest tests/\npython -m src.scanner.cli . --format json\n",
         encoding="utf-8",
     )
     (core / "pyproject.toml").write_text(
