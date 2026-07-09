@@ -10,6 +10,8 @@ import logging
 import re
 from typing import Any, Protocol, cast
 
+from src.analysis.analyzers.c_cpp_analyzer import enhance_c_cpp_findings
+
 logger = logging.getLogger(__name__)
 
 # tree-sitter 懒加载（PHP AST 分析用）
@@ -2120,11 +2122,6 @@ def scan_code_locally(code_content, file_path=None):
                     break  # 同一行同一种漏洞只报一次
 
     if language == "cpp":
-        findings.extend(_scan_cpp_cin_into_char_arrays(code_content))
-        findings.extend(_scan_cpp_thread_lifecycle_risks(code_content))
-        findings.extend(_scan_cpp_assignment_in_conditions(code_content))
-        findings.extend(_scan_cpp_nested_pointer_null_derefs(code_content))
-        findings.extend(_scan_cpp_critical_section_mismatches(code_content))
-        findings = filter_cpp_findings(code_content, findings)
+        findings = enhance_c_cpp_findings(code_content, findings)
 
     return findings

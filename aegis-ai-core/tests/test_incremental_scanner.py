@@ -101,7 +101,7 @@ def test_incremental_scan_stats_report_partial_scan_errors(tmp_path: Path, monke
     def fail_analyzer(*args, **kwargs):
         raise RuntimeError("parser unavailable")
 
-    monkeypatch.setattr("src.scanner.project_scanner.analyze_python_new", fail_analyzer)
+    monkeypatch.setattr("src.scanner.project_scanner.analyze_source", fail_analyzer)
 
     scanner = IncrementalScanner(str(tmp_path))
     results, stats = scanner.scan_with_stats(verbose=False)

@@ -19,8 +19,8 @@ Ground-truth JSON 格式：
 import argparse
 import json
 import sys
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -28,9 +28,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.scanner.benchmark import (
     evaluate_project_against_ground_truth,
-    format_report_md,
     format_report_json,
-    run_benchmark,
+    format_report_md,
 )
 
 
@@ -42,7 +41,7 @@ def main() -> None:
     parser.add_argument("--ground-truth", type=Path, required=True, help="ground-truth JSON 文件路径")
     parser.add_argument("--output-dir", type=Path, default=PROJECT_ROOT / "reports", help="报告输出目录")
     parser.add_argument("--target-name", type=str, default=None, help="报告中的目标名称，默认用项目目录名")
-    parser.add_argument("--engine", type=str, default="new", help="扫描引擎")
+    parser.add_argument("--engine", choices=["new"], default="new", help="兼容参数；当前仅支持 new")
     args = parser.parse_args()
 
     project_dir = Path(args.project_dir)
@@ -54,7 +53,7 @@ def main() -> None:
         print(f"错误: ground-truth 文件不存在: {gt_path}")
         sys.exit(1)
 
-    with open(gt_path, "r", encoding="utf-8") as f:
+    with open(gt_path, encoding="utf-8") as f:
         ground_truth = json.load(f)
     if not isinstance(ground_truth, list):
         ground_truth = ground_truth.get("expected", ground_truth) if isinstance(ground_truth, dict) else []
@@ -74,7 +73,9 @@ def main() -> None:
         encoding="utf-8",
     )
     json_path.write_text(
-        json.dumps(format_report_json(result, target_name=target_name, date_str=date_str), ensure_ascii=False, indent=2),
+        json.dumps(
+            format_report_json(result, target_name=target_name, date_str=date_str), ensure_ascii=False, indent=2
+        ),
         encoding="utf-8",
     )
 

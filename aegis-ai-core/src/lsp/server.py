@@ -30,6 +30,8 @@ from pygls.lsp.server import LanguageServer
 
 from ..analysis.dependency_tracker import DependencyTracker
 from ..analysis.incremental_analyzer import IncrementalAnalyzer
+from ..analysis.languages import EXTENSION_LANGUAGE_MAP as SHARED_EXTENSION_LANGUAGE_MAP
+from ..core.file_metadata import get_file_size
 from ..scanner.baseline import Baseline, BaselineLoadError
 from ..scanner.project_scanner import ProjectScanner
 from ..scanner.rag_enhancer import BUILTIN_REMEDIATION
@@ -60,28 +62,7 @@ class ScanError(Exception):
 # ---------------------------------------------------------------------------
 
 #: 文件扩展名 -> 分析语言
-EXTENSION_LANGUAGE_MAP: dict[str, str] = {
-    ".js": "javascript",
-    ".jsx": "javascript",
-    ".ts": "typescript",
-    ".tsx": "typescript",
-    ".mjs": "javascript",
-    ".cjs": "javascript",
-    ".py": "python",
-    ".pyw": "python",
-    ".php": "php",
-    ".phtml": "php",
-    ".php5": "php",
-    ".java": "java",
-    ".go": "go",
-    ".c": "c",
-    ".cpp": "cpp",
-    ".cc": "cpp",
-    ".cxx": "cpp",
-    ".h": "c",
-    ".hpp": "cpp",
-    ".hxx": "cpp",
-}
+EXTENSION_LANGUAGE_MAP: dict[str, str] = dict(SHARED_EXTENSION_LANGUAGE_MAP)
 
 #: Scanner severity -> LSP DiagnosticSeverity
 SEVERITY_MAP: dict[str, lsp.DiagnosticSeverity] = {
@@ -201,15 +182,16 @@ class WorkspaceContext:
         """
         获取与 ``file_path`` 相关的跨文件发现。
 
-        当前跨文件污点追踪尚未实现，始终返回空列表。
-        保留接口供未来扩展。
-
         Returns:
-            finding dict 列表，当前为空。
+            Sink 位于当前文件的跨文件 finding 列表。
         """
         if not self.experimental_cross_file:
             return []
-        return []
+        with self._lock:
+            analyzer = self._analyzer
+        if analyzer is None:
+            return []
+        return cast(list[dict[str, Any]], analyzer.get_findings(file_path))
 
     def invalidate(self) -> None:
         """文件变更后标记图需要重建。"""
@@ -274,14 +256,24 @@ def _coerce_payload(value: Any) -> dict[str, Any]:
         items = getattr(value, "items", None)
         if callable(items):
             return dict(items())
-    except (RuntimeError, TypeError, ValueError):
-        pass
+    except (RuntimeError, TypeError, ValueError) as error:
+        logger.debug(
+            "lsp_payload_coerce_degraded stage=items value_type=%s error=%s: %s",
+            type(value).__name__,
+            type(error).__name__,
+            error,
+        )
     try:
         data = vars(value)
         if isinstance(data, dict):
             return {k: v for k, v in data.items() if not k.startswith("_")}
-    except TypeError:
-        pass
+    except TypeError as error:
+        logger.debug(
+            "lsp_payload_coerce_degraded stage=vars value_type=%s error=%s: %s",
+            type(value).__name__,
+            type(error).__name__,
+            error,
+        )
     return {}
 
 
@@ -770,74 +762,22 @@ def scan_document(
     if language is None:
         return []
 
-    from ..analysis.rule_engine import (
-        analyze_c_cpp,
-        analyze_go,
-        analyze_java,
-        analyze_javascript,
-        analyze_php,
-        analyze_python,
-    )
+    from ..analysis.rule_engine import analyze_source
 
     try:
-        if language == "python":
-            return cast(
-                list[dict[str, Any]],
-                analyze_python(
-                    source,
-                    file_path,
-                    extra_rule_dirs=extra_rule_dirs,
-                    rules_allowed_root=rules_allowed_root,
-                ),
-            )
-        elif language in ("javascript", "typescript"):
-            return cast(
-                list[dict[str, Any]],
-                analyze_javascript(
-                    source,
-                    file_path,
-                    language=language,
-                    extra_rule_dirs=extra_rule_dirs,
-                    rules_allowed_root=rules_allowed_root,
-                ),
-            )
-        elif language == "php":
-            return cast(
-                list[dict[str, Any]],
-                analyze_php(
-                    source,
-                    file_path,
-                    extra_rule_dirs=extra_rule_dirs,
-                    rules_allowed_root=rules_allowed_root,
-                ),
-            )
-        elif language == "java":
-            return cast(
-                list[dict[str, Any]],
-                analyze_java(
-                    source,
-                    file_path,
-                    extra_rule_dirs=extra_rule_dirs,
-                    rules_allowed_root=rules_allowed_root,
-                ),
-            )
-        elif language == "go":
-            return cast(
-                list[dict[str, Any]],
-                analyze_go(
-                    source,
-                    file_path,
-                    extra_rule_dirs=extra_rule_dirs,
-                    rules_allowed_root=rules_allowed_root,
-                ),
-            )
-        elif language in ("c", "cpp"):
-            return cast(list[dict[str, Any]], analyze_c_cpp(source, file_path))
+        return cast(
+            list[dict[str, Any]],
+            analyze_source(
+                source,
+                file_path,
+                language=language,
+                extra_rule_dirs=extra_rule_dirs,
+                rules_allowed_root=rules_allowed_root,
+            ),
+        )
     except Exception as e:  # Intentional: re-raises as ScanError
         logger.exception("Scan failed for %s", file_path)
         raise ScanError(str(e)) from e
-
-    return []
 
 
 def _resolve_lsp_rule_dirs(file_path: str, workspace_ctx: WorkspaceContext) -> tuple[list[Path] | None, Path | None]:
@@ -1306,8 +1246,13 @@ def create_server() -> LanguageServer:
         try:
             doc = server.workspace.get_text_document(finding_uri)
             _validate_document(server, finding_uri, doc.source)
-        except (RuntimeError, KeyError):
-            pass
+        except (RuntimeError, KeyError) as error:
+            logger.debug(
+                "baseline_refresh_degraded uri=%s error=%s: %s",
+                finding_uri,
+                type(error).__name__,
+                error,
+            )
 
     # ── O2: aegis/generateFix — 为 Diff Preview 生成 AI 修复代码 ──
     @server.feature("aegis/generateFix")
@@ -1528,18 +1473,21 @@ def _validate_document(server: LanguageServer, uri: str, source: str) -> None:
         return
 
     # P1-3：文件过大则跳过并清空诊断
-    try:
-        fpath = Path(file_path)
-        if fpath.exists() and fpath.stat().st_size > MAX_FILE_SIZE_BYTES:
+    fpath = Path(file_path)
+    if fpath.exists():
+        file_size = get_file_size(
+            fpath,
+            logger=logger,
+            component="lsp_scan",
+        )
+        if file_size is not None and file_size > MAX_FILE_SIZE_BYTES:
             logger.info(
                 "Skipping oversized file (%d bytes): %s",
-                fpath.stat().st_size,
+                file_size,
                 file_path,
             )
             server.text_document_publish_diagnostics(lsp.PublishDiagnosticsParams(uri=uri, diagnostics=[]))
             return
-    except OSError:
-        pass
 
     # ── 通知前端：扫描开始 ───────────────────────────────────────────────────
     try:

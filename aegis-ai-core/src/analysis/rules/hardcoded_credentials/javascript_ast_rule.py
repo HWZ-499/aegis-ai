@@ -15,7 +15,7 @@ JavaScript/TypeScript 硬编码凭证 AST 规则。
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, cast
 
 from ...base import AnalysisContext, SecurityRule
 from ...base.file_context import is_likely_seed_or_migration
@@ -353,7 +353,7 @@ class JavaScriptHardcodedCredentialsAstRule(SecurityRule):
     def _get_node_text(node: Node) -> str | None:
         """提取节点的文本内容。"""
         if hasattr(node, "text"):
-            return node.text.decode("utf-8")
+            return cast(bytes, node.text).decode("utf-8")
         return None
 
 

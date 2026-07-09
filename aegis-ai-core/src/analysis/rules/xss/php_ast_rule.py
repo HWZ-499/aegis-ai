@@ -5,7 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from ...base import AnalysisContext, SecurityRule, tree_sitter_node_to_range
-from ...base.user_input_detector import _PHP_SUPERGLOBALS, _subtree_contains_php_user_input
+from ...base.user_input_detector import (
+    _PHP_SUPERGLOBALS,
+    _subtree_contains_unsafe_php_user_input,
+)
 
 try:
     from tree_sitter import Node
@@ -20,6 +23,7 @@ class PhpXSSAstRule(SecurityRule):
     """Detect XSS (unescaped output) in PHP."""
 
     SANITIZERS = frozenset({"htmlspecialchars", "htmlentities"})
+    OUTPUT_FUNCS = frozenset({"printf", "vprintf", "exit", "die"})
     HTML_OUTPUT_VARS = frozenset({"html", "body", "output", "content", "response", "page"})
     DIRECT_SUPERGLOBALS = frozenset({"_GET", "_POST", "_REQUEST", "_COOKIE", "_FILES"})
     HIGH_RISK_SOURCE_PREFIXES = (
@@ -46,84 +50,39 @@ class PhpXSSAstRule(SecurityRule):
 
         # echo_statement: echo $name;
         if node.type == "echo_statement":
-            self._check_echo(node, context)
-        # function_call_expression: print($name)
+            self._check_output_node(node, context, "echo")
+        # print_intrinsic: print $name;
+        elif node.type == "print_intrinsic":
+            self._check_output_node(node, context, "print")
+        # function_call_expression: printf(), exit(), die()
         elif node.type == "function_call_expression":
             func_name = self._get_func_name(node)
-            if func_name in ("print", "printf", "vprintf"):
-                self._check_print(node, context, func_name)
+            if func_name in self.OUTPUT_FUNCS:
+                self._check_output_node(node, context, func_name)
+        # short echo tag: <?= $name ?>
+        elif node.type == "expression_statement" and self._is_short_echo_expression(node):
+            self._check_output_node(node, context, "short echo")
         # augmented_assignment_expression: $html .= "<div>{$name}</div>";
         elif node.type == "augmented_assignment_expression":
             self._check_augmented_html_assignment(node, context)
 
-    def _check_echo(self, node: Any, context: AnalysisContext) -> None:
+    def _check_output_node(self, node: Any, context: AnalysisContext, output_name: str) -> None:
         line = node.start_point[0] + 1
         if line in self._reported:
             return
-        for child in node.children:
-            if child.type in ("echo",):
-                continue
-            if child.type == ";":
-                continue
-            # Check if the echoed expression is wrapped in a sanitizer
-            if child.type == "function_call_expression":
-                fn = self._get_func_name(child)
-                if fn and fn in self.SANITIZERS:
-                    return
-            if _subtree_contains_php_user_input(child, context):
-                self._reported.add(line)
-                finding = {
-                    "type": "XSS_RISK",
-                    "rule_id": self.rule_id,
-                    "severity": self.severity,
-                    "line": line,
-                    "details": "PHP: echo 输出包含用户输入且未经 htmlspecialchars 转义，存在 XSS 风险。",
-                }
-                finding.update(tree_sitter_node_to_range(node))
-                context.add_finding(finding)
-                return
-            # Tainted variable
-            if child.type == "variable_name":
-                var = self._text(child).lstrip("$")
-                if context.is_var_tainted(var) or context.is_var_tainted("$" + var):
-                    self._reported.add(line)
-                    finding = {
-                        "type": "XSS_RISK",
-                        "rule_id": self.rule_id,
-                        "severity": self.severity,
-                        "line": line,
-                        "details": f"PHP: echo 输出变量 ${var} 被污染且未转义，存在 XSS 风险。",
-                    }
-                    finding.update(tree_sitter_node_to_range(node))
-                    context.add_finding(finding)
-                    return
+        if not _subtree_contains_unsafe_php_user_input(node, context, sanitizers=self.SANITIZERS):
+            return
 
-    def _check_print(self, node: Any, context: AnalysisContext, func: str) -> None:
-        line = node.start_point[0] + 1
-        if line in self._reported:
-            return
-        for child in node.children:
-            if child.type == "arguments":
-                for arg in child.children:
-                    if arg.type == "argument":
-                        # Skip sanitizer-wrapped
-                        inner = self._unwrap(arg)
-                        if inner.type == "function_call_expression":
-                            fn = self._get_func_name(inner)
-                            if fn and fn in self.SANITIZERS:
-                                return
-                        if _subtree_contains_php_user_input(arg, context):
-                            self._reported.add(line)
-                            finding = {
-                                "type": "XSS_RISK",
-                                "rule_id": self.rule_id,
-                                "severity": self.severity,
-                                "line": line,
-                                "details": f"PHP: {func}() 输出包含用户输入且未转义，存在 XSS 风险。",
-                            }
-                            finding.update(tree_sitter_node_to_range(node))
-                            context.add_finding(finding)
-                            return
+        self._reported.add(line)
+        finding = {
+            "type": "XSS_RISK",
+            "rule_id": self.rule_id,
+            "severity": self.severity,
+            "line": line,
+            "details": f"PHP: {output_name} 输出包含用户输入且未经 HTML 转义，存在 XSS 风险。",
+        }
+        finding.update(tree_sitter_node_to_range(node))
+        context.add_finding(finding)
 
     def _check_augmented_html_assignment(self, node: Any, context: AnalysisContext) -> None:
         line = node.start_point[0] + 1
@@ -265,6 +224,10 @@ class PhpXSSAstRule(SecurityRule):
                 return self._text(child).lstrip("$")
         return ""
 
+    def _is_short_echo_expression(self, node: Any) -> bool:
+        previous = getattr(node, "prev_sibling", None)
+        return getattr(previous, "type", "") == "php_tag" and self._text(previous).lstrip().startswith("<?=")
+
     @staticmethod
     def _unwrap(arg: Any) -> Any:
         if arg.type == "argument":
@@ -277,7 +240,11 @@ class PhpXSSAstRule(SecurityRule):
     def _get_func_name(node: Any) -> str | None:
         for c in node.children:
             if c.type == "name":
-                return c.text.decode("utf-8") if hasattr(c, "text") else None
+                raw = getattr(c, "text", None)
+                if isinstance(raw, bytes):
+                    return raw.decode("utf-8")
+                if isinstance(raw, str):
+                    return raw
         return None
 
     @staticmethod

@@ -12,22 +12,25 @@ javascript_analyzer.py - JavaScript/TypeScript 分析器（新规则架构）
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from pathlib import Path
 
 from ..base import AnalysisContext, SecurityRule
+from ..tree_sitter_runtime import get_thread_parser
+from .runtime import log_analysis_degradation
+
+logger = logging.getLogger(__name__)
 
 # Tree-sitter 导入
 try:
     from tree_sitter import Node, Parser
-    from tree_sitter_languages import get_language
 
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
     Parser = None  # type: ignore[misc,assignment]
     Node = None  # type: ignore[misc,assignment]
-    get_language = None
 
 
 class JavaScriptAnalyzer:
@@ -49,21 +52,8 @@ class JavaScriptAnalyzer:
         self._js_parser: Parser | None = None
         self._ts_parser: Parser | None = None
         if TREE_SITTER_AVAILABLE:
-            try:
-                js_lang = get_language("javascript")
-                self._js_parser = Parser()
-                self._js_parser.set_language(js_lang)
-            except (ImportError, RuntimeError, OSError):
-                # Tree-sitter 不可用时，规则仍然可以工作（例如行级规则）
-                self._js_parser = None
-
-            try:
-                ts_lang = get_language("typescript")
-                self._ts_parser = Parser()
-                self._ts_parser.set_language(ts_lang)
-            except (ImportError, RuntimeError, OSError):
-                # Tree-sitter 不可用时，规则仍然可以工作（例如行级规则）
-                self._ts_parser = None
+            self._js_parser = get_thread_parser("javascript")
+            self._ts_parser = get_thread_parser("typescript")
 
     def analyze(self, code: str, file_path: Path, language: str = "javascript") -> list[dict]:
         """
@@ -95,25 +85,47 @@ class JavaScriptAnalyzer:
         if parser:
             try:
                 tree = parser.parse(bytes(code, "utf8"))
+            except (RuntimeError, ValueError) as e:
+                log_analysis_degradation(
+                    logger,
+                    language=lang,
+                    stage="parse",
+                    file_path=file_path,
+                    error=e,
+                )
+            else:
                 root = tree.root_node
 
-                # 3.1 先运行 TaintAnalyzer 构建污点图（2.1 统一污点系统），规则层通过 context.taint_graph 查询
+                # 3.1 先运行 TaintAnalyzer 构建污点图，规则层通过 context.taint_graph 查询
                 try:
                     from ..taint import TaintAnalyzer
 
-                    taint_analyzer = TaintAnalyzer(language=lang)
+                    taint_analyzer = TaintAnalyzer(language=lang, initialize_parser=False)
                     taint_analyzer.analyze_tree(root, str(file_path), code)
                     context.taint_graph = taint_analyzer.get_graph()
                     # 阶段二污点统一：JS/TS 仅用 taint_graph，不回退到 DataFlowTracker
                     context.dataflow_tracker = None
-                except (ImportError, RuntimeError, ValueError):
+                except (ImportError, RuntimeError, ValueError) as e:
+                    log_analysis_degradation(
+                        logger,
+                        language=lang,
+                        stage="taint",
+                        file_path=file_path,
+                        error=e,
+                    )
                     context.taint_graph = None
 
                 # 4. 统一遍历 AST 节点
-                self._traverse_tree(root, context)
-            except (RuntimeError, ValueError):
-                # AST 解析失败时，规则仍然可以工作（例如行级规则）
-                pass
+                try:
+                    self._traverse_tree(root, context)
+                except (RuntimeError, ValueError) as e:
+                    log_analysis_degradation(
+                        logger,
+                        language=lang,
+                        stage="traverse",
+                        file_path=file_path,
+                        error=e,
+                    )
 
         # 5. after_file 钩子（适合行级规则或需要全局视角的规则）
         for rule in self.rules:

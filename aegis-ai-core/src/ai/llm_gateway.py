@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
@@ -179,7 +180,7 @@ class LLMGateway:
 
     def __init__(
         self,
-        providers: list[LLMProvider] | None = None,
+        providers: Iterable[LLMProvider] | None = None,
         fallback_order: list[str] | None = None,
     ) -> None:
         self._providers: dict[str, LLMProvider] = {}

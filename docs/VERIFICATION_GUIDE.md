@@ -104,6 +104,42 @@ python -m src.scanner.cli . --engine new --format json -o reports/self-scan.json
 
 满足以上即算**第三步验证通过**。更多报告检查项见 **二、3. 报告内容检查清单**。
 
+### 4. O4 报告与 SARIF 收尾验收
+
+O4 要求四种 CLI 报告均可落盘，SARIF 能被 GitHub Code Scanning 消费，
+且污点路径可转换为 `codeFlows/threadFlows`。
+
+在 `aegis-ai-core` 下执行：
+
+```powershell
+$target = "tests\unit_test_lab"
+
+python -m src.scanner.cli $target --format json     --output reports\o4-report.json  --no-fail-on-findings
+python -m src.scanner.cli $target --format html     --output reports\o4-report.html  --no-fail-on-findings
+python -m src.scanner.cli $target --format markdown --output reports\o4-report.md    --no-fail-on-findings
+python -m src.scanner.cli $target --format sarif    --output reports\o4-report.sarif --no-fail-on-findings
+```
+
+自动化验收：
+
+```powershell
+python -m pytest tests/test_report_xss.py tests/test_report_cli_e2e.py -q
+```
+
+SARIF 检查项：
+
+- `version` 必须为 `2.1.0`；
+- 必须存在一个 `runs` 项和 `tool.driver.name = "Aegis AI"`；
+- `ruleId` 必须能在 `tool.driver.rules[].id` 中找到；
+- 相对路径使用 `/` 和 `%SRCROOT%`，绝对路径使用 `file://` URI；
+- line/column 必须为大于等于 1 的整数；
+- 污点路径存在时，结果包含非空 `codeFlows[].threadFlows[].locations[]`；
+- partial scan 必须设置 `invocations[].executionSuccessful = false` 并包含错误通知。
+
+CI 中 `.github/workflows/security-scan.yml` 会严格解析和检查生成的
+`results.sarif`。扫描器未生成文件、JSON 非法或关键字段缺失都会令任务失败；
+不得用空 SARIF 文件掩盖扫描失败。
+
 ---
 
 ## 四、RAG 增强与超时行为（TDD 10.2）
@@ -122,11 +158,20 @@ python -m src.scanner.cli . --engine new --format json -o reports/self-scan.json
 
 - **单命令跑基准并写报告**（在 aegis-ai-core 下）：
   ```powershell
-  python scripts/run_benchmark_report.py
+  python scripts/benchmark/run_benchmark_report.py
   ```
   输出：`reports/benchmark_report_YYYY-MM-DD.md`、`.json`，控制台打印 Recall/Precision/F1。
-- **验收阈值**：`python -m pytest tests/test_acceptance_benchmark.py` 要求 Recall ≥ 70%、FPR ≤ 20%、F1 ≥ 0.75；规则改动后应保持通过。
-- **详细说明**（指标含义、新增用例、治理流程）：见 **aegis-ai-core/docs/DETECTION_QUALITY.md**。
+- **验收阈值**：`python -m pytest -m acceptance tests/test_acceptance_benchmark.py` 要求 Recall ≥ 70%、FPR ≤ 20%、F1 ≥ 0.75；规则改动后应保持通过。
+- **详细说明**（指标含义、新增用例、治理流程）：见
+  [Detection Quality](technical/DETECTION_QUALITY.md)。
+
+- **跨文件参数传播验证**：
+  `python -m pytest tests/test_cross_file_taint_propagation.py -v`
+  覆盖 Python、ESM、CommonJS、默认导出、返回值摘要、重导出、多跳调用链、
+  CLI、ProjectScanner 与 LSP。
+  CLI 实际使用时增加 `--cross-file`；LSP 使用
+  `aegisAI.experimental.crossFileAnalysis=true`。静态可解析的包装函数会通过固定点
+  契约传播继续追踪到原始 Sink；运行时动态分派与反射调用不在当前范围内。
 
 ---
 
@@ -326,12 +371,18 @@ python scripts/poc2_multiprocessing_latency.py
 
 ## 七、基准与回归（可选）
 
-- **基准报告**（Recall/Precision/F1 等）：  
-  `python scripts/run_benchmark_report.py --project-dir <NodeGoat 或 Juice Shop 等路径>`  
-  用于对比规则与引擎变更前后的检测率与误报。
+- **基准报告与 O6 质量矩阵**（Recall/Precision/F1、TP/TN/FP/FN）：
+  `python scripts/benchmark/run_benchmark_report.py --project-dir <NodeGoat 或 Juice Shop 等路径>`
+  会生成 `benchmark_report_*.json` 和 `quality_matrix_*.json`。质量矩阵按语言及
+  “语言 × 漏洞类型”统计完整 `tests/rules` 样本。
+
+- **严格检测质量门禁**：
+  `python -m pytest -m acceptance tests/test_acceptance_benchmark.py -v`
+  受控规则样本要求总体和每种语言 Recall、Precision、F1 均为 100%，FPR 为 0%。
+  该结果不能替代真实项目 ground-truth 评估。
 
 - **回归扫描**：  
-  `python scripts/run_regression_scan.py`（若脚本存在且配置了目标目录）  
+  `python scripts/benchmark/run_regression_scan.py`（若脚本存在且配置了目标目录）
   用于定期回归，确保已知漏洞仍被检出。
 
 ---

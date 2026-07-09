@@ -61,7 +61,13 @@ from .sql_injection import (
     PythonSQLInjectionAstRule,
     SQLInjectionRegexRule,
 )
-from .ssrf import JavaScriptSSRFAstRule, PythonSSRFAstRule
+from .ssrf import (
+    GoSSRFAstRule,
+    JavaScriptSSRFAstRule,
+    JavaSSRFAstRule,
+    PhpSSRFAstRule,
+    PythonSSRFAstRule,
+)
 from .xss import GoXSSAstRule, JavaScriptXSSAstRule, JavaXSSAstRule, PhpXSSAstRule, PythonXSSAstRule
 
 __all__ = [
@@ -100,6 +106,9 @@ __all__ = [
     "GoOpenRedirectAstRule",
     "PythonSSRFAstRule",
     "JavaScriptSSRFAstRule",
+    "PhpSSRFAstRule",
+    "JavaSSRFAstRule",
+    "GoSSRFAstRule",
     # PHP TaintGraph 规则（旧，保留兼容）
     "PhpSQLInjectionRule",
     "PhpRCERule",

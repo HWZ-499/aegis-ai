@@ -317,6 +317,40 @@ def _subtree_contains_php_user_input(node: Any, context: Any | None = None) -> b
     return False
 
 
+def _php_function_call_name(node: Any) -> str | None:
+    """Return a normalized PHP function name for a function-call AST node."""
+    if node is None or getattr(node, "type", "") != "function_call_expression":
+        return None
+    for child in getattr(node, "children", []):
+        if getattr(child, "type", "") == "name":
+            value = _get_node_text(child).strip().lstrip("\\").lower()
+            return value or None
+    return None
+
+
+def _subtree_contains_unsafe_php_user_input(
+    node: Any,
+    context: Any | None = None,
+    *,
+    sanitizers: frozenset[str] = frozenset(),
+) -> bool:
+    """Check for PHP user input not protected by a recognized sanitizer call."""
+    if node is None:
+        return False
+
+    function_name = _php_function_call_name(node)
+    if function_name is not None and function_name in sanitizers:
+        return False
+
+    if _is_php_user_input_node(node, context):
+        return True
+
+    return any(
+        _subtree_contains_unsafe_php_user_input(child, context, sanitizers=sanitizers)
+        for child in getattr(node, "children", [])
+    )
+
+
 def is_user_input_expr(
     expr_text: str,
     *,
@@ -368,5 +402,6 @@ __all__ = [
     "is_user_input_expr",
     "_is_php_user_input_node",
     "_subtree_contains_php_user_input",
+    "_subtree_contains_unsafe_php_user_input",
     "_PHP_SUPERGLOBALS",
 ]

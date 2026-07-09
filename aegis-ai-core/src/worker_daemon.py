@@ -21,7 +21,10 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO, cast
+
+from src.analysis.languages import AnalysisLanguage, normalize_analysis_language
+from src.analysis.rule_engine import analyze_source
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("aegis.worker_daemon")
@@ -31,60 +34,18 @@ DEFAULT_MAX_REQUESTS = 1000
 DEFAULT_MAX_MEMORY_MB = 500
 DEFAULT_HOST = "127.0.0.1"
 
-_LANGUAGE_BY_EXTENSION = {
-    ".py": "python",
-    ".js": "javascript",
-    ".jsx": "javascript",
-    ".ts": "typescript",
-    ".tsx": "typescript",
-    ".php": "php",
-    ".java": "java",
-    ".go": "go",
-}
 
-_LANGUAGE_ALIASES = {
-    "py": "python",
-    "python": "python",
-    "js": "javascript",
-    "jsx": "javascript",
-    "javascript": "javascript",
-    "ts": "typescript",
-    "tsx": "typescript",
-    "typescript": "typescript",
-    "php": "php",
-    "java": "java",
-    "go": "go",
-    "golang": "go",
-}
+def _normalize_language(file_path: str, language: str | None) -> AnalysisLanguage | None:
+    return cast(AnalysisLanguage | None, normalize_analysis_language(language, file_path))
 
 
-def _normalize_language(file_path: str, language: str | None) -> str | None:
-    raw = (language or "").strip().lower()
-    if raw in _LANGUAGE_ALIASES:
-        return _LANGUAGE_ALIASES[raw]
-    return _LANGUAGE_BY_EXTENSION.get(Path(file_path).suffix.lower())
-
-
-def run_scan(file_path: str, content: str, language: str) -> list:
+def run_scan(file_path: str, content: str, language: str) -> list[dict[str, Any]]:
     """执行单文件扫描，返回 finding 列表。"""
-    from src.analysis.rule_engine import analyze_go, analyze_java, analyze_javascript, analyze_php, analyze_python
-
     path = Path(file_path)
     normalized_language = _normalize_language(file_path, language)
     if normalized_language is None:
         return []
-
-    if normalized_language == "python":
-        return analyze_python(content, path)
-    if normalized_language in ("javascript", "typescript"):
-        return analyze_javascript(content, path, language=normalized_language)
-    if normalized_language == "php":
-        return analyze_php(content, path)
-    if normalized_language == "java":
-        return analyze_java(content, path)
-    if normalized_language == "go":
-        return analyze_go(content, path)
-    return []
+    return cast(list[dict[str, Any]], analyze_source(content, path, language=normalized_language))
 
 
 def format_startup_message(host: str, port: int) -> str:

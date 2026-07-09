@@ -64,8 +64,9 @@ def test_rule_only_audit_report():
 
     assert len(report) > 0, "Report should be non-empty"
     assert result["total_count"] > 0, "Should detect issues"
-    assert result["ast_count"] >= 0, "ast_count should be present"
-    assert result["regex_count"] >= 0, "regex_count should be present"
+    assert result["rule_count"] == result["total_count"]
+    assert result["ast_count"] == result["total_count"]
+    assert result["regex_count"] == 0
 
 
 if __name__ == "__main__":

@@ -40,6 +40,7 @@ import {
 import { findAegisCommentBlock } from "./commentCommands";
 import { showReport } from "./reportWebview";
 import { FixPreviewProvider } from "./fixPreviewProvider";
+import { ScanFailureState, scanFailureViewMessage } from "./scanFailureState";
 import { showTaintPathPanel, disposeTaintPathPanel, TaintPathData } from "./taintPathWebview";
 import { ensureBackendLaunch } from "./backendBootstrap";
 import {
@@ -70,6 +71,9 @@ let statusBar: StatusBarItem | undefined;
 
 /** @type {Disposable | undefined} Diagnostics change listener */
 let diagnosticsListener: Disposable | undefined;
+
+/** Scan failures are separate from diagnostics because failures clear stale diagnostics. */
+const scanFailures = new ScanFailureState();
 
 /** Workspace scan progress reporter and completion callback */
 let workspaceProgressReporter: { report: (p: { message?: string; increment?: number }) => void } | null = null;
@@ -161,7 +165,7 @@ function codeForLineReplacement(
  * @param {AegisStatus} status - Current status
  * @param {number} [issueCount] - Issue count (only used for `issues` status)
  */
-function updateStatusBar(status: AegisStatus, issueCount?: number): void {
+function updateStatusBar(status: AegisStatus, issueCount?: number, failureMessage?: string): void {
   if (!statusBar) return;
 
   switch (status) {
@@ -193,8 +197,8 @@ function updateStatusBar(status: AegisStatus, issueCount?: number): void {
       statusBar.backgroundColor = undefined;
       break;
     case "error":
-      statusBar.text = "$(error) Aegis: Error";
-      statusBar.tooltip = "Aegis AI scan error — click to view logs";
+      statusBar.text = "$(error) Aegis: Scan failed";
+      statusBar.tooltip = `Aegis AI could not scan this file: ${failureMessage ?? "unknown error"}\n\nClick to open Aegis logs.`;
       statusBar.command = "aegisAI.showOutput";
       statusBar.backgroundColor = undefined;
       break;
@@ -213,6 +217,11 @@ function refreshStatusBarFromDiagnostics(): void {
   }
 
   const uri: Uri = activeEditor.document.uri;
+  const scanFailure = scanFailures.getForUri(uri.toString());
+  if (scanFailure) {
+    updateStatusBar("error", undefined, scanFailure);
+    return;
+  }
   const allDiags = languages.getDiagnostics(uri);
   // Only count diagnostics from Aegis AI source
   const aegisDiags = allDiags.filter(
@@ -271,6 +280,12 @@ export async function activate(context: ExtensionContext): Promise<void> {
     showCollapseAll: true,
   });
   context.subscriptions.push(treeView);
+
+  const refreshFindingsFailureMessage = (): void => {
+    const activeUri = window.activeTextEditor?.document.uri.toString();
+    const scanFailure = scanFailures.getForUri(activeUri);
+    treeView.message = scanFailure ? scanFailureViewMessage(scanFailure) : undefined;
+  };
 
   const workspaceRoot = workspace.workspaceFolders?.[0]?.uri.fsPath;
   const baselineProvider = new BaselineTreeProvider(workspaceRoot);
@@ -853,14 +868,18 @@ export async function activate(context: ExtensionContext): Promise<void> {
       window.showInformationMessage("Aegis AI Security Scanner is now active.");
 
       // ── Listen for custom LSP notification: scan start ───────────────────────────────
-      client!.onNotification(NOTIFICATION_SCAN_START, () => {
+      client!.onNotification(NOTIFICATION_SCAN_START, (params: { uri?: string }) => {
+        scanFailures.clearForScan(params?.uri);
+        refreshFindingsFailureMessage();
         updateStatusBar("scanning");
       });
 
       // ── Listen for custom LSP notification: scan end ─────────────────────────────────
       client!.onNotification(
         NOTIFICATION_SCAN_END,
-        (params: { issueCount?: number }) => {
+        (params: { uri?: string; issueCount?: number }) => {
+          scanFailures.clearForScan(params?.uri);
+          refreshFindingsFailureMessage();
           if (typeof params?.issueCount === "number") {
             if (params.issueCount > 0) {
               updateStatusBar("issues", params.issueCount);
@@ -878,9 +897,11 @@ export async function activate(context: ExtensionContext): Promise<void> {
       client!.onNotification(
         NOTIFICATION_SCAN_ERROR,
         (params: { uri?: string; message?: string }) => {
-          updateStatusBar("error");
+          const failureMessage = scanFailures.record(params ?? {});
+          refreshFindingsFailureMessage();
+          updateStatusBar("error", undefined, failureMessage);
           outputChannel.appendLine(
-            `[Aegis] Scan error: ${params?.message ?? "unknown"} (${params?.uri ?? ""})`
+            `[Aegis] Scan error: ${failureMessage} (${params?.uri ?? ""})`
           );
         }
       );
@@ -906,6 +927,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       // ── Refresh status bar when active editor changes ──────────────────────
       context.subscriptions.push(
         window.onDidChangeActiveTextEditor(() => {
+          refreshFindingsFailureMessage();
           refreshStatusBarFromDiagnostics();
         })
       );

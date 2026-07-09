@@ -9,6 +9,7 @@ test_lsp_server.py - Aegis AI LSP Server 单元测试
 5. 含漏洞文件正确产生 Diagnostic
 """
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,7 @@ from src.lsp import server as lsp_server
 from src.lsp.server import (
     SEVERITY_MAP,
     WorkspaceContext,
+    _coerce_payload,
     _discover_workspace_scan_files,
     _find_aegis_comment_block,
     _get_remediation_for_rule,
@@ -256,6 +258,24 @@ class TestUriToFilepath:
         uri = "file:///home/user/my%20project/app.js"
         result = uri_to_filepath(uri)
         assert result == "/home/user/my project/app.js"
+
+
+class TestPayloadCoercion:
+    """自定义 LSP payload 转换失败时应可观测。"""
+
+    def test_bad_payload_object_logs_degradation(self, caplog: pytest.LogCaptureFixture) -> None:
+        class BadPayload:
+            __slots__ = ()
+
+            @property
+            def items(self):
+                raise RuntimeError("items failed")
+
+        caplog.set_level(logging.DEBUG, logger=lsp_server.__name__)
+
+        assert _coerce_payload(BadPayload()) == {}
+        assert "lsp_payload_coerce_degraded stage=items" in caplog.text
+        assert "lsp_payload_coerce_degraded stage=vars" in caplog.text
 
 
 # ============================================================================
@@ -643,3 +663,35 @@ class TestBaselineCommand:
 
         assert baseline_path.read_text(encoding="utf-8") == "{ not valid json"
         assert any("Cannot update baseline" in message for message in messages)
+
+    def test_add_to_baseline_logs_refresh_degradation(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        project_root = tmp_path
+        target = project_root / "app.js"
+        target.write_text('const apiKey = "sk-test";\n', encoding="utf-8")
+        monkeypatch.setattr(lsp_server._workspace_ctx, "_project_path", str(project_root))
+
+        server = lsp_server.create_server()
+        caplog.set_level(logging.DEBUG, logger=lsp_server.__name__)
+        handler = server.protocol.fm.commands["aegis.addToBaseline"]
+        params = lsp.ExecuteCommandParams(
+            command="aegis.addToBaseline",
+            arguments=[
+                {
+                    "uri": target.as_uri(),
+                    "rule_id": "HARDCODED_CREDENTIALS",
+                    "line": 1,
+                    "message": "hardcoded credential",
+                }
+            ],
+        )
+
+        args, kwargs = _prepare_command_arguments(handler, params, server.protocol._converter)
+        handler(*args, **kwargs)
+
+        assert "baseline_refresh_degraded" in caplog.text
+        assert "RuntimeError" in caplog.text

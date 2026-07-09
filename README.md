@@ -19,7 +19,7 @@
 <p align="center">
   <a href="https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml"><img alt="Security Scan" src="https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml/badge.svg"></a>
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-2563eb">
-  <img alt="VS Code 0.6.1" src="https://img.shields.io/badge/VS%20Code-0.6.1-16a34a">
+  <img alt="VS Code 0.6.7" src="https://img.shields.io/badge/VS%20Code-0.6.7-16a34a">
   <img alt="License MIT" src="https://img.shields.io/badge/License-MIT-111827">
 </p>
 
@@ -41,7 +41,7 @@ Aegis AI catches common application security issues while you write code. It run
 |---|---|
 | JavaScript / TypeScript | AST rules, taint-aware checks, IDE and CLI support |
 | Python | AST rules, framework-aware sources and sinks, IDE and CLI support |
-| PHP | AST rules plus focused supplemental checks for legacy PHP patterns |
+| PHP | Tree-sitter AST rules and taint-aware checks |
 | Java / Go | Core multi-language rule support |
 | C / C++ | Basic scan path support; not yet full AST or taint coverage |
 

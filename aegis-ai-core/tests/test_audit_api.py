@@ -2,6 +2,7 @@
 """直接测试审计函数，不通过 HTTP，定位错误"""
 
 import os
+from typing import NoReturn
 
 import pytest
 
@@ -32,6 +33,31 @@ def test_rule_only_audit():
 
     assert len(result["report"]) > 0, "Report should be non-empty"
     assert result["total_count"] > 0, "Should detect at least one issue"
+    assert result["rule_count"] == result["total_count"]
+    assert result["ast_count"] == result["total_count"]
+    assert result["regex_count"] == 0
+
+
+def test_rule_only_audit_does_not_call_legacy_engines(monkeypatch: pytest.MonkeyPatch):
+    """The deprecated report bridge must still use the production analysis path."""
+
+    def fail_legacy_call(*_args: object, **_kwargs: object) -> NoReturn:
+        raise AssertionError("legacy analysis path must not be called")
+
+    monkeypatch.setattr("src.analysis.rule_engine.analyze_code_ast", fail_legacy_call)
+    monkeypatch.setattr("src.analysis.rule_engine.scan_code_locally", fail_legacy_call)
+
+    result = audit_code_with_rules_only(_test_code, "test_vulnerable_code.py")
+
+    assert result["total_count"] > 0
+    assert all(finding["source"] != "Regex" for finding in result["findings"])
+
+
+def test_rule_only_audit_keeps_extensionless_python_compatibility():
+    result = audit_code_with_rules_only(_test_code)
+
+    assert result["total_count"] > 0
+    assert result["regex_count"] == 0
 
 
 def test_severity_stats():

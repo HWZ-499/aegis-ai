@@ -1,17 +1,18 @@
 # rule_based_audit.py - 纯规则审计引擎（不依赖 AI）
 """
 .. deprecated:: 1.2.0
-    此模块为旧版审计桥接层，依赖 ``ast_analyzer`` 和 ``security_rules``。
+    此模块为旧版报告桥接层。
     新代码请使用 ``rule_engine.py``。计划在 v1.5 中移除。
 
-纯规则审计引擎：结合 AST 分析和正则规则，不依赖外部 AI API。
+纯规则审计引擎：通过统一生产规则入口分析代码，不依赖外部 AI API。
 即使 AI 不可用，也能给出基础的安全审计报告。
 """
 
 import logging
+from pathlib import Path
 from typing import Any
 
-from src.analysis.rule_engine import analyze_code_ast, scan_code_locally
+from src.analysis.rule_engine import analyze_source
 
 logger = logging.getLogger("aegis")
 
@@ -120,8 +121,7 @@ def generate_rule_based_report(findings: list[dict], code_text: str, filename: s
 未发现明显的安全漏洞。
 
 **说明**: 
-- AST 静态分析：未发现高危函数调用
-- 正则规则扫描：未发现已知漏洞模式
+- 统一静态分析规则：未发现已知漏洞模式
 
 **建议**: 
 虽然未发现明显漏洞，但建议：
@@ -139,7 +139,7 @@ def generate_rule_based_report(findings: list[dict], code_text: str, filename: s
     report = f"""# 代码安全审计报告
 
 **文件**: `{filename}`  
-**检测方法**: AST 静态分析 + 正则规则扫描  
+**检测方法**: Aegis 统一规则引擎
 **检测时间**: {__import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 ---
@@ -219,7 +219,7 @@ def generate_rule_based_report(findings: list[dict], code_text: str, filename: s
 
 ## ⚠️ 注意事项
 
-本报告基于**静态分析**（AST + 正则规则），存在以下限制：
+本报告基于**静态分析规则**，存在以下限制：
 
 1. **无法检测逻辑漏洞**：如越权访问、业务逻辑错误
 2. **无法检测运行时问题**：如竞态条件、内存泄漏
@@ -249,25 +249,28 @@ def audit_code_with_rules_only(code_text: str, filename: str = "unknown") -> dic
     """
     logger.info("开始纯规则审计", extra={"filename": filename})
 
-    # 1. AST 分析
-    ast_findings = analyze_code_ast(code_text)
-    logger.info("AST 分析完成", extra={"findings_count": len(ast_findings)})
+    # The historical default treated extensionless input as Python. Preserve
+    # that behavior while allowing real filenames to use canonical dispatch.
+    language = "python" if not Path(filename).suffix else None
+    findings = analyze_source(code_text, filename, language=language)
+    normalized_findings = [
+        {
+            **finding,
+            "source": finding.get("source", "RuleEngine"),
+        }
+        for finding in findings
+    ]
+    logger.info("统一规则分析完成", extra={"findings_count": len(normalized_findings)})
 
-    # 2. 正则规则扫描（传递文件名用于语言检测）
-    regex_findings = scan_code_locally(code_text, file_path=filename)
-    logger.info("正则规则扫描完成", extra={"findings_count": len(regex_findings)})
-
-    # 3. 合并结果
-    merged_findings = merge_findings(ast_findings, regex_findings)
-    logger.info("结果合并完成", extra={"total_findings": len(merged_findings)})
-
-    # 4. 生成报告
-    report = generate_rule_based_report(merged_findings, code_text, filename)
+    report = generate_rule_based_report(normalized_findings, code_text, filename)
 
     return {
-        "findings": merged_findings,
+        "findings": normalized_findings,
         "report": report,
-        "ast_count": len(ast_findings),
-        "regex_count": len(regex_findings),
-        "total_count": len(merged_findings),
+        "rule_count": len(normalized_findings),
+        # Deprecated compatibility counters. The bridge now has one canonical
+        # rule-engine path and no longer invokes the legacy regex scanner.
+        "ast_count": len(normalized_findings),
+        "regex_count": 0,
+        "total_count": len(normalized_findings),
     }

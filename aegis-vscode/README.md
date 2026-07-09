@@ -15,8 +15,8 @@ Supports: **JavaScript / TypeScript / Python / PHP / Java / Go / C/C++ basic sca
 | 状态 | 当前能力 |
 |------|----------|
 | **已支持** | 实时单文件诊断、Problems / 树视图、baseline 视图、AI 精准修复、示例修复、注释建议 |
-| **实验性** | 跨文件依赖图、suppressed findings 侧栏展示、custom / Ollama provider 工作流 |
-| **规划中** | 默认启用的跨文件污点传播、更完整的多 IDE 打包与 smoke E2E |
+| **实验性** | 一跳跨文件参数 → Sink 污点传播、suppressed findings 侧栏展示、custom / Ollama provider 工作流 |
+| **规划中** | 跨文件返回值/重导出/多跳传播、更完整的多 IDE 打包与 smoke E2E |
 
 ## Installation
 
@@ -138,7 +138,7 @@ Suppressed findings can be inspected in the **Suppressed Findings** view after e
 | `aegisAI.serverCwd` | `` | Advanced/development override for local `aegis-ai-core`; leave blank for bundled backend |
 | `aegisAI.serverModule` | `src.lsp` | Python module path for the LSP server |
 | `aegisAI.scan.exclude` | `["**/node_modules/**", ...]` | Glob patterns excluded from scanning |
-| `aegisAI.experimental.crossFileAnalysis` | `false` | Enable experimental cross-file dependency graph analysis |
+| `aegisAI.experimental.crossFileAnalysis` | `false` | Enable experimental one-hop cross-file parameter-to-sink taint analysis |
 | `aegisAI.showSuppressedFindings` | `false` | Show `.aegis-baseline.json` entries in the sidebar |
 
 ---

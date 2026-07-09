@@ -6,9 +6,12 @@
 import logging
 import os
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from threading import Lock
 from typing import Any, cast
 
 logger = logging.getLogger(__name__)
@@ -22,27 +25,14 @@ _project_root = _current_dir.parent.parent.parent  # aegis-ai-core
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from src.analysis.multi_language_ast import analyze_code_multi_language
-from src.analysis.rule_based_audit import merge_findings
-from src.analysis.rule_engine import (
-    analyze_c_cpp as analyze_c_cpp_new,
+from src.analysis.dsl import load_dsl_rule_definitions
+from src.analysis.dsl.rule_schema import DslRule
+from src.analysis.languages import (
+    FULL_SUPPORT_EXTENSION_LANGUAGE_MAP,
+    PARTIAL_SUPPORT_EXTENSION_LANGUAGE_MAP,
 )
-from src.analysis.rule_engine import analyze_code_ast, scan_code_locally
-from src.analysis.rule_engine import (
-    analyze_go as analyze_go_new,
-)
-from src.analysis.rule_engine import (
-    analyze_java as analyze_java_new,
-)
-from src.analysis.rule_engine import (
-    analyze_javascript as analyze_javascript_new,
-)
-from src.analysis.rule_engine import (
-    analyze_php as analyze_php_new,
-)
-from src.analysis.rule_engine import (
-    analyze_python as analyze_python_new,
-)
+from src.analysis.rule_engine import analyze_source
+from src.core.file_metadata import get_file_size
 from src.scanner.false_positive_manager import InlineSuppressor
 from src.scanner.performance_optimizer import PerformanceOptimizer
 
@@ -73,7 +63,9 @@ class ScanExecutionSummary:
             self.files_with_issues += 1
             self.total_issues += len(findings)
 
-    def note_cross_file_finding(self) -> None:
+    def note_cross_file_finding(self, *, new_file_with_issue: bool = False) -> None:
+        if new_file_with_issue:
+            self.files_with_issues += 1
         self.total_issues += 1
 
     def note_scan_error(self, file_path: str, message: str, phase: str = "scan") -> None:
@@ -124,6 +116,7 @@ class ProjectScanner:
         max_workers: int | None = None,
         engine: str = "new",
         extra_rule_dirs: list[Path] | list[str] | None = None,
+        use_cross_file: bool = False,
     ):
         """
         初始化项目扫描器
@@ -134,10 +127,9 @@ class ProjectScanner:
             use_cache: 是否使用缓存（默认 True）
             use_parallel: 是否使用并行处理（默认 True）
             max_workers: 最大工作线程/进程数（默认 CPU 核心数）
-            engine: 扫描引擎类型：
-                - "new":    新规则引擎（AST + 污点分析，Python/JS/TS 完整支持，默认）
-                - "legacy": 旧版引擎（ast_analyzer + security_rules，兼容保留）
+            engine: 兼容参数；当前仅接受 ``"new"``。
             extra_rule_dirs: 额外 DSL 规则目录（如 .aegis/rules），须在 project_path 下。
+            use_cross_file: 是否启用 JS/TS/Python 跨文件参数污点传播。
         """
         self.project_path = Path(project_path).resolve()
         if not self.project_path.exists():
@@ -151,16 +143,22 @@ class ProjectScanner:
         if default_rules_dir.is_dir():
             self._add_extra_rule_dir(default_rules_dir)
 
-        # 扫描引擎类型
-        self.engine = engine if engine in ("legacy", "new") else "new"
+        if engine != "new":
+            raise ValueError("legacy scan engine has been removed; use engine='new'")
 
         # 性能优化选项
         self.use_cache = use_cache
         self.use_parallel = use_parallel
         self.max_workers = max_workers
+        self.use_cross_file = use_cross_file
         self.scan_results: ScanResults = {}
         self.scan_stats: ScanStats = ScanStats()
+        self._cross_file_stats: dict[str, Any] = {}
         self._failed_scan_files: set[Path] = set()
+        self._scan_state_lock = Lock()
+        self._scan_session_lock = Lock()
+        self._dsl_rule_definitions: dict[str, tuple[DslRule, ...]] | None = None
+        self._source_snapshot: dict[Path, str] = {}
 
         # 初始化性能优化器
         self.optimizer: PerformanceOptimizer | None
@@ -182,27 +180,8 @@ class ProjectScanner:
         # 基础支持（仅正则匹配）：C/C++，无专用 AST 规则，误报率较高
         # 未支持：Rust、Swift、Kotlin、C# 等无规则语言已不列入
         # ──────────────────────────────────────────────
-        self._full_support = {
-            ".py": "python",
-            ".pyw": "python",
-            ".js": "javascript",
-            ".jsx": "javascript",
-            ".mjs": "javascript",
-            ".cjs": "javascript",
-            ".ts": "typescript",
-            ".tsx": "typescript",
-            ".php": "php",  # PhpTaintGraph 污点分析（SQLi/XSS/RCE/OPEN_REDIRECT）
-            ".java": "java",  # Java AST + TaintAnalyzer + 规则引擎
-            ".go": "go",  # Go AST + TaintAnalyzer + 规则引擎
-        }
-        self._partial_support = {
-            ".c": "c",
-            ".cpp": "cpp",
-            ".cc": "cpp",
-            ".cxx": "cpp",
-            ".h": "c",
-            ".hpp": "cpp",
-        }
+        self._full_support = dict(FULL_SUPPORT_EXTENSION_LANGUAGE_MAP)
+        self._partial_support = dict(PARTIAL_SUPPORT_EXTENSION_LANGUAGE_MAP)
         self.supported_extensions = {**self._full_support, **self._partial_support}
         self._init_ignore_and_excluded(ignore_patterns)
 
@@ -230,6 +209,31 @@ class ProjectScanner:
         self.scan_results = {}
         self.scan_stats = ScanStats()
         self._failed_scan_files = set()
+        self._source_snapshot = {}
+        self._cross_file_stats = {}
+
+    @contextmanager
+    def scan_session(self) -> Iterator[None]:
+        """
+        Own one top-level scan lifecycle.
+
+        Per-scan state and rule snapshots are always released on exit. Persistent
+        disk caches and shared parser caches intentionally outlive this context.
+        """
+        with self._scan_session_lock:
+            self._reset_scan_state()
+            self._dsl_rule_definitions = load_dsl_rule_definitions(
+                extra_dirs=self._extra_rule_dirs,
+                allowed_root=self.project_path,
+            )
+            started_at = datetime.now()
+            try:
+                yield
+            finally:
+                if self.scan_stats.execution.scan_time is None:
+                    self.scan_stats.execution.scan_time = (datetime.now() - started_at).total_seconds()
+                self._source_snapshot = {}
+                self._dsl_rule_definitions = None
 
     def get_support_level(self, ext: str) -> str | None:
         """
@@ -446,17 +450,19 @@ class ProjectScanner:
                         )
                     )
                     continue
-                try:
-                    if file_path.stat().st_size > MAX_FILE_SIZE_BYTES:
-                        skipped.append(
-                            (
-                                rel_path,
-                                f"文件过大 ({file_path.stat().st_size / 1024 / 1024:.1f} MB > 2 MB)",
-                            )
+                file_size = get_file_size(
+                    file_path,
+                    logger=logger,
+                    component="project_discovery",
+                )
+                if file_size is not None and file_size > MAX_FILE_SIZE_BYTES:
+                    skipped.append(
+                        (
+                            rel_path,
+                            f"文件过大 ({file_size / 1024 / 1024:.1f} MB > 2 MB)",
                         )
-                        continue
-                except OSError:
-                    pass
+                    )
+                    continue
                 code_files.append(file_path)
 
         return code_files, skipped
@@ -483,66 +489,26 @@ class ProjectScanner:
         """
         try:
             # 读取文件内容
-            with open(file_path, encoding="utf-8", errors="ignore") as f:
-                code = f.read()
+            code = self._read_source_file(file_path)
 
             # 检测语言
             language = self.supported_extensions.get(file_path.suffix, "unknown")
+            if self.use_cross_file and language in {"python", "javascript", "typescript"}:
+                with self._scan_state_lock:
+                    self._source_snapshot[file_path.resolve()] = code
 
             # 执行检测（支持多语言）
             file_path_str = str(file_path)
             extra = self._extra_rule_dirs or None
             root = self.project_path
-            if language == "python" and self.engine == "new":
-                merged_findings = analyze_python_new(
-                    code,
-                    file_path_str,
-                    extra_rule_dirs=extra,
-                    rules_allowed_root=root,
-                )
-            elif language in ("javascript", "typescript") and self.engine == "new":
-                merged_findings = analyze_javascript_new(
-                    code,
-                    file_path_str,
-                    language=language,
-                    extra_rule_dirs=extra,
-                    rules_allowed_root=root,
-                )
-            elif language == "php" and self.engine == "new":
-                merged_findings = analyze_php_new(
-                    code,
-                    file_path_str,
-                    extra_rule_dirs=extra,
-                    rules_allowed_root=root,
-                )
-            elif language == "java" and self.engine == "new":
-                merged_findings = analyze_java_new(
-                    code,
-                    file_path_str,
-                    extra_rule_dirs=extra,
-                    rules_allowed_root=root,
-                )
-            elif language == "go" and self.engine == "new":
-                merged_findings = analyze_go_new(
-                    code,
-                    file_path_str,
-                    extra_rule_dirs=extra,
-                    rules_allowed_root=root,
-                )
-            elif language in ("c", "cpp"):
-                merged_findings = analyze_c_cpp_new(code, file_path_str)
-            else:
-                if language == "python":
-                    # 旧版 Python 引擎：AST 分析 + 本地规则匹配
-                    ast_findings = analyze_code_ast(code)
-                    regex_findings = scan_code_locally(code, file_path=file_path_str)
-                    merged_findings = merge_findings(ast_findings, regex_findings)
-                else:
-                    # 其他语言: 使用多语言分析器 + 通用规则
-                    multi_lang_findings = analyze_code_multi_language(code, file_path_str)
-                    regex_findings = scan_code_locally(code, file_path=file_path_str)
-                    # 合并结果（去重）
-                    merged_findings = merge_findings(multi_lang_findings, regex_findings)
+            merged_findings = analyze_source(
+                code,
+                file_path_str,
+                language=language,
+                extra_rule_dirs=extra,
+                rules_allowed_root=root,
+                dsl_rule_definitions=self._dsl_rule_definitions,
+            )
 
             # 添加文件信息
             for finding in merged_findings:
@@ -559,9 +525,17 @@ class ProjectScanner:
 
         except (OSError, UnicodeDecodeError, RuntimeError) as e:
             logger.warning("扫描文件失败 %s: %s", file_path, e)
-            self._failed_scan_files.add(file_path.resolve())
-            self.scan_stats.execution.note_scan_error(self._to_relative(str(file_path)), str(e))
+            with self._scan_state_lock:
+                self._failed_scan_files.add(file_path.resolve())
+                self.scan_stats.execution.note_scan_error(self._to_relative(str(file_path)), str(e))
             return []
+
+    @staticmethod
+    def _read_source_file(file_path: Path) -> str:
+        """Read UTF-8 source efficiently while preserving universal-newline semantics."""
+        with open(file_path, "rb") as source_file:
+            code = source_file.read().decode("utf-8", errors="ignore")
+        return code.replace("\r\n", "\n").replace("\r", "\n")
 
     def scan_project(self, verbose: bool = False) -> ScanResults:
         """
@@ -573,7 +547,11 @@ class ProjectScanner:
         Returns:
             扫描结果字典，key 为文件路径，value 为问题列表
         """
-        self._reset_scan_state()
+        with self.scan_session():
+            return self._scan_project_impl(verbose)
+
+    def _scan_project_impl(self, verbose: bool = False) -> ScanResults:
+        """Execute a project scan inside an active ``scan_session``."""
         start_time = datetime.now()
 
         if verbose:
@@ -614,7 +592,6 @@ class ProjectScanner:
                 project_path=self.project_path,
                 supported_extensions=self.supported_extensions,
                 progress_callback=progress_callback if verbose else None,
-                engine=self.engine,  # 【修复】传递引擎类型
                 should_cache_result=lambda file_path, _findings: not self._scan_file_failed(file_path),
             )
 
@@ -636,19 +613,8 @@ class ProjectScanner:
                     relative_path = str(file_path.relative_to(self.project_path))
                     self.scan_results[relative_path] = findings
 
-        # ── 跨文件污点传播分析（仅新引擎 + JS/TS/Python 项目） ──
-        if self.engine == "new":
-            cross_file_findings = self._run_cross_file_analysis(verbose=verbose)
-            for finding in cross_file_findings:
-                target_file = finding.get("file")
-                if not isinstance(target_file, str) or not target_file:
-                    continue
-                if target_file not in self.scan_results:
-                    self.scan_results[target_file] = []
-                self.scan_results[target_file].append(finding)
-                self.scan_stats.execution.note_cross_file_finding()
-            if cross_file_findings and verbose:
-                logger.info("跨文件分析发现 %d 个额外污点路径", len(cross_file_findings))
+        if self.use_cross_file:
+            self._merge_cross_file_findings(code_files, verbose=verbose)
 
         # 计算扫描时间
         end_time = datetime.now()
@@ -667,18 +633,70 @@ class ProjectScanner:
 
         return self.scan_results
 
+    def _merge_cross_file_findings(self, code_files: list[Path], verbose: bool = False) -> None:
+        """Build the per-scan source snapshot and merge cross-file findings."""
+        for file_path in code_files:
+            if file_path.suffix.lower() not in {
+                ".py",
+                ".pyw",
+                ".js",
+                ".jsx",
+                ".mjs",
+                ".cjs",
+                ".ts",
+                ".tsx",
+            }:
+                continue
+            resolved = file_path.resolve()
+            if resolved not in self._source_snapshot:
+                try:
+                    self._source_snapshot[resolved] = self._read_source_file(file_path)
+                except (OSError, UnicodeDecodeError):
+                    continue
+
+        cross_file_findings = self._run_cross_file_analysis(verbose=verbose)
+        for finding in cross_file_findings:
+            target_file = finding.get("file")
+            if not isinstance(target_file, str) or not target_file:
+                continue
+            existing_findings = self.scan_results.setdefault(target_file, [])
+            duplicate = next(
+                (
+                    existing
+                    for existing in existing_findings
+                    if existing.get("rule_id") == finding.get("rule_id")
+                    and existing.get("type") == finding.get("type")
+                    and existing.get("line") == finding.get("line")
+                ),
+                None,
+            )
+            if duplicate is not None:
+                duplicate_related = duplicate.setdefault("related_locations", [])
+                for location in finding.get("related_locations") or []:
+                    if location not in duplicate_related:
+                        duplicate_related.append(location)
+                duplicate["cross_file"] = True
+                duplicate["taint_path"] = finding.get("taint_path")
+                continue
+            new_file_with_issue = not existing_findings
+            self.scan_results[target_file].append(finding)
+            self.scan_stats.execution.note_cross_file_finding(
+                new_file_with_issue=new_file_with_issue,
+            )
+        if cross_file_findings and verbose:
+            logger.info("跨文件分析发现 %d 个额外污点路径", len(cross_file_findings))
+
     def _run_cross_file_analysis(self, verbose: bool = False) -> list[dict]:
         """
         运行跨文件依赖图分析。
 
-        构建模块导入/导出依赖图，用于理解项目结构。
-        当前不产出 findings（跨文件污点追踪尚未实现）。
+        构建模块导入/导出依赖图，并根据导出函数参数摘要产出 findings。
 
         Args:
             verbose: 是否打印详细日志
 
         Returns:
-            空列表（保留接口供未来跨文件污点分析使用）
+            跨文件 finding 列表。
         """
         try:
             from src.analysis.taint import CrossFileAnalyzer
@@ -690,19 +708,27 @@ class ProjectScanner:
             if verbose:
                 logger.info("开始跨文件依赖图分析...")
 
-            cross_analyzer = CrossFileAnalyzer(self.project_path)
+            cross_analyzer = CrossFileAnalyzer(
+                self.project_path,
+                source_snapshot=self._source_snapshot,
+            )
             cross_analyzer.scan_project()
 
             stats = cross_analyzer.get_stats()
+            self._cross_file_stats = {
+                "enabled": True,
+                **stats,
+            }
             logger.debug(
-                "跨文件分析：%d 个文件，%d 个导出，%d 个导入，%d 条依赖边",
+                "跨文件分析：%d 个文件，%d 个导出，%d 个导入，%d 条依赖边，%d 个发现",
                 stats.get("files_analyzed", 0),
                 stats.get("total_exports", 0),
                 stats.get("total_imports", 0),
                 stats.get("dependency_edges", 0),
+                stats.get("cross_file_findings", 0),
             )
 
-            return []
+            return cast(list[dict[str, Any]], cross_analyzer.get_findings())
 
         except (OSError, UnicodeDecodeError, RuntimeError) as e:
             logger.warning("跨文件依赖图分析失败: %s", e)
@@ -733,7 +759,10 @@ class ProjectScanner:
                 severity = finding.get("severity", "Medium")
                 severity_stats[severity] = severity_stats.get(severity, 0) + 1
 
-        return self.scan_stats.to_dict(severity_stats)
+        stats = self.scan_stats.to_dict(severity_stats)
+        if self._cross_file_stats:
+            stats["cross_file_analysis"] = dict(self._cross_file_stats)
+        return stats
 
 
 if __name__ == "__main__":

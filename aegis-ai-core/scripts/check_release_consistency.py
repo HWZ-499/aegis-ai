@@ -164,6 +164,9 @@ def validate_repo_consistency(repo_root: Path) -> list[str]:
     if extension_metadata["version"] and extension_metadata["version"] not in extension_readme:
         errors.append(f"Extension README must mention the packaged extension version {extension_metadata['version']}.")
 
+    if extension_metadata["version"] and extension_metadata["version"] not in root_readme:
+        errors.append(f"Root README must mention the packaged extension version {extension_metadata['version']}.")
+
     src_root = repo_root / "aegis-ai-core" / "src"
     for directory_ref in _extract_src_directory_refs(src_readme):
         if not (src_root / directory_ref.rstrip("/")).is_dir():

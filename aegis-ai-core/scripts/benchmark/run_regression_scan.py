@@ -21,21 +21,22 @@
 import argparse
 import os
 import sys
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.scanner.benchmark import run_benchmark, run_and_save_report
+from src.scanner.benchmark import run_and_save_report
 from src.scanner.report_generator import ReportGenerator
 
 
-def _scan_project_and_stats(project_path: Path, engine: str = "new", use_cache: bool = True) -> tuple[dict, dict, dict]:
+def _scan_project_and_stats(project_path: Path, use_cache: bool = True) -> tuple[dict, dict, dict]:
     """对项目全量扫描，返回 (按类型统计, results 字典, stats)。"""
     from src.scanner.project_scanner import ProjectScanner
-    scanner = ProjectScanner(str(project_path), engine=engine, use_cache=use_cache)
+
+    scanner = ProjectScanner(str(project_path), use_cache=use_cache)
     results = scanner.scan_project(verbose=False)
     stats = scanner.get_stats()
     all_findings = []

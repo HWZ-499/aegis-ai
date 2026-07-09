@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
@@ -136,3 +137,97 @@ def test_cross_file_analyzer_preserves_python_absolute_search_paths(tmp_path) ->
 
     entry_info = analyzer.get_module_info(str(entry))
     assert str(utils) in entry_info["dependencies"]
+
+
+def test_cross_file_analyzer_reuses_project_source_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    js_file = tmp_path / "app.js"
+    py_file = tmp_path / "service.py"
+    js_source = "export const value = 1;\n"
+    py_source = "def public_api():\n    return 1\n"
+    js_file.write_text(js_source, encoding="utf-8")
+    py_file.write_text(py_source, encoding="utf-8")
+
+    analyzer = CrossFileAnalyzer(
+        tmp_path,
+        source_snapshot={
+            js_file.resolve(): js_source,
+            py_file.resolve(): py_source,
+        },
+    )
+
+    def fail_disk_read(*args, **kwargs):
+        raise AssertionError("source snapshot should avoid disk reads")
+
+    monkeypatch.setattr(Path, "read_text", fail_disk_read)
+
+    analyzer.scan_project()
+
+    assert analyzer.get_stats()["files_analyzed"] == 2
+
+
+def test_cross_file_module_resolution_uses_project_file_index(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package = tmp_path / "pkg"
+    package.mkdir()
+    module = package / "module.py"
+    importer = tmp_path / "main.py"
+    module_source = "value = 1\n"
+    importer_source = "from pkg.module import value\n"
+    module.write_text(module_source, encoding="utf-8")
+    importer.write_text(importer_source, encoding="utf-8")
+
+    analyzer = CrossFileAnalyzer(
+        tmp_path,
+        source_snapshot={
+            module.resolve(): module_source,
+            importer.resolve(): importer_source,
+        },
+    )
+
+    original_exists = Path.exists
+
+    def fail_source_exists(path: Path) -> bool:
+        if path.suffix in {".py", ".js", ".jsx", ".ts", ".tsx"}:
+            raise AssertionError("module resolution should use the project file index")
+        return original_exists(path)
+
+    monkeypatch.setattr(Path, "exists", fail_source_exists)
+
+    analyzer.scan_project()
+
+    importer_info = analyzer.get_module_info(str(importer.resolve()))
+    assert importer_info["imports"][0]["resolved"] == str(module.resolve())
+
+
+def test_cross_file_module_resolution_caches_repeated_imports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = tmp_path / "shared.py"
+    module.write_text("value = 1\n", encoding="utf-8")
+    analyzer = CrossFileAnalyzer(tmp_path)
+    analyzer._project_source_files = {analyzer._path_index_key(module)}
+
+    checks = 0
+    original_exists = analyzer._source_file_exists
+
+    def counted_exists(candidate: Path | str) -> bool:
+        nonlocal checks
+        checks += 1
+        return original_exists(candidate)
+
+    monkeypatch.setattr(analyzer, "_source_file_exists", counted_exists)
+
+    first = analyzer._find_module_in_project("shared")
+    checks_after_first = checks
+    second = analyzer._find_module_in_project("shared")
+
+    assert first == module
+    assert second == module
+    assert checks_after_first > 0
+    assert checks == checks_after_first

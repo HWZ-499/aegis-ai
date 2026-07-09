@@ -29,14 +29,16 @@
 ```powershell
 cd c:\Users\HT341\aegis-ai\aegis-ai-core
 
-# 跑自建 TP/TN 用例，输出 Markdown + JSON 到 reports/
-python scripts/run_benchmark_report.py
+# 跑自建 TP/TN 用例和完整规则样本矩阵
+python scripts/benchmark/run_benchmark_report.py
 ```
 
 输出文件：
 
 - `reports/benchmark_report_YYYY-MM-DD.md`：人类可读的 Recall/Precision/F1 及按漏洞类型统计  
 - `reports/benchmark_report_YYYY-MM-DD.json`：机器可读，便于 CI 或趋势对比  
+- `reports/quality_matrix_YYYY-MM-DD.md`：按语言及“语言 × 漏洞类型”统计的质量矩阵
+- `reports/quality_matrix_YYYY-MM-DD.json`：供 CI 趋势比较的机器可读质量矩阵
 
 控制台会打印摘要，例如：
 
@@ -53,7 +55,7 @@ python -m src.scanner.benchmark
 ### 2.3 用 pytest 跑验收基准（含阈值断言）
 
 ```powershell
-python -m pytest tests/test_acceptance_benchmark.py -v
+python -m pytest -m acceptance tests/test_acceptance_benchmark.py -v
 ```
 
 当前验收阈值（在 `test_acceptance_benchmark.py` 中）：
@@ -62,17 +64,24 @@ python -m pytest tests/test_acceptance_benchmark.py -v
 - **FPR** ≤ 20%  
 - **F1** ≥ 0.75  
 
+完整 `tests/rules` 受控样本还有一层更严格的门禁：
+
+- 总体与每种语言 **Recall / Precision / F1 = 100%**
+- 总体与每种语言 **FPR = 0%**
+
+该严格门禁用于防止已覆盖规则回退，不代表真实项目准确率为 100%。
+
 若修改规则或污点逻辑，应保证上述测试通过，避免检测质量回退。
 
 ---
 
 ## 3. 误报/漏报治理流程
 
-1. **跑基准**：执行 `python scripts/run_benchmark_report.py`，查看 `reports/benchmark_report_*.md` 中的 FP/FN 明细。  
+1. **跑基准**：执行 `python scripts/benchmark/run_benchmark_report.py`，查看 `benchmark_report_*.md` 和 `quality_matrix_*.md` 中的 FP/FN 明细。
 2. **定位用例**：`src/scanner/benchmark_cases.py` 中 `BENCH_CASES_TP`（应报）与 `BENCH_CASES_TN`（不应报）是唯一数据源；每个用例有 `id`、`category`、`code`、`expect_finding`。  
 3. **治理误报（FP）**：若某 TN 用例被误报，在对应规则中增加排除条件（如 NoSQL 规则对 crypto/哈希类 `.update()` 不报、对 `[].find()` 不报）。改完后重跑基准与 `test_acceptance_benchmark`。  
 4. **治理漏报（FN）**：若某 TP 用例未报，检查规则/污点是否覆盖该模式（如解构、模板字符串、路由回调）；补规则或用例后重跑。  
-5. **回归**：每次规则/污点改动后跑 `python -m pytest tests/test_acceptance_benchmark.py` 与（可选）`python scripts/run_benchmark_report.py`，对比前后 F1/Recall/Precision。
+5. **回归**：每次规则/污点改动后跑 `python -m pytest -m acceptance tests/test_acceptance_benchmark.py` 与（可选）`python scripts/benchmark/run_benchmark_report.py`，对比前后 F1/Recall/Precision。
 
 ---
 
@@ -103,9 +112,9 @@ Ground-truth 格式：每项 `{"file": str, "line": int, "type": str}`，`file` 
 
 | 时机 | 建议操作 |
 |------|----------|
-| **规则/污点改动后** | 跑 `python -m pytest tests/test_acceptance_benchmark.py`，确保 Recall ≥ 70%、FPR ≤ 20%、F1 ≥ 0.75。 |
-| **发版或 MR 前** | 同上；可选再跑 `python scripts/run_benchmark_report.py` 留存当日报告。 |
-| **定期（如每周）** | 跑 `python scripts/run_benchmark_report.py`，查看 `reports/benchmark_report_*.md` 与 JSON，对比历史 F1/Recall。 |
+| **规则/污点改动后** | 跑 `python -m pytest -m acceptance tests/test_acceptance_benchmark.py`，确保 Recall ≥ 70%、FPR ≤ 20%、F1 ≥ 0.75。 |
+| **发版或 MR 前** | 同上；可选再跑 `python scripts/benchmark/run_benchmark_report.py` 留存当日报告。 |
+| **定期（如每周）** | 跑 `python scripts/benchmark/run_benchmark_report.py`，查看基准报告和质量矩阵，对比历史 F1/Recall。 |
 
 **当前验收阈值**（在 `test_acceptance_benchmark.py`）：Recall ≥ 70%，FPR ≤ 20%，F1 ≥ 0.75。若基准用例扩充，可酌情提高阈值。
 
@@ -118,11 +127,11 @@ Ground-truth 格式：每项 `{"file": str, "line": int, "type": str}`，`file` 
 ```yaml
 # 示例：GitHub Actions / GitLab CI
 - name: 检测质量门禁（M3）
-  run: python -m pytest tests/test_acceptance_benchmark.py -v
+  run: python -m pytest -m acceptance tests/test_acceptance_benchmark.py -v
 ```
 
-该测试会断言 Recall ≥ 70%、FPR ≤ 20%、F1 ≥ 0.75；不通过则 CI 失败。  
-**当前 CI**（`.github/workflows/security-scan.yml`）：在 M3 基准验收通过后，会执行 `run_benchmark_report.py` 并将 `reports/benchmark_report_*.json` 上传为 artifact（保留 90 天），便于在 Actions 中下载做趋势对比。
+该测试同时执行基础基准阈值和完整规则样本严格门禁；不通过则 CI 失败。
+**当前 CI**（`.github/workflows/security-scan.yml`）：验收通过后执行 `scripts/benchmark/run_benchmark_report.py`，并上传 `benchmark_report_*.json` 与 `quality_matrix_*.json` artifact（保留 90 天）。
 
 ---
 
@@ -135,7 +144,50 @@ Ground-truth 格式：每项 `{"file": str, "line": int, "type": str}`，`file` 
 
 ---
 
-## 8. 最新真实项目评估快照（2026-06-09）
+## 9. O6 统一质量矩阵（2026-06-21）
+
+统一入口 `run_rule_sample_benchmark()` 会使用与 CLI/LSP 相同的生产分析器扫描
+`tests/rules`，并同时记录总体、漏洞类型、语言、语言 × 漏洞类型四个维度。
+
+当前 207 个受控样本结果：
+
+| 语言 | TP | TN | FP | FN | Recall | Precision |
+|------|---:|---:|---:|---:|-------:|----------:|
+| Go | 17 | 14 | 0 | 0 | 100% | 100% |
+| Java | 22 | 16 | 0 | 0 | 100% | 100% |
+| JavaScript | 19 | 18 | 0 | 0 | 100% | 100% |
+| PHP | 31 | 26 | 0 | 0 | 100% | 100% |
+| Python | 26 | 18 | 0 | 0 | 100% | 100% |
+
+此前指标脚本静默跳过的 `tp_python_cursor_execute_format.py` 已恢复统计。
+真实项目仍应单独运行 ground-truth 评估，不能用受控样本结果替代。
+
+PHP RCE/XSS 已在 2026-06-21 收敛为 AST-only：公共 API、LSP 和项目扫描
+不再接收这两类的 `PHP-Regex` finding。新增覆盖包括反引号命令执行、
+`call_user_func()` 动态命令调用、`print`、短 echo、`die/exit` 以及嵌套 sanitizer。
+
+2026-06-22，PHP 生产入口进一步完全移除 regex 补充层。DVWA 剩余 4 个认证查询
+SQLi 缺口已迁移到 AST 规则；迁移后 DVWA ground truth 保持 TP 22、FP 29、
+FN 2、TN 3，Recall 91.7%、Precision 43.1%。全部真实目标 183 个 PHP 文件中，
+AST-only 与迁移前生产 finding 集合一致。
+
+SSRF 同日扩展到 PHP、Java、Go，与现有 Python、JavaScript 形成五语言统一覆盖。
+PHP、Java、Go 均增加 LSP / 公共 API / 项目扫描一致性测试。反序列化新增
+JavaScript `js-yaml.load` 正负样本，开放重定向新增 Django
+`HttpResponseRedirect` 正负样本。
+
+跨文件污点传播增加项目级回归：Python 与 JavaScript/TypeScript 的导入调用会复用
+生产规则引擎生成参数 → Sink 摘要，并在调用端追踪用户输入参数。2026-06-22 进一步
+增加返回值摘要、Python/ESM/CommonJS 重导出与固定点多跳包装函数传播。覆盖 ESM、
+CommonJS 解构、默认导入/导出、`.mjs/.cjs`、安全常量、ProjectScanner、CLI 与 LSP。
+这些多文件 fixture 不计入上述 207 个单文件规则样本，因此质量矩阵口径保持不变。
+当前全量回归为 `737 passed, 1 xfailed, 50 deselected`，acceptance 为 `30 passed`。
+当前传播边界是静态可解析的模块与函数调用；动态分派、反射和条件导出仍需真实项目
+ground-truth 基准覆盖。
+
+---
+
+## 10. 最新真实项目评估快照（2026-06-09）
 
 DVWA 当前复评命令:
 
@@ -162,7 +214,7 @@ python scripts/benchmark/evaluate_project.py --project-dir real_world_targets/DV
 
 ---
 
-## 9. 阶段收口快照（2026-04-23）
+## 11. 阶段收口快照（2026-04-23）
 
 本轮多阶段收口报告已落盘：
 
@@ -182,7 +234,7 @@ python scripts/benchmark/evaluate_project.py --project-dir real_world_targets/DV
 
 ---
 
-## 10. Round 6 真实项目基准扩展（2026-04-23）
+## 12. Round 6 真实项目基准扩展（2026-04-23）
 
 新增了 Java/Go 的项目级 pilot benchmark 与对应 ground-truth：
 

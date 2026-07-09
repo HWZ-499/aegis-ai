@@ -1,3 +1,8 @@
+import logging
+
+import pytest
+
+import src.analysis.incremental_analyzer as incremental_module
 from src.analysis.incremental_analyzer import IncrementalAnalyzer
 
 
@@ -123,3 +128,36 @@ def test_source_change_outside_functions_requires_full_rescan() -> None:
     changed, full_rescan = analyzer.get_changed_functions(file_path, updated, "javascript")
     assert changed == []
     assert full_rescan is True
+
+
+def test_incremental_parser_initialization_degradation_is_logged(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class FailingParser:
+        def __init__(self) -> None:
+            raise RuntimeError("incremental parser failed")
+
+    monkeypatch.setattr(incremental_module, "TREE_SITTER_AVAILABLE", True)
+    monkeypatch.setattr(incremental_module, "Parser", FailingParser)
+    analyzer = IncrementalAnalyzer()
+
+    with caplog.at_level(logging.DEBUG, logger="src.analysis.incremental_analyzer"):
+        parser = analyzer._get_parser("python")
+
+    assert parser is None
+    assert "incremental_analysis_degraded language=python stage=parser_init" in caplog.text
+
+
+def test_incremental_parse_degradation_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    class FailingParser:
+        def parse(self, code: bytes) -> object:
+            raise RuntimeError("incremental parse failed")
+
+    analyzer = IncrementalAnalyzer()
+
+    with caplog.at_level(logging.DEBUG, logger="src.analysis.incremental_analyzer"):
+        functions = analyzer._extract_functions("def f(): pass", "python", FailingParser())
+
+    assert functions is None
+    assert "incremental_analysis_degraded language=python stage=parse" in caplog.text

@@ -20,13 +20,14 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from ..base import AnalysisContext, SecurityRule
+from ..tree_sitter_runtime import get_thread_parser
+from .runtime import log_analysis_degradation
 
 logger = logging.getLogger(__name__)
 
 # Tree-sitter 导入（Python 分析器也需要它来运行 TaintAnalyzer）
 try:
     from tree_sitter import Parser
-    from tree_sitter_languages import get_language
 
     _TREE_SITTER_AVAILABLE = True
 except ImportError:
@@ -45,12 +46,7 @@ class PythonAnalyzer:
         # 初始化 Tree-sitter parser（用于 TaintAnalyzer）
         self._ts_parser: Parser | None = None
         if _TREE_SITTER_AVAILABLE:
-            try:
-                py_lang = get_language("python")
-                self._ts_parser = Parser()
-                self._ts_parser.set_language(py_lang)
-            except (ImportError, RuntimeError, OSError):
-                self._ts_parser = None
+            self._ts_parser = get_thread_parser("python")
 
     def analyze(self, code: str, file_path: Path) -> list[dict]:
         """
@@ -78,20 +74,33 @@ class PythonAnalyzer:
             try:
                 from ..taint import TaintAnalyzer
 
-                taint_analyzer = TaintAnalyzer(language="python")
+                taint_analyzer = TaintAnalyzer(language="python", initialize_parser=False)
                 ts_tree = self._ts_parser.parse(bytes(code, "utf8"))
                 taint_analyzer.analyze_tree(ts_tree.root_node, str(file_path), code)
                 context.taint_graph = taint_analyzer.get_graph()
                 # 统一污点系统：Python 也只使用 taint_graph，废弃 DataFlowTracker
                 context.dataflow_tracker = None
             except (ImportError, RuntimeError, ValueError) as e:
-                logger.debug("Python TaintAnalyzer 构建失败 [%s]: %s", file_path, e)
+                log_analysis_degradation(
+                    logger,
+                    language="python",
+                    stage="taint",
+                    file_path=file_path,
+                    error=e,
+                )
                 context.taint_graph = None
 
         # 3. 解析 Python stdlib AST（规则层使用）
         try:
             stdlib_tree = ast.parse(code)
-        except SyntaxError:
+        except SyntaxError as e:
+            log_analysis_degradation(
+                logger,
+                language="python",
+                stage="parse",
+                file_path=file_path,
+                error=e,
+            )
             # 代码语法错误时直接返回空结果，宽容处理
             return []
 

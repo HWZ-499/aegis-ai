@@ -18,8 +18,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.benchmark.phase_metrics import collect_from_rule_samples, render_summary
-from src.scanner.benchmark import run_and_save_report, run_benchmark
+from scripts.benchmark.phase_metrics import render_summary
+from src.scanner.benchmark import run_and_save_report, run_rule_sample_benchmark
 
 
 def main() -> None:
@@ -49,14 +49,16 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.language:
-        stats = collect_from_rule_samples(PROJECT_ROOT / "tests" / "rules", args.language)
-        if stats:
-            print("语言样本指标:")
-            render_summary(stats)
-            print("")
-        else:
-            print(f"未找到语言 `{args.language}` 的样本。")
+    sample_result = run_rule_sample_benchmark(
+        PROJECT_ROOT / "tests" / "rules",
+        language=args.language,
+    )
+    if sample_result.by_language:
+        print("规则样本质量矩阵:")
+        render_summary(sample_result.by_language)
+        print("")
+    else:
+        print(f"未找到语言 `{args.language}` 的样本。")
 
     md_path, json_path, result = run_and_save_report(
         output_dir=args.output_dir,
@@ -66,9 +68,20 @@ def main() -> None:
     print(f"JSON: {json_path}")
     print(f"Recall: {result.recall:.1%}, Precision: {result.precision:.1%}, F1: {result.f1:.2f}")
 
+    matrix_suffix = f"_{args.language.lower()}" if args.language else ""
+    matrix_md, matrix_json, _ = run_and_save_report(
+        output_dir=args.output_dir,
+        target_name="规则样本质量矩阵",
+        result=sample_result,
+        file_prefix=f"quality_matrix{matrix_suffix}",
+    )
+    print(f"质量矩阵: {matrix_md}")
+    print(f"质量矩阵 JSON: {matrix_json}")
+
     if args.project_dir and args.project_dir.exists():
         try:
             from src.scanner.project_scanner import ProjectScanner
+
             scanner = ProjectScanner(str(args.project_dir), engine="new")
             results = scanner.scan_project(verbose=False)
             all_findings = []

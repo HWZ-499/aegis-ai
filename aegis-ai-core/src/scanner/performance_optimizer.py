@@ -7,7 +7,8 @@ import hashlib
 import json
 import logging
 import os
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Mapping
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -58,6 +59,10 @@ class ScanCache:
             content = f.read()
             return hashlib.md5(content).hexdigest()
 
+    def _get_file_identity(self, file_path: Path) -> str:
+        """Return a stable normalized identity without touching the filesystem."""
+        return os.path.normcase(os.path.abspath(os.fspath(file_path)))
+
     def _iter_rule_version_files(self) -> list[Path]:
         """Return rule definition files that should invalidate scan cache."""
         analysis_dir = Path(__file__).resolve().parent.parent / "analysis"
@@ -106,24 +111,32 @@ class ScanCache:
             rules_version_hash: 本轮扫描复用的规则版本哈希；未传入时即时计算。
 
         Returns:
-            缓存键（包含文件哈希和规则版本）
+            缓存键（包含路径、文件内容和规则版本哈希）
         """
+        file_identity = self._get_file_identity(file_path)
+        path_hash = hashlib.md5(file_identity.encode("utf-8")).hexdigest()
         file_hash = self._get_file_hash(file_path)
         rules_hash = rules_version_hash if rules_version_hash is not None else self._get_rules_version_hash()
-        return f"{file_path.name}_{file_hash}_{rules_hash}"
+        return f"{path_hash}_{file_hash}_{rules_hash}"
 
-    def get_cached_result(self, file_path: Path, rules_version_hash: str | None = None) -> list[dict] | None:
+    def get_cached_result(
+        self,
+        file_path: Path,
+        rules_version_hash: str | None = None,
+        cache_key: str | None = None,
+    ) -> list[dict] | None:
         """
         获取缓存的扫描结果
 
         Args:
             file_path: 文件路径
             rules_version_hash: 本轮扫描复用的规则版本哈希。
+            cache_key: 已计算的缓存键；传入后避免重复读取并哈希源文件。
 
         Returns:
             缓存的扫描结果，如果不存在或已过期则返回 None
         """
-        cache_key = self._get_cache_key(file_path, rules_version_hash=rules_version_hash)
+        cache_key = cache_key or self._get_cache_key(file_path, rules_version_hash=rules_version_hash)
         cache_file = self.cache_dir / f"{cache_key}.json"
 
         if not cache_file.exists():
@@ -144,7 +157,7 @@ class ScanCache:
                     return None
 
                 # 验证文件路径是否匹配
-                if cache_data.get("file_path") == str(file_path):
+                if cache_data.get("file_path") == self._get_file_identity(file_path):
                     findings = cache_data.get("findings", [])
                     if not isinstance(findings, list):
                         return None
@@ -156,7 +169,13 @@ class ScanCache:
 
         return None
 
-    def save_result(self, file_path: Path, findings: list[dict], rules_version_hash: str | None = None):
+    def save_result(
+        self,
+        file_path: Path,
+        findings: list[dict],
+        rules_version_hash: str | None = None,
+        cache_key: str | None = None,
+    ):
         """
         保存扫描结果到缓存
 
@@ -164,18 +183,31 @@ class ScanCache:
             file_path: 文件路径
             findings: 扫描结果
             rules_version_hash: 本轮扫描复用的规则版本哈希。
+            cache_key: 已计算的缓存键；传入后避免重复读取并哈希源文件。
         """
-        cache_key = self._get_cache_key(file_path, rules_version_hash=rules_version_hash)
+        cache_key = cache_key or self._get_cache_key(file_path, rules_version_hash=rules_version_hash)
         cache_file = self.cache_dir / f"{cache_key}.json"
+        temp_file = self.cache_dir / f".{cache_key}.{os.getpid()}.{threading.get_ident()}.tmp"
 
         try:
-            cache_data = {"file_path": str(file_path), "findings": findings, "cached_at": datetime.now().isoformat()}
+            cache_data = {
+                "file_path": self._get_file_identity(file_path),
+                "findings": findings,
+                "cached_at": datetime.now().isoformat(),
+            }
 
-            with open(cache_file, "w", encoding="utf-8") as f:
+            with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump(cache_data, f, indent=2, ensure_ascii=False)
+                f.flush()
+            os.replace(temp_file, cache_file)
 
-        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
+        except (OSError, TypeError, ValueError, UnicodeDecodeError) as e:
             logger.warning("保存缓存失败 %s: %s", cache_file, e)
+        finally:
+            try:
+                temp_file.unlink(missing_ok=True)
+            except OSError as exc:
+                logger.debug("清理缓存临时文件失败 %s: %s", temp_file, exc)
 
     def clear_cache(self, older_than_hours: int | None = None):
         """
@@ -188,7 +220,8 @@ class ScanCache:
             return
 
         cleared_count = 0
-        for cache_file in self.cache_dir.glob("*.json"):
+        cache_files = [*self.cache_dir.glob("*.json"), *self.cache_dir.glob("*.tmp")]
+        for cache_file in cache_files:
             try:
                 if older_than_hours:
                     cache_mtime = datetime.fromtimestamp(cache_file.stat().st_mtime)
@@ -238,10 +271,7 @@ class ParallelScanner:
         """
         file_path, project_path, supported_extensions = args_tuple
 
-        # 导入扫描逻辑
-        from src.analysis.multi_language_ast import analyze_code_multi_language
-        from src.analysis.rule_based_audit import merge_findings
-        from src.analysis.rule_engine import analyze_code_ast, scan_code_locally
+        from src.analysis.rule_engine import analyze_source
 
         try:
             # 读取文件内容
@@ -251,16 +281,9 @@ class ParallelScanner:
             # 检测语言
             language = supported_extensions.get(file_path.suffix, "unknown")
 
-            # 执行检测
+            # 执行统一生产检测入口
             file_path_str = str(file_path)
-            if language == "python":
-                ast_findings = analyze_code_ast(code)
-                regex_findings = scan_code_locally(code, file_path=file_path_str)
-                merged_findings = merge_findings(ast_findings, regex_findings)
-            else:
-                multi_lang_findings = analyze_code_multi_language(code, file_path_str)
-                regex_findings = scan_code_locally(code, file_path=file_path_str)
-                merged_findings = merge_findings(multi_lang_findings, regex_findings)
+            merged_findings = analyze_source(code, file_path_str, language=language)
 
             # 添加文件信息
             project_path_obj = Path(project_path)
@@ -279,7 +302,7 @@ class ParallelScanner:
         self,
         file_paths: list[Path],
         project_path: Path,
-        supported_extensions: dict[str, str],
+        supported_extensions: Mapping[str, str],
         progress_callback: Callable | None = None,
     ) -> dict[Path, list[dict]]:
         """
@@ -326,6 +349,30 @@ class ParallelScanner:
 
         return results
 
+    def scan_files_with(
+        self,
+        file_paths: list[Path],
+        scan_func: Callable[[Path], list[dict]],
+        progress_callback: Callable | None = None,
+    ) -> dict[Path, list[dict]]:
+        """Run the caller-provided scan function concurrently.
+
+        Results are returned in the same order as ``file_paths`` so report
+        output remains deterministic even though workers finish out of order.
+        """
+        completed_results: dict[Path, list[dict]] = {}
+        total_files = len(file_paths)
+
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            future_to_file = {executor.submit(scan_func, file_path): file_path for file_path in file_paths}
+            for completed, future in enumerate(as_completed(future_to_file), 1):
+                file_path = future_to_file[future]
+                completed_results[file_path] = future.result()
+                if progress_callback:
+                    progress_callback(completed, total_files, file_path)
+
+        return {file_path: completed_results[file_path] for file_path in file_paths}
+
 
 class PerformanceOptimizer:
     """
@@ -371,9 +418,8 @@ class PerformanceOptimizer:
         file_paths: list[Path],
         scan_func: Callable[[Path], list[dict]],
         project_path: Path,
-        supported_extensions: dict[str, str],
+        supported_extensions: Mapping[str, str],
         progress_callback: Callable | None = None,
-        engine: str = "new",
         should_cache_result: Callable[[Path, list[dict]], bool] | None = None,
     ) -> dict[Path, list[dict]]:
         """
@@ -392,12 +438,19 @@ class PerformanceOptimizer:
         results = {}
         files_to_scan = []
         cached_results = {}
+        cache_keys: dict[Path, str] = {}
         rules_version_hash = self.cache._get_rules_version_hash() if self.use_cache and self.cache else None
 
         # 1. 检查缓存
         if self.use_cache and self.cache:
             for file_path in file_paths:
-                cached = self.cache.get_cached_result(file_path, rules_version_hash=rules_version_hash)
+                cache_key = self.cache._get_cache_key(file_path, rules_version_hash=rules_version_hash)
+                cache_keys[file_path] = cache_key
+                cached = self.cache.get_cached_result(
+                    file_path,
+                    rules_version_hash=rules_version_hash,
+                    cache_key=cache_key,
+                )
                 if cached is not None:
                     cached_results[file_path] = cached
                 else:
@@ -408,22 +461,22 @@ class PerformanceOptimizer:
         # 2. 并行扫描未缓存的文件
         if files_to_scan:
             if self.use_parallel and self.parallel_scanner:
-                # 【修复】使用传入的 scan_func（支持新引擎），而不是内部的 scan_file_worker
-                # 使用顺序扫描，但调用 scan_func（这样可以使用新引擎）
-                scanned_results = {}
-                total_files = len(files_to_scan)
-                for idx, file_path in enumerate(files_to_scan, 1):
-                    findings = scan_func(file_path)
-                    scanned_results[file_path] = findings
-
-                    if progress_callback:
-                        progress_callback(idx, total_files, file_path)
+                scanned_results = self.parallel_scanner.scan_files_with(
+                    files_to_scan,
+                    scan_func=scan_func,
+                    progress_callback=progress_callback,
+                )
 
                 # 保存到缓存
                 if self.use_cache and self.cache:
                     for file_path, findings in scanned_results.items():
                         if should_cache_result is None or should_cache_result(file_path, findings):
-                            self.cache.save_result(file_path, findings, rules_version_hash=rules_version_hash)
+                            self.cache.save_result(
+                                file_path,
+                                findings,
+                                rules_version_hash=rules_version_hash,
+                                cache_key=cache_keys[file_path],
+                            )
             else:
                 # 顺序扫描
                 scanned_results = {}
@@ -438,7 +491,12 @@ class PerformanceOptimizer:
                         and self.cache
                         and (should_cache_result is None or should_cache_result(file_path, findings))
                     ):
-                        self.cache.save_result(file_path, findings, rules_version_hash=rules_version_hash)
+                        self.cache.save_result(
+                            file_path,
+                            findings,
+                            rules_version_hash=rules_version_hash,
+                            cache_key=cache_keys[file_path],
+                        )
 
                     if progress_callback:
                         progress_callback(idx, total_files, file_path)

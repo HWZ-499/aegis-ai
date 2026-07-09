@@ -38,7 +38,7 @@ def test_scan_cache_rejects_non_list_findings_in_cache_file(tmp_path: Path) -> N
     cache_file.write_text(
         json.dumps(
             {
-                "file_path": str(source_file),
+                "file_path": cache._get_file_identity(source_file),
                 "findings": {"bad": "shape"},
             }
         ),

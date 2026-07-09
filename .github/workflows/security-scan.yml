@@ -45,21 +45,6 @@ jobs:
           pip install types-PyYAML -q
           python scripts/typecheck_gate.py --group ci
 
-      - name: mypy legacy debt report
-        continue-on-error: true
-        run: |
-          cd aegis-ai-core
-          pip install types-PyYAML -q
-          python scripts/typecheck_gate.py --group legacy-report --report-file reports/mypy-legacy-report.txt
-
-      - name: Upload mypy legacy debt report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: mypy-legacy-report
-          path: aegis-ai-core/reports/mypy-legacy-report.txt
-          retention-days: 30
-
   # ── VSCode Extension Build Check ─────────────────────────────
   extension:
     name: Extension Type Check
@@ -154,7 +139,17 @@ jobs:
       - name: Performance benchmark (pytest-benchmark)
         run: |
           cd aegis-ai-core
-          python -m pytest -m benchmark tests/test_performance_benchmark.py -v --benchmark-only
+          mkdir -p reports
+          python -m pytest -m benchmark tests/test_performance_benchmark.py -v --benchmark-only \
+            --benchmark-json=reports/performance-benchmark.json
+
+      - name: Upload performance benchmark
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-benchmark
+          path: aegis-ai-core/reports/performance-benchmark.json
+          retention-days: 90
 
       - name: Generate benchmark report
         run: |
@@ -168,7 +163,9 @@ jobs:
         continue-on-error: true
         with:
           name: benchmark-report
-          path: aegis-ai-core/reports/benchmark_report_*.json
+          path: |
+            aegis-ai-core/reports/benchmark_report_*.json
+            aegis-ai-core/reports/quality_matrix_*.json
           retention-days: 90
 
       - name: Run Aegis security scan
@@ -184,16 +181,37 @@ jobs:
           python -m src.scanner.cli . --incremental --base-ref origin/${{ github.base_ref }} --format json --output incremental-results.json --no-fail-on-findings 2>/dev/null || true
         continue-on-error: true
 
-      - name: Ensure SARIF exists
+      - name: Validate SARIF output
         if: always()
         run: |
-          if [ ! -f aegis-ai-core/results.sarif ]; then
-            echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"Aegis","version":"1.0"}},"results":[]}]}' > aegis-ai-core/results.sarif
-          fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("aegis-ai-core/results.sarif")
+          if not path.is_file():
+              raise SystemExit("Aegis scan did not produce results.sarif")
+
+          data = json.loads(path.read_text(encoding="utf-8"))
+          if data.get("version") != "2.1.0":
+              raise SystemExit("Unexpected SARIF version")
+          runs = data.get("runs")
+          if not isinstance(runs, list) or len(runs) != 1:
+              raise SystemExit("SARIF must contain exactly one run")
+          run = runs[0]
+          driver = run.get("tool", {}).get("driver", {})
+          if driver.get("name") != "Aegis AI":
+              raise SystemExit("SARIF tool driver is missing or invalid")
+          if not isinstance(run.get("results"), list):
+              raise SystemExit("SARIF results must be a list")
+          invocations = run.get("invocations")
+          if not isinstance(invocations, list) or not invocations:
+              raise SystemExit("SARIF invocation status is missing")
+          PY
 
       - name: Upload SARIF results
         uses: github/codeql-action/upload-sarif@v4
-        if: always()
+        if: always() && hashFiles('aegis-ai-core/results.sarif') != ''
         continue-on-error: true
         with:
           sarif_file: aegis-ai-core/results.sarif

@@ -106,6 +106,7 @@ class TaintAnalyzer:
         self,
         language: str = "javascript",
         registry: SourceSinkRegistry | None = None,
+        initialize_parser: bool = True,
     ):
         """
         初始化污点分析器。
@@ -113,6 +114,7 @@ class TaintAnalyzer:
         Args:
             language: 目标语言（javascript, typescript, python）
             registry: Source/Sink 注册表（默认使用全局注册表）
+            initialize_parser: 是否初始化内部 Parser。调用 analyze_tree() 时可禁用。
         """
         self.language = language.lower()
         self.registry = registry or get_default_registry()
@@ -144,7 +146,7 @@ class TaintAnalyzer:
 
         # 初始化 Tree-sitter parser
         self._parser: Parser | None = None
-        if TREE_SITTER_AVAILABLE:
+        if TREE_SITTER_AVAILABLE and initialize_parser:
             try:
                 if self.language in ("javascript", "typescript"):
                     lang = get_language("javascript")

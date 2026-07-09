@@ -12,6 +12,7 @@ dsl_engine.py
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from pathlib import Path
 
 import pydantic
@@ -20,20 +21,28 @@ import yaml
 from .rule_schema import DslPattern, DslRule
 
 
-def load_rules_from_directory(root: Path) -> list[DslRule]:
-    """从指定目录递归加载所有 YAML 规则文件。
-
-    Args:
-        root: 规则目录根路径。
-
-    Returns:
-        解析成功的 DslRule 列表。
-    """
-    rules: list[DslRule] = []
+def _rule_file_versions(root: Path) -> tuple[tuple[str, int, int], ...]:
+    """Return the rule files and metadata used to invalidate parsed-rule cache."""
     if not root.exists():
-        return rules
+        return ()
 
-    for path in sorted(root.rglob("*.yml")) + sorted(root.rglob("*.yaml")):
+    versions: list[tuple[str, int, int]] = []
+    paths = sorted(root.rglob("*.yml")) + sorted(root.rglob("*.yaml"))
+    for path in paths:
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        versions.append((str(path.resolve()), stat.st_mtime_ns, stat.st_size))
+    return tuple(versions)
+
+
+@lru_cache(maxsize=128)
+def _load_rules_from_versions(file_versions: tuple[tuple[str, int, int], ...]) -> tuple[DslRule, ...]:
+    """Parse a stable snapshot of rule files once."""
+    rules: list[DslRule] = []
+    for file_path, _mtime_ns, _size in file_versions:
+        path = Path(file_path)
         try:
             data = yaml.safe_load(path.read_text(encoding="utf-8"))
         except (yaml.YAMLError, OSError, UnicodeDecodeError):
@@ -45,9 +54,23 @@ def load_rules_from_directory(root: Path) -> list[DslRule]:
         except pydantic.ValidationError:
             continue
         rules.append(rule)
-    return rules
+    return tuple(rules)
 
 
+def load_rules_from_directory(root: Path) -> list[DslRule]:
+    """从指定目录递归加载所有 YAML 规则文件。
+
+    Args:
+        root: 规则目录根路径。
+
+    Returns:
+        解析成功的 DslRule 列表。
+    """
+    cached_rules = _load_rules_from_versions(_rule_file_versions(root))
+    return [rule.model_copy(deep=True) for rule in cached_rules]
+
+
+@lru_cache(maxsize=512)
 def _build_regex_from_pattern(pattern: str) -> re.Pattern:
     """将包含 $VAR 占位符的模式字符串转换为正则表达式。
 
@@ -134,14 +157,14 @@ def match_source(rule: DslRule, source: str, file_path: Path) -> list[dict]:
         return findings
 
     lines = source.split("\n")
+    compiled_patterns = [
+        (pattern, _build_regex_from_pattern(pattern.pattern))
+        for pattern in rule.patterns
+        if pattern.where is None or pattern.where.matches(file_path)
+    ]
     for idx, raw_line in enumerate(lines, start=1):
         line = raw_line.rstrip("\n")
-        for pattern in rule.patterns:
-            regex = _build_regex_from_pattern(pattern.pattern)
-            where = pattern.where
-            if where is not None and not where.matches(file_path):
-                continue
-
+        for pattern, regex in compiled_patterns:
             for match in regex.finditer(line):
                 if not _metavars_satisfied(pattern, match):
                     continue
