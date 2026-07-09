@@ -187,30 +187,40 @@ ground-truth 基准覆盖。
 
 ---
 
-## 10. 最新真实项目评估快照（2026-06-09）
+## 10. O10 可复跑真实项目基线（2026-07-10）
 
-DVWA 当前复评命令:
+DVWA 当前复评命令（在 `aegis-ai-core` 下）：
 
 ```powershell
 cd c:\Users\HT341\aegis-ai\aegis-ai-core
 python scripts/benchmark/evaluate_project.py --project-dir real_world_targets/DVWA --ground-truth scripts/data/ground_truth_dvwa.json
 ```
 
-结果已归档到:
+结果会输出到：
 
-- `aegis-ai-core/scripts/reports/evaluate_DVWA_2026-06-09.md`
-- `aegis-ai-core/scripts/reports/evaluate_DVWA_2026-06-09.json`
+- `reports/evaluate_DVWA_YYYY-MM-DD.md`
+- `reports/evaluate_DVWA_YYYY-MM-DD.json`
 
-当前指标:
+每份报告的 `provenance` 都包含 scanner revision、target revision、ground-truth 路径与 SHA-256，
+避免不同代码版本、靶场版本或标注版本的指标被混为同一口径。
+
+当前基线：
 
 | 目标 | TP | FP | FN | TN | Recall | Precision | F1 |
 |------|----|----|----|----|--------|-----------|----|
-| DVWA | 24 | 18 | 0 | 3 | 100.0% | 57.1% | 0.73 |
+| DVWA | 22 | 29 | 2 | 3 | 91.7% | 43.1% | 0.59 |
 
-本轮状态说明:
+2026-07-10 本机复跑使用：
 
-- PHP SQLi 数字 guard 降噪已进入主线；strict digit guard 后的 DVWA BAC medium `user_id` 查询不再按 SQLi 计入 TP。
-- 剩余 FP 主要在 XSS、SQLi 和 Path Traversal；继续治理时仍需避免压掉 ground-truth 未标注但真实可疑的弱点。
+- Scanner revision：`c1676ee030e2577ec8dbf7322f2929636f3c7317`
+- DVWA revision：`33e364c556e91473a5e979a4db16ee3b393d05ba`
+- Ground-truth SHA-256：`4bcf55cf356042682670b7e988662a4451e82af12a8bf0f0f3a59146385a3202`
+
+当前状态说明：
+
+- 受控样本的 100% 指标仍仅用于防回归，不能替代 DVWA 等真实项目质量。
+- DVWA 的当前误报主要在 SSRF、XSS、SQLi 与 Path Traversal；后续治理必须增加相应 TN 与真实项目 ground truth，避免仅通过删除规则“优化”指标。
+- `scripts/reports/` 中的旧项目报告为历史资料；公开 README 仅展示带 provenance 的当前基线，其他目标须按同一流程重跑后才可重新发布指标。
 
 ---
 

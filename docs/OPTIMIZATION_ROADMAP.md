@@ -41,7 +41,7 @@ O7 的架构收口与 O10 的真实项目准确率验证必须并行推进，不
 | O7 | 架构治理、legacy 清理与类型安全 | 进行中 |
 | O8 | IDE 错误可见性、交互体验与扩展测试 | 进行中 |
 | O9 | PyPI、Marketplace、规则生态与社区 | 待开始 |
-| O10 | 真实项目验收、稳定版本与长期维护 | 待开始 |
+| O10 | 真实项目验收、稳定版本与长期维护 | 进行中 |
 
 ## O1：Baseline 与抑制
 
@@ -489,18 +489,29 @@ pytest-benchmark 场景成功生成 JSON 基准。
 
 ## O10：稳定版
 
-**状态：待开始**
+**状态：进行中**
 
-- [ ] NodeGoat、DVWA 和真实项目验收
+- [x] DVWA 可复跑基线：报告记录 scanner/target revision 与 ground-truth SHA-256
+- [ ] NodeGoat 和其它真实项目按同一 provenance 口径复跑
 - [ ] 固化性能、准确率和内存指标
 - [ ] 升级与兼容性测试
 - [ ] 清理废弃接口
 - [ ] 稳定版本与维护策略
 
+### O10 第一批：真实项目指标可追溯
+
+- `scripts/benchmark/evaluate_project.py` 现在将引擎、扫描器提交、靶场提交、ground-truth
+  路径和 SHA-256 写入 JSON 与 Markdown；非 Git 靶场会明确标记 revision unavailable。
+- 2026-07-10 基于 scanner `c1676ee`、DVWA `33e364c`、ground-truth
+  `4bcf55cf…` 重跑：TP 22、FP 29、FN 2、TN 3，Recall 91.7%、Precision 43.1%、F1 0.59。
+- README 已移除不同日期、不同扫描器版本混排的历史项目指标；只公开这一份可复跑基线。
+- 下一步：按相同输入记录重跑 NodeGoat 与其它目标，并将误报治理绑定到新增的真实 TN/TP。
+
 ## 更新记录
 
 | 日期 | 更新 |
 |---|---|
+| 2026-07-10 | 启动 O10：项目评估报告新增 scanner/target revision 与 ground-truth SHA-256；在固定 DVWA 输入上重跑并更新公开指标，O7 与 O10 按既定优先级并行。 |
 | 2026-06-20 | 建立 O1–O10 统一路线图；写入强制文档同步规则；同步 O1–O5 当前状态、O4 收尾清单和 O5 基准。 |
 | 2026-06-20 | O4 收尾实现：SARIF Code Flow 结构化测试、路径/位置规范化、四格式 CLI E2E、CI 严格 SARIF 校验和验证指南已完成，等待全量测试。 |
 | 2026-06-20 | O4 全量验收通过并标记完成：678 passed；真实 SARIF 输出与 ruleId 映射校验通过。开始 O5 并发缓存写入与中断恢复。 |

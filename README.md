@@ -89,16 +89,13 @@ python -m src.scanner.cli C:\path\to\project --format sarif --output results.sar
 
 ## Quality Signals
 
-Current tracked benchmark summary:
+Latest reproducible real-project baseline:
 
-| Target | Language | Recall | Precision | F1 |
-|---|---:|---:|---:|---:|
-| NodeGoat | JavaScript | 100.0% | 100.0% | 1.00 |
-| django-3.2-core | Python | 92.3% | 92.3% | 0.92 |
-| DVWA | PHP | 100.0% | 57.1% | 0.73 |
-| flask-2.3.2 | Python | 66.7% | 50.0% | 0.57 |
+| Target | Snapshot | Language | Recall | Precision | F1 |
+|---|---|---:|---:|---:|---:|
+| DVWA | 2026-07-10 | PHP | 91.7% | 43.1% | 0.59 |
 
-See [Detection Quality](docs/technical/DETECTION_QUALITY.md) for the evaluation workflow and regression process.
+This result records the scanner revision, target revision, and ground-truth SHA-256 in its JSON and Markdown reports. Historical project reports remain under `aegis-ai-core/scripts/reports/`, but they are not comparable to the current scanner unless rerun with the same reproducibility metadata. See [Detection Quality](docs/technical/DETECTION_QUALITY.md) for the evaluation workflow and regression process.
 
 ## Repository
 
