@@ -39,3 +39,46 @@ def test_format_provenance_md_marks_unavailable_revisions() -> None:
     assert "Scanner revision: `unavailable`" in report
     assert "Target revision: `unavailable`" in report
     assert "Ground truth SHA-256: `abc123`" in report
+
+
+def test_split_ground_truth_scope_excludes_only_explicitly_unsupported_cases() -> None:
+    ground_truth = [
+        {"file": "routes.js", "line": 12, "type": "OPEN_REDIRECT"},
+        {
+            "file": "dependency.js",
+            "line": 8,
+            "type": "PROTOTYPE_POLLUTION",
+            "in_scope": False,
+            "scope_reason": "The vulnerable code is in a transitive dependency.",
+        },
+    ]
+
+    evaluated, excluded = evaluate_project.split_ground_truth_scope(ground_truth)
+
+    assert evaluated == [ground_truth[0]]
+    assert excluded == [
+        {
+            "file": "dependency.js",
+            "type": "PROTOTYPE_POLLUTION",
+            "reason": "The vulnerable code is in a transitive dependency.",
+        }
+    ]
+
+    all_entries, no_exclusions = evaluate_project.split_ground_truth_scope(
+        ground_truth,
+        include_out_of_scope=True,
+    )
+    assert all_entries == ground_truth
+    assert no_exclusions == []
+
+
+def test_format_scope_md_lists_excluded_cases() -> None:
+    report = evaluate_project.format_scope_md(
+        2,
+        1,
+        [{"file": "dependency.js", "type": "PROTOTYPE_POLLUTION", "reason": "external dependency"}],
+    )
+
+    assert "Entries evaluated: 1" in report
+    assert "Explicitly out of scope: 1" in report
+    assert "`PROTOTYPE_POLLUTION` in `dependency.js`: external dependency" in report

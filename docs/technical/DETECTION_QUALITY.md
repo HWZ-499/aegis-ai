@@ -204,6 +204,11 @@ python scripts/benchmark/evaluate_project.py --project-dir real_world_targets/DV
 每份报告的 `provenance` 都包含 scanner revision、target revision、ground-truth 路径与 SHA-256，
 避免不同代码版本、靶场版本或标注版本的指标被混为同一口径。
 
+Ground truth 中明确标记 `"in_scope": false` 的条目会在 `scope.excluded_entries` 和 Markdown 的
+“Excluded entries”中保留原因，但默认不计入产品覆盖率；它们通常是未承诺的漏洞类别、
+第三方依赖漏洞或与规则语义不一致的 CVE。使用 `--include-out-of-scope` 可复核全量原始口径，
+不得通过删除或静默跳过条目改善指标。
+
 当前基线：
 
 | 目标 | TP | FP | FN | TN | Recall | Precision | F1 |

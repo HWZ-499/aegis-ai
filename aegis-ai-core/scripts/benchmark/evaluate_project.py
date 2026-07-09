@@ -23,6 +23,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -99,6 +100,46 @@ def format_provenance_md(provenance: dict[str, str | None]) -> str:
     )
 
 
+def split_ground_truth_scope(
+    ground_truth: list[dict[str, Any]],
+    *,
+    include_out_of_scope: bool = False,
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    """Separate advertised-coverage cases from explicitly out-of-scope ones."""
+    evaluated: list[dict[str, Any]] = []
+    excluded: list[dict[str, str]] = []
+    for entry in ground_truth:
+        if include_out_of_scope or entry.get("in_scope", True):
+            evaluated.append(entry)
+            continue
+        excluded.append(
+            {
+                "file": str(entry.get("file", "unknown")),
+                "type": str(entry.get("type", "UNKNOWN")),
+                "reason": str(entry.get("scope_reason", "Not in advertised product coverage.")),
+            }
+        )
+    return evaluated, excluded
+
+
+def format_scope_md(input_count: int, evaluated_count: int, excluded: list[dict[str, str]]) -> str:
+    lines = [
+        "---",
+        "",
+        "## Evaluation scope",
+        "",
+        f"- Ground-truth entries supplied: {input_count}",
+        f"- Entries evaluated: {evaluated_count}",
+        f"- Explicitly out of scope: {len(excluded)}",
+    ]
+    if excluded:
+        lines.extend(["", "### Excluded entries"])
+        for entry in excluded:
+            lines.append(f"- `{entry['type']}` in `{entry['file']}`: {entry['reason']}")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="阶段四：对真实项目扫描结果与 ground-truth 对比，输出评估报告",
@@ -108,6 +149,11 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=PROJECT_ROOT / "reports", help="报告输出目录")
     parser.add_argument("--target-name", type=str, default=None, help="报告中的目标名称，默认用项目目录名")
     parser.add_argument("--engine", choices=["new"], default="new", help="兼容参数；当前仅支持 new")
+    parser.add_argument(
+        "--include-out-of-scope",
+        action="store_true",
+        help="将 ground truth 中明确标为 in_scope=false 的条目也纳入指标（默认仅评估产品承诺覆盖范围）",
+    )
     args = parser.parse_args()
 
     project_dir = Path(args.project_dir)
@@ -125,10 +171,20 @@ def main() -> None:
         ground_truth = ground_truth.get("expected", ground_truth) if isinstance(ground_truth, dict) else []
     target_name = args.target_name or project_dir.name
     provenance = build_provenance(project_dir, gt_path, args.engine)
+    evaluated_ground_truth, excluded_entries = split_ground_truth_scope(
+        ground_truth,
+        include_out_of_scope=args.include_out_of_scope,
+    )
+    scope = {
+        "input_entries": len(ground_truth),
+        "evaluated_entries": len(evaluated_ground_truth),
+        "include_out_of_scope": args.include_out_of_scope,
+        "excluded_entries": excluded_entries,
+    }
 
     print(f"扫描项目: {project_dir}")
-    print(f"Ground-truth: {gt_path} ({len(ground_truth)} 条预期)")
-    result = evaluate_project_against_ground_truth(project_dir, ground_truth, engine=args.engine)
+    print(f"Ground-truth: {gt_path} ({len(ground_truth)} 条输入，{len(excluded_entries)} 条超出产品范围)")
+    result = evaluate_project_against_ground_truth(project_dir, evaluated_ground_truth, engine=args.engine)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     date_str = datetime.now().strftime("%Y-%m-%d")
@@ -136,10 +192,17 @@ def main() -> None:
     json_path = args.output_dir / f"evaluate_{target_name}_{date_str}.json"
 
     md_path.write_text(
-        f"{format_report_md(result, target_name=target_name, date_str=date_str)}\n{format_provenance_md(provenance)}",
+        "\n".join(
+            [
+                format_report_md(result, target_name=target_name, date_str=date_str),
+                format_scope_md(len(ground_truth), len(evaluated_ground_truth), excluded_entries),
+                format_provenance_md(provenance),
+            ]
+        ),
         encoding="utf-8",
     )
     report_json = format_report_json(result, target_name=target_name, date_str=date_str)
+    report_json["scope"] = scope
     report_json["provenance"] = provenance
     json_path.write_text(
         json.dumps(report_json, ensure_ascii=False, indent=2),

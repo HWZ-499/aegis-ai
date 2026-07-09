@@ -15,6 +15,8 @@
     "cve": "CVE-2022-24999",
     "severity": "High",
     "is_true_positive": true,
+    "in_scope": false,
+    "scope_reason": "Aegis does not advertise prototype-pollution coverage, and this CVE is in the transitive qs dependency rather than Express source.",
     "comment": "CVE-2022-24999: Express 通过 qs 库解析查询字符串存在原型链污染。漏洞实际在依赖 qs 库中，Express lib/ 目录内无直接可触发代码，属于依赖链漏洞（间接漏报）。"
   }
 ]

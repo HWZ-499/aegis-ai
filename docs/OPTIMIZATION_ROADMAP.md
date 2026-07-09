@@ -502,15 +502,22 @@ pytest-benchmark 场景成功生成 JSON 基准。
 
 - `scripts/benchmark/evaluate_project.py` 现在将引擎、扫描器提交、靶场提交、ground-truth
   路径和 SHA-256 写入 JSON 与 Markdown；非 Git 靶场会明确标记 revision unavailable。
+- Ground truth 现在可用 `in_scope: false` 标记未承诺漏洞类别、第三方依赖漏洞或语义不匹配
+  CVE。默认报告保留这些条目的原因但不把它们伪装成产品漏报；`--include-out-of-scope` 可复核
+  全量原始口径。
 - 2026-07-10 基于 scanner `c1676ee`、DVWA `33e364c`、ground-truth
   `4bcf55cf…` 重跑：TP 22、FP 29、FN 2、TN 3，Recall 91.7%、Precision 43.1%、F1 0.59。
 - README 已移除不同日期、不同扫描器版本混排的历史项目指标；只公开这一份可复跑基线。
+- scope 校验已识别下一轮治理起点：Express 的 1 条 in-scope OPEN_REDIRECT 漏报与 26 条误报，
+  Flask 的 2 条 in-scope 误报基准与 10 条额外误报。它们保留在本地 provenance 报告中，待逐条
+  增加真实 TP/TN 后再调整规则。
 - 下一步：按相同输入记录重跑 NodeGoat 与其它目标，并将误报治理绑定到新增的真实 TN/TP。
 
 ## 更新记录
 
 | 日期 | 更新 |
 |---|---|
+| 2026-07-10 | O10 ground-truth 增加显式范围语义：外部依赖、未承诺类别和规则语义不匹配项在报告中可审计地排除，保留 `--include-out-of-scope` 全量复核入口；Express/Flask 复跑建立下一轮真实误报/漏报治理起点。 |
 | 2026-07-10 | 启动 O10：项目评估报告新增 scanner/target revision 与 ground-truth SHA-256；在固定 DVWA 输入上重跑并更新公开指标，O7 与 O10 按既定优先级并行。 |
 | 2026-06-20 | 建立 O1–O10 统一路线图；写入强制文档同步规则；同步 O1–O5 当前状态、O4 收尾清单和 O5 基准。 |
 | 2026-06-20 | O4 收尾实现：SARIF Code Flow 结构化测试、路径/位置规范化、四格式 CLI E2E、CI 严格 SARIF 校验和验证指南已完成，等待全量测试。 |

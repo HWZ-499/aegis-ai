@@ -6,6 +6,8 @@
     "cve": "CVE-2023-30861",
     "severity": "High",
     "is_true_positive": true,
+    "in_scope": false,
+    "scope_reason": "The CVE concerns an unset SECRET_KEY, not a hardcoded secret; it is outside Aegis's hardcoded-credential rule semantics.",
     "comment": "CVE-2023-30861: Flask 2.3.2 在 SECRET_KEY 未设置时 session cookie 以明文传输，攻击者可伪造 session。修复版本 2.3.3 强制要求 SECRET_KEY。本工具检测能力为 HARDCODED_SECRET（直接硬编码密钥），与该 CVE 的未设置密钥场景不同，属于覆盖空白。"
   },
   {
