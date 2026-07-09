@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ...base import AnalysisContext, SecurityRule, tree_sitter_node_to_range
@@ -36,6 +37,13 @@ class PhpXSSAstRule(SecurityRule):
     )
     RECENT_TAINT_WINDOW = 8
     MAX_TAINT_VARS_IN_HTML_APPEND = 2
+    _DOM_LOCATION_ASSIGNMENT_RE = re.compile(
+        r"\b(?:var|let|const)\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*"
+        r"(?P<value>[^;\n]*\bdocument\.location\.(?:href|search|hash)\b[^;\n]*)",
+        re.IGNORECASE,
+    )
+    _DOCUMENT_WRITE_RE = re.compile(r"\bdocument\.write\s*\((?P<argument>.*?)\)", re.IGNORECASE | re.DOTALL)
+    _DOM_HTML_SANITIZERS = frozenset({"encodeuricomponent", "escapehtml", "sanitizehtml", "dompurify.sanitize"})
 
     def __init__(self) -> None:
         super().__init__(rule_id="XSS_PHP_AST", severity="High", languages=["php"])
@@ -65,6 +73,52 @@ class PhpXSSAstRule(SecurityRule):
         # augmented_assignment_expression: $html .= "<div>{$name}</div>";
         elif node.type == "augmented_assignment_expression":
             self._check_augmented_html_assignment(node, context)
+        # PHP heredoc 常被用于输出内嵌 JavaScript。Tree-sitter 会将其中的
+        # JavaScript 保留为 string_value，因而需要在 heredoc_body 中识别 DOM XSS。
+        elif node.type == "heredoc_body":
+            self._check_embedded_dom_xss(node, context)
+
+    def _check_embedded_dom_xss(self, node: Any, context: AnalysisContext) -> None:
+        """Detect URL-derived values passed to ``document.write`` in PHP heredocs."""
+        text = self._text(node)
+        if "document.write" not in text.lower() or "document.location" not in text.lower():
+            return
+
+        tainted_vars = {
+            match.group("name")
+            for match in self._DOM_LOCATION_ASSIGNMENT_RE.finditer(text)
+            if not self._contains_dom_html_sanitizer(match.group("value"))
+        }
+        for sink_match in self._DOCUMENT_WRITE_RE.finditer(text):
+            argument = sink_match.group("argument")
+            direct_location_source = "document.location" in argument.lower() and not self._contains_dom_html_sanitizer(
+                argument
+            )
+            uses_tainted_var = any(re.search(rf"\b{re.escape(name)}\b", argument) for name in tainted_vars)
+            if not direct_location_source and not uses_tainted_var:
+                continue
+
+            line = node.start_point[0] + 1 + text[: sink_match.start()].count("\n")
+            if line in self._reported:
+                continue
+            self._reported.add(line)
+            finding = {
+                "type": "XSS_RISK",
+                "rule_id": self.rule_id,
+                "severity": self.severity,
+                "line": line,
+                "details": "PHP 模板中的 document.write 输出 URL 派生值且未经 HTML 净化，可能存在 DOM XSS 风险。",
+                "start_line": line,
+                "start_character": 0,
+                "end_line": line,
+                "end_character": len(argument),
+            }
+            context.add_finding(finding)
+
+    @classmethod
+    def _contains_dom_html_sanitizer(cls, expression: str) -> bool:
+        lowered = expression.lower()
+        return any(sanitizer in lowered for sanitizer in cls._DOM_HTML_SANITIZERS)
 
     def _check_output_node(self, node: Any, context: AnalysisContext, output_name: str) -> None:
         line = node.start_point[0] + 1

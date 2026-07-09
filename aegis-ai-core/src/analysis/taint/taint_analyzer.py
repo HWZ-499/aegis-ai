@@ -1469,8 +1469,11 @@ class TaintAnalyzer:
             if "." in callee_text:
                 tail = callee_text.rsplit(".", 1)[-1]
                 candidates.append("." + tail + "(")  # .execute(
-        # Go 语言中 call_text 可能包含回调函数体，使用完整文本会把嵌套调用误识别为当前 sink。
-        if self.language != "go" or not callee_text:
+        # 回调函数体会包含嵌套调用。若对完整 call_text 做匹配，外层普通调用
+        # （例如 validateLogin(req.body.user, ..., () => res.redirect("/home"))）
+        # 会被错误标成 redirect sink。JS/TS 与 Go 均可从 callee 精确识别 sink，
+        # 因此只有缺少 callee 时才退回完整调用文本。
+        if self.language not in ("go", "javascript", "typescript") or not callee_text:
             candidates.append(call_text)  # 兜底：完整调用文本
 
         # 逐个候选尝试匹配 Sink

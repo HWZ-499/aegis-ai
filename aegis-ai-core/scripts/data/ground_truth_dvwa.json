@@ -124,8 +124,8 @@
     "line": 33,
     "type": "RCE_COMMAND_EXEC",
     "severity": "Critical",
-    "is_true_positive": true,
-    "description": "DVWA API 端点中 shell_exec 执行用户可控命令"
+    "is_true_positive": false,
+    "description": "API 初始化检查中的 shell_exec 参数为固定 apachectl 命令，不接受用户输入；作为 RCE 负样本保留。"
   },
   {
     "file": "vulnerabilities/api/src/HealthController.php",
