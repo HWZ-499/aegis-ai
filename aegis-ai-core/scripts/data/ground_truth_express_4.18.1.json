@@ -3,6 +3,7 @@
     "file": "lib/router/index.js",
     "line": 284,
     "type": "OPEN_REDIRECT",
+    "expected_pattern": "res.redirect",
     "cve": "CVE-2024-29041",
     "severity": "Medium",
     "is_true_positive": true,

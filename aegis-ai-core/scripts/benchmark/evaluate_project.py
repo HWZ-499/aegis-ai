@@ -17,6 +17,7 @@ Ground-truth JSON 格式：
 """
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import subprocess
@@ -30,6 +31,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.scanner.benchmark import (
+    _expected_ground_truth_lines,
     evaluate_project_against_ground_truth,
     format_report_json,
     format_report_md,
@@ -122,7 +124,90 @@ def split_ground_truth_scope(
     return evaluated, excluded
 
 
-def format_scope_md(input_count: int, evaluated_count: int, excluded: list[dict[str, str]]) -> str:
+def validate_ground_truth_locations(
+    project_dir: Path,
+    ground_truth: list[dict[str, Any]],
+    *,
+    include_invalid: bool = False,
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    """Exclude explicitly stale file/line/pattern entries while preserving their audit trail."""
+    files = [
+        path
+        for path in project_dir.rglob("*")
+        if path.is_file() and not {".git", "node_modules", "vendor"}.intersection(path.parts)
+    ]
+    validated: list[dict[str, Any]] = []
+    invalid: list[dict[str, str]] = []
+
+    for entry in ground_truth:
+        expected_file = str(entry.get("file", ""))
+        matching_files = [
+            path
+            for path in files
+            if _ground_truth_file_matches(path.relative_to(project_dir).as_posix(), expected_file)
+        ]
+        reason = _ground_truth_location_error(entry, matching_files)
+        if reason is None or include_invalid:
+            validated.append(entry)
+        if reason is not None:
+            invalid.append(
+                {
+                    "file": expected_file or "unknown",
+                    "type": str(entry.get("type", "UNKNOWN")),
+                    "reason": reason,
+                }
+            )
+    return validated, invalid
+
+
+def _ground_truth_file_matches(candidate: str, expected: str) -> bool:
+    normalized_expected = expected.replace("\\", "/")
+    if not normalized_expected:
+        return False
+    if "*" in normalized_expected:
+        return fnmatch.fnmatch(candidate, normalized_expected) or normalized_expected in candidate
+    return candidate.endswith(normalized_expected) or normalized_expected in candidate
+
+
+def _ground_truth_location_error(entry: dict[str, Any], matching_files: list[Path]) -> str | None:
+    if not matching_files:
+        return "No matching project file exists at this target revision."
+
+    expected_lines = _expected_ground_truth_lines(entry)
+    if not expected_lines:
+        return None
+
+    source_by_file = {path: path.read_text(encoding="utf-8", errors="replace").splitlines() for path in matching_files}
+    lines_in_range = [
+        (path, line)
+        for path, source_lines in source_by_file.items()
+        for line in expected_lines
+        if 1 <= line <= len(source_lines)
+    ]
+    if not lines_in_range:
+        return f"Expected line {expected_lines} is outside every matching file."
+
+    expected_pattern = entry.get("expected_pattern")
+    if not isinstance(expected_pattern, str) or not expected_pattern:
+        return None
+
+    line_tolerance = 3
+    for path, line in lines_in_range:
+        source_lines = source_by_file[path]
+        start = max(0, line - 1 - line_tolerance)
+        end = min(len(source_lines), line + line_tolerance)
+        if any(expected_pattern in source_line for source_line in source_lines[start:end]):
+            return None
+    return f"Expected pattern '{expected_pattern}' is absent within {line_tolerance} lines of the annotated line."
+
+
+def format_scope_md(
+    input_count: int,
+    evaluated_count: int,
+    excluded: list[dict[str, str]],
+    invalid: list[dict[str, str]] | None = None,
+) -> str:
+    invalid = invalid or []
     lines = [
         "---",
         "",
@@ -131,10 +216,15 @@ def format_scope_md(input_count: int, evaluated_count: int, excluded: list[dict[
         f"- Ground-truth entries supplied: {input_count}",
         f"- Entries evaluated: {evaluated_count}",
         f"- Explicitly out of scope: {len(excluded)}",
+        f"- Invalid at this target revision: {len(invalid)}",
     ]
     if excluded:
         lines.extend(["", "### Excluded entries"])
         for entry in excluded:
+            lines.append(f"- `{entry['type']}` in `{entry['file']}`: {entry['reason']}")
+    if invalid:
+        lines.extend(["", "### Invalid entries"])
+        for entry in invalid:
             lines.append(f"- `{entry['type']}` in `{entry['file']}`: {entry['reason']}")
     lines.append("")
     return "\n".join(lines)
@@ -154,6 +244,11 @@ def main() -> None:
         action="store_true",
         help="将 ground truth 中明确标为 in_scope=false 的条目也纳入指标（默认仅评估产品承诺覆盖范围）",
     )
+    parser.add_argument(
+        "--include-invalid-ground-truth",
+        action="store_true",
+        help="将文件、行号或 expected_pattern 已与当前靶场不匹配的标注也纳入指标（默认单列并排除）",
+    )
     args = parser.parse_args()
 
     project_dir = Path(args.project_dir)
@@ -171,19 +266,29 @@ def main() -> None:
         ground_truth = ground_truth.get("expected", ground_truth) if isinstance(ground_truth, dict) else []
     target_name = args.target_name or project_dir.name
     provenance = build_provenance(project_dir, gt_path, args.engine)
-    evaluated_ground_truth, excluded_entries = split_ground_truth_scope(
+    scoped_ground_truth, excluded_entries = split_ground_truth_scope(
         ground_truth,
         include_out_of_scope=args.include_out_of_scope,
+    )
+    evaluated_ground_truth, invalid_entries = validate_ground_truth_locations(
+        project_dir,
+        scoped_ground_truth,
+        include_invalid=args.include_invalid_ground_truth,
     )
     scope = {
         "input_entries": len(ground_truth),
         "evaluated_entries": len(evaluated_ground_truth),
         "include_out_of_scope": args.include_out_of_scope,
+        "include_invalid_ground_truth": args.include_invalid_ground_truth,
         "excluded_entries": excluded_entries,
+        "invalid_entries": invalid_entries,
     }
 
     print(f"扫描项目: {project_dir}")
-    print(f"Ground-truth: {gt_path} ({len(ground_truth)} 条输入，{len(excluded_entries)} 条超出产品范围)")
+    print(
+        f"Ground-truth: {gt_path} ({len(ground_truth)} 条输入，{len(excluded_entries)} 条超出产品范围，"
+        f"{len(invalid_entries)} 条与当前靶场不匹配)"
+    )
     result = evaluate_project_against_ground_truth(project_dir, evaluated_ground_truth, engine=args.engine)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -195,7 +300,7 @@ def main() -> None:
         "\n".join(
             [
                 format_report_md(result, target_name=target_name, date_str=date_str),
-                format_scope_md(len(ground_truth), len(evaluated_ground_truth), excluded_entries),
+                format_scope_md(len(ground_truth), len(evaluated_ground_truth), excluded_entries, invalid_entries),
                 format_provenance_md(provenance),
             ]
         ),

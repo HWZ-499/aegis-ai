@@ -82,3 +82,34 @@ def test_format_scope_md_lists_excluded_cases() -> None:
     assert "Entries evaluated: 1" in report
     assert "Explicitly out of scope: 1" in report
     assert "`PROTOTYPE_POLLUTION` in `dependency.js`: external dependency" in report
+
+
+def test_validate_ground_truth_locations_excludes_stale_expected_patterns(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    source_dir = project / "lib"
+    source_dir.mkdir(parents=True)
+    (source_dir / "routes.js").write_text(
+        "const path = '/home';\nres.redirect(path);\n",
+        encoding="utf-8",
+    )
+    ground_truth = [
+        {"file": "lib/routes.js", "line": 2, "type": "OPEN_REDIRECT", "expected_pattern": "res.redirect"},
+        {"file": "lib/routes.js", "line": 2, "type": "OPEN_REDIRECT", "expected_pattern": "location.assign"},
+        {"file": "missing.js", "line": 1, "type": "XSS_RISK"},
+    ]
+
+    valid, invalid = evaluate_project.validate_ground_truth_locations(project, ground_truth)
+
+    assert valid == [ground_truth[0]]
+    assert invalid == [
+        {
+            "file": "lib/routes.js",
+            "type": "OPEN_REDIRECT",
+            "reason": "Expected pattern 'location.assign' is absent within 3 lines of the annotated line.",
+        },
+        {
+            "file": "missing.js",
+            "type": "XSS_RISK",
+            "reason": "No matching project file exists at this target revision.",
+        },
+    ]
