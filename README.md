@@ -94,6 +94,7 @@ Latest reproducible real-project baseline:
 | Target | Snapshot | Language | Recall | Precision | F1 |
 |---|---|---:|---:|---:|---:|
 | DVWA | 2026-07-10 | PHP | 91.7% | 43.1% | 0.59 |
+| NodeGoat | 2026-07-10 | JavaScript | 100.0% | 80.0% | 0.89 |
 
 This result records the scanner revision, target revision, and ground-truth SHA-256 in its JSON and Markdown reports. Historical project reports remain under `aegis-ai-core/scripts/reports/`, but they are not comparable to the current scanner unless rerun with the same reproducibility metadata. See [Detection Quality](docs/technical/DETECTION_QUALITY.md) for the evaluation workflow and regression process.
 

@@ -209,22 +209,34 @@ Ground truth 中明确标记 `"in_scope": false` 的条目会在 `scope.excluded
 第三方依赖漏洞或与规则语义不一致的 CVE。使用 `--include-out-of-scope` 可复核全量原始口径，
 不得通过删除或静默跳过条目改善指标。
 
-当前基线：
+评估器还会验证标注文件、行号和可选 `expected_pattern` 是否仍匹配当前靶场。失效标注写入
+`scope.invalid_entries`，默认不计入指标，可通过 `--include-invalid-ground-truth` 复核。比如
+Express 4.18.1 的旧 OPEN_REDIRECT 标注指向 `lib/router/index.js:284`，该处当前不存在
+`res.redirect`，因此必须先更新靶场/标注，不能误归因为扫描器漏报。
+
+当前可复跑快照：
 
 | 目标 | TP | FP | FN | TN | Recall | Precision | F1 |
 |------|----|----|----|----|--------|-----------|----|
 | DVWA | 22 | 29 | 2 | 3 | 91.7% | 43.1% | 0.59 |
+| NodeGoat | 12 | 3 | 0 | 0 | 100.0% | 80.0% | 0.89 |
 
 2026-07-10 本机复跑使用：
 
 - Scanner revision：`c1676ee030e2577ec8dbf7322f2929636f3c7317`
 - DVWA revision：`33e364c556e91473a5e979a4db16ee3b393d05ba`
 - Ground-truth SHA-256：`4bcf55cf356042682670b7e988662a4451e82af12a8bf0f0f3a59146385a3202`
+- NodeGoat scanner revision：`471b90f1f7f060ff6e4edffd6301692ee2693437`
+- NodeGoat revision：`c5cb68a7084e4ae7dcc60e6a98768720a81841e8`
+- NodeGoat ground-truth SHA-256：`dd5a525953802218f83b632cf933b3759d6ebaaa7c7015e5973d894c9538e0a4`
 
 当前状态说明：
 
 - 受控样本的 100% 指标仍仅用于防回归，不能替代 DVWA 等真实项目质量。
 - DVWA 的当前误报主要在 SSRF、XSS、SQLi 与 Path Traversal；后续治理必须增加相应 TN 与真实项目 ground truth，避免仅通过删除规则“优化”指标。
+- NodeGoat 的唯一 XSS 漏报（HTTP 客户端回调 body 直接进入 `res.write`）已在 scanner
+  `d361ede` 修复。其 ground truth 暂无 TN，因此 100% FPR 不能解读为“误报率高”；下一轮需补
+  NodeGoat 的真实安全反例，再对 3 条额外 finding 做人工归因。
 - `scripts/reports/` 中的旧项目报告为历史资料；公开 README 仅展示带 provenance 的当前基线，其他目标须按同一流程重跑后才可重新发布指标。
 
 ---

@@ -491,8 +491,8 @@ pytest-benchmark 场景成功生成 JSON 基准。
 
 **状态：进行中**
 
-- [x] DVWA 可复跑基线：报告记录 scanner/target revision 与 ground-truth SHA-256
-- [ ] NodeGoat 和其它真实项目按同一 provenance 口径复跑
+- [x] DVWA、NodeGoat 可复跑基线：报告记录 scanner/target revision 与 ground-truth SHA-256
+- [ ] 其它真实项目按同一 provenance 口径复跑
 - [ ] 固化性能、准确率和内存指标
 - [ ] 升级与兼容性测试
 - [ ] 清理废弃接口
@@ -505,8 +505,14 @@ pytest-benchmark 场景成功生成 JSON 基准。
 - Ground truth 现在可用 `in_scope: false` 标记未承诺漏洞类别、第三方依赖漏洞或语义不匹配
   CVE。默认报告保留这些条目的原因但不把它们伪装成产品漏报；`--include-out-of-scope` 可复核
   全量原始口径。
+- 每条标注还会校验当前靶场文件、行号与可选 `expected_pattern`；失效项会进入
+  `invalid_entries`，默认不计入指标，并可由 `--include-invalid-ground-truth` 复核。Express
+  4.18.1 的 OPEN_REDIRECT 标注已确认与当前靶场行号漂移，不作为规则漏报处理。
 - 2026-07-10 基于 scanner `c1676ee`、DVWA `33e364c`、ground-truth
   `4bcf55cf…` 重跑：TP 22、FP 29、FN 2、TN 3，Recall 91.7%、Precision 43.1%、F1 0.59。
+- 修复 NodeGoat 的 HTTP 回调 body → `res.write` XSS 漏报后，基于 scanner `471b90f`、
+  NodeGoat `c5cb68a`、ground-truth `dd5a5259…` 重跑：TP 12、FP 3、FN 0、TN 0，
+  Recall 100.0%、Precision 80.0%、F1 0.89。NodeGoat 尚无 TN，下一步需补真实安全反例。
 - README 已移除不同日期、不同扫描器版本混排的历史项目指标；只公开这一份可复跑基线。
 - scope 校验已识别下一轮治理起点：Express 的 1 条 in-scope OPEN_REDIRECT 漏报与 26 条误报，
   Flask 的 2 条 in-scope 误报基准与 10 条额外误报。它们保留在本地 provenance 报告中，待逐条
@@ -517,6 +523,8 @@ pytest-benchmark 场景成功生成 JSON 基准。
 
 | 日期 | 更新 |
 |---|---|
+| 2026-07-10 | 评估器增加文件、行号与可选代码模式的 ground-truth 有效性校验；Express 4.18.1 的开放重定向标注确认与当前靶场漂移，单列为 invalid 而非规则漏报。 |
+| 2026-07-10 | 修正 Git 全局代理端口至 SakuraCat 监听的 7897，拉取并复跑 NodeGoat；修复 HTTP 回调响应体直接写入 `res.write` 的 XSS 漏报，新增正/负样本并更新可复跑质量基线。 |
 | 2026-07-10 | O10 ground-truth 增加显式范围语义：外部依赖、未承诺类别和规则语义不匹配项在报告中可审计地排除，保留 `--include-out-of-scope` 全量复核入口；Express/Flask 复跑建立下一轮真实误报/漏报治理起点。 |
 | 2026-07-10 | 启动 O10：项目评估报告新增 scanner/target revision 与 ground-truth SHA-256；在固定 DVWA 输入上重跑并更新公开指标，O7 与 O10 按既定优先级并行。 |
 | 2026-06-20 | 建立 O1–O10 统一路线图；写入强制文档同步规则；同步 O1–O5 当前状态、O4 收尾清单和 O5 基准。 |
