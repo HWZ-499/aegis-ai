@@ -17,7 +17,9 @@ Ground-truth JSON 格式：
 """
 
 import argparse
+import hashlib
 import json
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -31,6 +33,70 @@ from src.scanner.benchmark import (
     format_report_json,
     format_report_md,
 )
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _git_revision(path: Path) -> str | None:
+    """Return the checked-out revision for a local Git repository, if available."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "HEAD"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    revision = result.stdout.strip()
+    return revision or None
+
+
+def _display_path(path: Path) -> str:
+    """Prefer a repository-relative ground-truth path in published reports."""
+    try:
+        return path.resolve().relative_to(PROJECT_ROOT.resolve()).as_posix()
+    except ValueError:
+        return path.name
+
+
+def build_provenance(project_dir: Path, ground_truth_path: Path, engine: str) -> dict[str, str | None]:
+    """Capture the immutable inputs needed to reproduce a project-quality report."""
+    return {
+        "engine": engine,
+        "scanner_revision": _git_revision(PROJECT_ROOT),
+        "target_revision": _git_revision(project_dir),
+        "ground_truth": _display_path(ground_truth_path),
+        "ground_truth_sha256": _sha256_file(ground_truth_path),
+    }
+
+
+def format_provenance_md(provenance: dict[str, str | None]) -> str:
+    def value(key: str) -> str:
+        return provenance.get(key) or "unavailable"
+
+    return "\n".join(
+        [
+            "---",
+            "",
+            "## Reproducibility",
+            "",
+            f"- Engine: `{value('engine')}`",
+            f"- Scanner revision: `{value('scanner_revision')}`",
+            f"- Target revision: `{value('target_revision')}`",
+            f"- Ground truth: `{value('ground_truth')}`",
+            f"- Ground truth SHA-256: `{value('ground_truth_sha256')}`",
+            "",
+        ]
+    )
 
 
 def main() -> None:
@@ -58,6 +124,7 @@ def main() -> None:
     if not isinstance(ground_truth, list):
         ground_truth = ground_truth.get("expected", ground_truth) if isinstance(ground_truth, dict) else []
     target_name = args.target_name or project_dir.name
+    provenance = build_provenance(project_dir, gt_path, args.engine)
 
     print(f"扫描项目: {project_dir}")
     print(f"Ground-truth: {gt_path} ({len(ground_truth)} 条预期)")
@@ -69,13 +136,13 @@ def main() -> None:
     json_path = args.output_dir / f"evaluate_{target_name}_{date_str}.json"
 
     md_path.write_text(
-        format_report_md(result, target_name=target_name, date_str=date_str),
+        f"{format_report_md(result, target_name=target_name, date_str=date_str)}\n{format_provenance_md(provenance)}",
         encoding="utf-8",
     )
+    report_json = format_report_json(result, target_name=target_name, date_str=date_str)
+    report_json["provenance"] = provenance
     json_path.write_text(
-        json.dumps(
-            format_report_json(result, target_name=target_name, date_str=date_str), ensure_ascii=False, indent=2
-        ),
+        json.dumps(report_json, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
