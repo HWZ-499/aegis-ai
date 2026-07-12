@@ -64,17 +64,16 @@ html_report = generator.generate_html(results, stats)
 
 | 支持级别 | 语言 | 分析能力 | 说明 |
 |----------|------|----------|------|
-| **完整支持** | JavaScript / TypeScript（.js, .jsx, .mjs, .cjs, .ts, .tsx） | AST + 污点 + 规则 | Tree-sitter AST、污点追踪、8 类漏洞规则 |
-| **完整支持** | Python（.py, .pyw） | AST + 规则 | AST 规则、RCE/SQLi/XSS/路径/凭证等 |
-| **基础支持** | Java、PHP、Go、C/C++（.java, .php, .go, .c, .cpp, .h 等） | 仅正则 | 无专用 AST 规则，仅关键词级检测，误报率较高 |
+| **完整支持** | Python、JavaScript / TypeScript、Java、PHP、Go | AST + 污点 + 规则 | 统一规则引擎与语言专用规则 |
+| **基础支持** | C/C++（.c, .cpp, .cc, .cxx, .h, .hpp 等） | 轻量上下文规则 | 缓冲区、格式化字符串、线程/锁与指针风险等基础检测 |
 
-**诚实标注（1.4）**：Rust、Swift、Kotlin、C# 等无规则语言已不列入支持列表；CLI 使用 `-v` 时会分别显示「完整支持（AST+规则）」与「基础支持（仅正则）」扩展名。**深度优先于广度。**
+Rust、Swift、Kotlin、C# 等无规则语言不列入支持列表；CLI 使用 `-v` 时会分别显示完整支持与基础支持扩展名。**深度优先于广度。**
 
 ### 1. 批量扫描
 
 - ✅ 自动扫描整个项目目录
-- ✅ 完整 AST 安全检测：JavaScript/TypeScript、Python
-- ⚠️ 基础正则检测（无专用 AST 规则）：Java、C/C++、Go
+- ✅ 完整 AST/污点安全检测：Python、JavaScript/TypeScript、Java、PHP、Go
+- ⚠️ C/C++ 基础上下文规则
 - ✅ 智能忽略（.git、node_modules、__pycache__ 等）
 - ✅ 进度显示和统计信息
 - ✅ **扫描范围与发现摘要**：仅扫描支持扩展名的代码文件（.js/.ts/.py 等）；其他文件（如 .html、.sql、.json）不纳入安全扫描。使用 `-v` 或查看 HTML 报告中的「扫描范围」可看到已扫描文件列表及未纳入扫描的文件与原因（例如「扩展名 .html 不在支持列表」），便于核对「为何只扫到少量文件」。
@@ -92,9 +91,8 @@ html_report = generator.generate_html(results, stats)
 
 复用 Phase 1 的核心检测能力：
 
-- ✅ AST 静态分析（10+ 种漏洞类型）
-- ✅ 正则规则扫描（快速匹配）
-- ✅ 双重检测机制（减少误报）
+- ✅ 统一 AST/污点/DSL 静态分析（10+ 种漏洞类型）
+- ✅ 单一生产分派入口，CLI、LSP 与项目扫描口径一致
 - ✅ 严重程度分类（Critical/High/Medium/Low）
 
 ---
@@ -246,15 +244,15 @@ python -m src.scanner.cli . --ignore custom_dir test_files
 
 ### 支持的语言
 
-**完整支持（AST+规则，1.4 诚实标注）：**
+**完整支持（AST+规则）：**
 - `.py` / `.pyw` — Python
 - `.js` / `.jsx` / `.mjs` / `.cjs` — JavaScript
 - `.ts` / `.tsx` — TypeScript
-
-**基础支持（仅正则）：**
 - `.java` — Java
-- `.php` — PHP
+- `.php` / `.phtml` / `.php5` — PHP
 - `.go` — Go
+
+**基础支持（轻量上下文规则）：**
 - `.c` / `.cpp` / `.cc` / `.cxx` / `.h` / `.hpp` — C/C++
 
 ---
@@ -345,18 +343,18 @@ python -m src.scanner.cli .
 
 ## 🎯 下一步
 
-### Phase 1.5 待实现功能
+### Phase 1.5 功能状态
 
-- [ ] 增量扫描（只扫描修改的文件）
-- [ ] 规则配置（自定义规则）
-- [ ] 误报管理（标记误报）
+- [x] 增量扫描（只扫描修改的文件）
+- [x] YAML DSL 自定义规则（`.aegis/rules`）
+- [x] 误报管理与 baseline
 - [ ] 历史对比（对比两次扫描结果）
 
 ### Phase 2: IDE 插件
 
-- [ ] LSP Server（实时检测）
-- [ ] VS Code Extension
-- [ ] 集成到开发流程
+- [x] LSP Server（实时检测）
+- [x] VS Code Extension
+- [x] 集成到开发流程
 
 ---
 

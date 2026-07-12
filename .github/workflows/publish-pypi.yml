@@ -33,6 +33,7 @@ jobs:
       - name: Check distribution
         run: |
           cd aegis-ai-core
+          python scripts/check_distribution.py dist/*
           twine check dist/*
 
       - name: Publish to PyPI

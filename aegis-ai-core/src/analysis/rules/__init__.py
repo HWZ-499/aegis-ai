@@ -4,7 +4,7 @@ analysis.rules
 规则库命名空间：
 - 按漏洞类型（sql_injection / rce / xss 等）组织子包；
 - 每个子包内部可以包含 AST、数据流和声明式 DSL 等实现方式。
-- php/ 子包提供基于 PhpTaintGraph 的精确 PHP 规则。
+- PHP 规则与其他语言一样按漏洞类型组织。
 """
 
 from .deserialization import (
@@ -41,16 +41,6 @@ from .path_traversal import (
     JavaScriptPathTraversalAstRule,
     PhpPathTraversalAstRule,
     PythonPathTraversalAstRule,
-)
-from .php import (
-    PhpDeserializationRule,
-    PhpHardcodedCredentialsRule,
-    PhpNoSQLInjectionRule,
-    PhpOpenRedirectRule,
-    PhpPathTraversalRule,
-    PhpRCERule,
-    PhpSQLInjectionRule,
-    PhpXSSRule,
 )
 from .rce import GoRCEAstRule, JavaRCEAstRule, JavaScriptRCEAstRule, PhpRCEAstRule, PythonRCEAstRule
 from .sql_injection import (
@@ -107,16 +97,7 @@ __all__ = [
     "PhpSSRFAstRule",
     "JavaSSRFAstRule",
     "GoSSRFAstRule",
-    # PHP TaintGraph 规则（旧，保留兼容）
-    "PhpSQLInjectionRule",
-    "PhpRCERule",
-    "PhpXSSRule",
-    "PhpOpenRedirectRule",
-    "PhpPathTraversalRule",
-    "PhpDeserializationRule",
-    "PhpNoSQLInjectionRule",
-    "PhpHardcodedCredentialsRule",
-    # PHP AST 规则（新）
+    # PHP AST/taint rules
     "PhpSQLInjectionAstRule",
     "PhpRCEAstRule",
     "PhpXSSAstRule",

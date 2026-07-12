@@ -93,12 +93,7 @@ def test_php_public_entry_uses_ast_exclusively_for_rce_and_xss() -> None:
     assert all(finding.get("source") != "PHP-Regex" for finding in relevant)
 
 
-def test_php_public_entry_does_not_execute_legacy_regex_supplement(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fail_legacy_scan(*args, **kwargs):
-        raise AssertionError("PHP production entry must not call scan_code_locally")
-
-    monkeypatch.setattr("src.analysis.security_rules.scan_code_locally", fail_legacy_scan)
-
+def test_php_public_entry_detects_sqli_without_legacy_supplement() -> None:
     findings = analyze_php(
         """<?php
 $user = $_POST['username'];

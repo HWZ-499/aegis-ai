@@ -608,7 +608,7 @@ pytest-benchmark 场景成功生成 JSON 基准。
 - [x] 其它真实项目按同一 provenance 口径复跑
 - [x] 固化性能、准确率和内存指标
 - [x] 升级与兼容性测试
-- [ ] 清理废弃接口
+- [x] 清理废弃接口
 - [ ] 稳定版本与维护策略
 
 ### O10 第一批：真实项目指标可追溯
@@ -702,10 +702,32 @@ pytest-benchmark 场景成功生成 JSON 基准。
 - 验证：Python 3.11 核心 `823 passed, 1 xfailed, 50 deselected`；Python 3.13 安装按预期在元数据
   检查阶段拒绝；VS Code TypeScript check 通过、扩展测试 55 passing；四份 workflow YAML 可解析。
 
+### O10 第五批：v1.5 废弃接口移除
+
+- 核心版本进入 `1.5.0.dev0`，兑现自 1.2 起声明的 v1.5 移除窗口；正式 `1.5.0` 留给下一批稳定
+  版本与维护策略验收，避免以 1.4.0 版本号构建已经移除 1.4 兼容 API 的发行包。
+- 删除 Python-only `ast_analyzer.py`、通用 `security_rules.py`、旧报告桥 `rule_based_audit.py` 以及
+  依赖旧 `PhpTaintGraph` 的 `rules/php/`；`rule_engine` 与 `rules` 命名空间不再导出旧函数、特征库
+  常量或 `Php*Rule` 类。
+- `multi_language_ast.py` 从近 900 行独立解析/正则实现缩为统一 `analyze_source()` 的薄兼容适配器；
+  不支持的语言不再进入跨语言通用正则兜底。CLI、LSP、ProjectScanner 与兼容调用方现在共享同一
+  分派和 finding 口径。
+- 删除无生产调用方、仍配置旧正则签名的 `scanner.rule_config`；自定义规则统一使用
+  `.aegis/rules` YAML DSL、`aegis rules init/test` 与 `--rules-dir`。
+- 新增删除状态、导出表与适配器依赖门禁，并发布 `V1_5_MIGRATION.md` 迁移映射；旧 AST/regex
+  双引擎测试改为统一入口、finding schema 与未知语言边界测试。
+- wheel 复验发现本地陈旧 `build/lib` 可让 setuptools 把已删除源码重新打包；新增
+  `scripts/check_distribution.py`，PyPI workflow 在 `twine check` 前同时检查 wheel/sdist，发现任一
+  已退役模块即拒绝发布。
+- 验证：核心 `818 passed, 50 deselected`；Ruff 通过；mypy 119 个保留源码文件 0 errors；干净目录
+  wheel 为 `aegis_ai_core-1.5.0.dev0` 且发行内容门禁通过；bundled backend 重建后 TypeScript check
+  通过、扩展测试 55 passing。
+
 ## 更新记录
 
 | 日期 | 更新 |
 |---|---|
+| 2026-07-12 | O10 第五批：核心进入 `1.5.0.dev0`，移除已过弃用窗口的旧 AST/regex/PHP/报告接口与孤立正则配置器，多语言兼容层统一委托 `analyze_source()`，补迁移文档和防回流门禁；废弃接口验收完成。 |
 | 2026-07-12 | O10 第四批：Python 支持范围收口为 3.10–3.12，新增 Python/Node CI 矩阵、3.13 启动前拒绝、wheel 隔离安装和发行元数据验证；升级与兼容性验收完成。 |
 | 2026-07-12 | O10 第三批：创建 `d51bd8b` 稳定检查点，八个真实目标通过 clean provenance 复跑；3 轮串行采样固化质量/耗时/RSS 预算，`a41f754` 上八目标机器门禁全通过，前三项 O10 验收完成。 |
 | 2026-07-11 | O10 第二批：provenance 增加 dirty/diff 指纹与 `--require-clean`，报告加入耗时、RSS、运行环境和逐 finding 审计；纠正 body-parser/Flask/Django 的错误 CVE 标注及 Java mono-repo 扫描范围，完成八目标 dirty-scanner 候选复跑。 |

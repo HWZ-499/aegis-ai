@@ -63,15 +63,11 @@ from .rules import (
     PhpHardcodedCredentialsAstRule,
     PhpNoSQLInjectionAstRule,
     PhpOpenRedirectAstRule,
-    PhpOpenRedirectRule,
     PhpPathTraversalAstRule,
     PhpRCEAstRule,
-    PhpRCERule,  # deprecated: kept for backward compat
     PhpSQLInjectionAstRule,
-    PhpSQLInjectionRule,  # deprecated: kept for backward compat
     PhpSSRFAstRule,
     PhpXSSAstRule,
-    PhpXSSRule,  # deprecated: kept for backward compat
     PythonDeserializationAstRule,
     PythonHardcodedCredentialsAstRule,
     PythonNoSQLInjectionAstRule,
@@ -488,22 +484,4 @@ __all__ = [
     "analyze_php",
     "analyze_c_cpp",
     "analyze_source",
-    # Deprecated: old PHP line-level rules, kept for backward compat
-    "PhpSQLInjectionRule",
-    "PhpRCERule",
-    "PhpXSSRule",
-    "PhpOpenRedirectRule",
-    # Backward-compatible re-exports from deprecated modules
-    "analyze_code_ast",
-    "scan_code_locally",
-    "VULN_SIGNATURES",
-    "VULN_SEVERITY",
 ]
-
-# ---------------------------------------------------------------------------
-# Backward-compatible re-exports from deprecated modules
-# ---------------------------------------------------------------------------
-from .ast_analyzer import analyze_code_ast as analyze_code_ast  # noqa: E402, F401
-from .security_rules import VULN_SEVERITY as VULN_SEVERITY  # noqa: E402, F401
-from .security_rules import VULN_SIGNATURES as VULN_SIGNATURES  # noqa: E402, F401
-from .security_rules import scan_code_locally as scan_code_locally  # noqa: E402, F401
