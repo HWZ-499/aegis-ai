@@ -7,14 +7,13 @@ name = "aegis-ai-core"
 version = "1.4.0"
 description = "Local-first SAST engine with AST analysis, taint tracking, and AI-powered fix suggestions"
 readme = "src/README.md"
-license = { text = "MIT" }
-requires-python = ">=3.10"
+license = "MIT"
+requires-python = ">=3.10,<3.13"
 authors = [{ name = "Aegis AI Team" }]
 keywords = ["security", "sast", "static-analysis", "vulnerability", "ast"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",

@@ -607,7 +607,7 @@ pytest-benchmark 场景成功生成 JSON 基准。
 - [x] DVWA、NodeGoat 干净版本可复跑基线
 - [x] 其它真实项目按同一 provenance 口径复跑
 - [x] 固化性能、准确率和内存指标
-- [ ] 升级与兼容性测试
+- [x] 升级与兼容性测试
 - [ ] 清理废弃接口
 - [ ] 稳定版本与维护策略
 
@@ -687,10 +687,26 @@ pytest-benchmark 场景成功生成 JSON 基准。
   耗时或内存超预算时将 violations 写入 JSON/Markdown 并以退出码 3 失败。提交 `a41f754` 上八目标
   实跑全部 gate passed；Django 39.763 秒 / 143.238 MiB，低于 61 秒 / 180 MiB 预算。
 
+### O10 第四批：运行时与发行包兼容性
+
+- 新鲜 Python 3.13 环境验证确认 `tree-sitter-languages` 尚无可安装发行版；项目原来的
+  `requires-python >=3.10` 会错误承诺 3.13 支持。核心、README、扩展配置与启动探测统一收口为
+  Python 3.10–3.12，3.13 在创建 managed venv 前返回明确错误。
+- Security Scan CI 新增 Python 3.10/3.11/3.12 全量测试矩阵，以及 Node 20/22/24 扩展类型检查矩阵；
+  weekly real-world workflow 改用 `pip install -e ".[dev]"`，不再依赖不完整的 requirements 手工补包。
+- `requirements.txt` 补齐核心 `pydantic-settings` 与 `pyyaml`；release consistency gate 现在同时校验
+  Python 下限和上限是否有文档，防止未来再次把支持范围写宽。
+- wheel 在隔离环境成功构建、安装与启动 CLI，METADATA 为 `Requires-Python: <3.13,>=3.10`；
+  `project.license` 迁移到 SPDX 字符串并移除废弃 classifier，构建不再产生 setuptools license
+  deprecation。删除仓库中陈旧的 1.3.0 `egg-info/PKG-INFO` 并统一忽略生成元数据。
+- 验证：Python 3.11 核心 `823 passed, 1 xfailed, 50 deselected`；Python 3.13 安装按预期在元数据
+  检查阶段拒绝；VS Code TypeScript check 通过、扩展测试 55 passing；四份 workflow YAML 可解析。
+
 ## 更新记录
 
 | 日期 | 更新 |
 |---|---|
+| 2026-07-12 | O10 第四批：Python 支持范围收口为 3.10–3.12，新增 Python/Node CI 矩阵、3.13 启动前拒绝、wheel 隔离安装和发行元数据验证；升级与兼容性验收完成。 |
 | 2026-07-12 | O10 第三批：创建 `d51bd8b` 稳定检查点，八个真实目标通过 clean provenance 复跑；3 轮串行采样固化质量/耗时/RSS 预算，`a41f754` 上八目标机器门禁全通过，前三项 O10 验收完成。 |
 | 2026-07-11 | O10 第二批：provenance 增加 dirty/diff 指纹与 `--require-clean`，报告加入耗时、RSS、运行环境和逐 finding 审计；纠正 body-parser/Flask/Django 的错误 CVE 标注及 Java mono-repo 扫描范围，完成八目标 dirty-scanner 候选复跑。 |
 | 2026-07-11 | O7 第十七批并完成阶段：C/C++ local fix 从 AI orchestration 拆出为零 provider 依赖模块，主模块 1536→1067 行并增加依赖/体量门禁；全量 812 passed、mypy 125 文件清零。 |

@@ -23,12 +23,12 @@ Supports: **JavaScript / TypeScript / Python / PHP / Java / Go / C/C++ basic sca
 ### Step 1: Install Extension
 VS Code Marketplace: search **"Aegis AI Security Scanner"** or ID `wen-zai.aegis-ai-security`
 
-### Step 2: Install Python 3.10+
+### Step 2: Install Python 3.10–3.12
 Aegis includes its Python backend in the VS Code extension package, but it still needs a local Python interpreter to run that backend.
 
 Requirements:
 
-- Python **3.10 or newer**
+- Python **3.10, 3.11, or 3.12**. Python 3.13 is not yet supported because the pinned Tree-sitter runtime has no compatible `tree-sitter-languages` distribution.
 - `python --version` or `python3 --version` works in your terminal
 - Internet access on first run so Aegis can install its backend dependencies into a VS Code-managed virtual environment
 
@@ -41,7 +41,7 @@ python --version
 Expected:
 
 ```text
-Python 3.10.x or newer
+Python 3.10.x, 3.11.x, or 3.12.x
 ```
 
 On first activation, Aegis automatically:
@@ -134,7 +134,7 @@ Suppressed findings can be inspected in the **Suppressed Findings** view after e
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `aegisAI.enabled` | `true` | Enable/disable the scanner |
-| `aegisAI.pythonPath` | `python` | Path to Python 3.10+ used for the managed backend environment |
+| `aegisAI.pythonPath` | `python` | Path to Python 3.10–3.12 used for the managed backend environment |
 | `aegisAI.serverCwd` | `` | Advanced/development override for local `aegis-ai-core`; leave blank for bundled backend |
 | `aegisAI.serverModule` | `src.lsp` | Python module path for the LSP server |
 | `aegisAI.scan.exclude` | `["**/node_modules/**", ...]` | Glob patterns excluded from scanning |
@@ -146,7 +146,7 @@ Suppressed findings can be inspected in the **Suppressed Findings** view after e
 ## Known Issues
 
 - First run may take longer while the managed Python backend environment is created
-- Python 3.10+ must be installed separately and available through `aegisAI.pythonPath`
+- Python 3.10–3.12 must be installed separately and available through `aegisAI.pythonPath`
 - PHP analysis uses Tree-sitter AST for core rules; some niche patterns may still fall back to line-level matching
 - Cross-file taint propagation requires `module.exports` patterns (CommonJS)
 

@@ -26,8 +26,7 @@ jobs:
       - name: 安装依赖
         run: |
           cd aegis-ai-core
-          pip install -r requirements.txt
-          pip install pytest pyyaml pydantic-settings
+          pip install -e ".[dev]"
 
       - name: 运行 AST vs DSL 对比
         run: |

@@ -63,13 +63,14 @@ def _extract_src_directory_refs(src_readme_text: str) -> list[str]:
 
 
 def _python_requirement_is_documented(requirement: str, *texts: str) -> bool:
-    if requirement in "\n".join(texts):
+    combined = "\n".join(texts)
+    if requirement in combined:
         return True
-    match = re.search(r"(\d+(?:\.\d+)*)", requirement)
-    if not match:
+    versions = re.findall(r"\d+(?:\.\d+)+", requirement)
+    if not versions:
         return False
-    version = match.group(1)
-    return any(f"Python {version}" in text or f"python {version}" in text for text in texts)
+    lowered = combined.lower()
+    return all(version in lowered for version in versions)
 
 
 def _looks_like_repo_root(path: Path) -> bool:

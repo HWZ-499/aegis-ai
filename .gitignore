@@ -18,6 +18,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
 
 # Aegis 运行时缓存（扫描 AST 缓存，不进版本控制）
 aegis-ai-core/src/.aegis-cache/

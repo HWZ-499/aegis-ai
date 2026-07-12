@@ -9,7 +9,7 @@ def _write_minimal_consistent_repo(repo: Path) -> Path:
     src_dir.mkdir(parents=True)
 
     (repo / "README.md").write_text(
-        "# Aegis\nExtension v0.5.1\nPython 3.10+\n`pip install -e .[dev]`\ndeepseek openai ollama custom\nOLLAMA_BASE_URL=x\nDEEPSEEK_API_KEY=x\nOPENAI_API_KEY=x\n.aegis-baseline.json not a fix\n",
+        "# Aegis\nExtension v0.5.1\nPython 3.10-3.12; Python 3.13 unsupported\n`pip install -e .[dev]`\ndeepseek openai ollama custom\nOLLAMA_BASE_URL=x\nDEEPSEEK_API_KEY=x\nOPENAI_API_KEY=x\n.aegis-baseline.json not a fix\n",
         encoding="utf-8",
     )
     (repo / "aegis-vscode").mkdir()
@@ -27,7 +27,7 @@ def _write_minimal_consistent_repo(repo: Path) -> Path:
         encoding="utf-8",
     )
     (core / "pyproject.toml").write_text(
-        "[project]\nrequires-python='>=3.10'\nversion='1.4.0'\n\n[project.urls]\nHomepage='https://github.com/HWZ-499/aegis-ai'\nRepository='https://github.com/HWZ-499/aegis-ai'\nIssues='https://github.com/HWZ-499/aegis-ai/issues'\n",
+        "[project]\nrequires-python='>=3.10,<3.13'\nversion='1.4.0'\n\n[project.urls]\nHomepage='https://github.com/HWZ-499/aegis-ai'\nRepository='https://github.com/HWZ-499/aegis-ai'\nIssues='https://github.com/HWZ-499/aegis-ai/issues'\n",
         encoding="utf-8",
     )
     (repo / "aegis-vscode" / "package.json").write_text(
@@ -102,7 +102,7 @@ def test_validate_repo_consistency_flags_stale_root_extension_version(tmp_path: 
     repo = tmp_path / "repo"
     _write_minimal_consistent_repo(repo)
     (repo / "README.md").write_text(
-        "# Aegis\nExtension v0.4.0\nPython 3.10+\n`pip install -e .[dev]`\ndeepseek openai ollama custom\n"
+        "# Aegis\nExtension v0.4.0\nPython 3.10-3.12; Python 3.13 unsupported\n`pip install -e .[dev]`\ndeepseek openai ollama custom\n"
         "OLLAMA_BASE_URL=x\nDEEPSEEK_API_KEY=x\nOPENAI_API_KEY=x\n.aegis-baseline.json not a fix\n",
         encoding="utf-8",
     )
@@ -110,3 +110,14 @@ def test_validate_repo_consistency_flags_stale_root_extension_version(tmp_path: 
     errors = validate_repo_consistency(repo)
 
     assert any("root readme" in error.lower() and "extension version" in error.lower() for error in errors)
+
+
+def test_validate_repo_consistency_flags_undocumented_python_upper_bound(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _write_minimal_consistent_repo(repo)
+    root_readme = repo / "README.md"
+    root_readme.write_text(root_readme.read_text(encoding="utf-8").replace("; Python 3.13 unsupported", ""), encoding="utf-8")
+
+    errors = validate_repo_consistency(repo)
+
+    assert any("python requirement" in error.lower() for error in errors)

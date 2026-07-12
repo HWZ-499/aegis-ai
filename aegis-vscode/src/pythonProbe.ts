@@ -65,13 +65,19 @@ export function parsePythonVersion(output: string): PythonVersion | undefined {
   };
 }
 
-export function isPythonVersionSupported(output: string, minMajor = 3, minMinor = 10): boolean {
+export function isPythonVersionSupported(
+  output: string,
+  minMajor = 3,
+  minMinor = 10,
+  maxMajor = 3,
+  maxMinor = 12,
+): boolean {
   const version = parsePythonVersion(output);
   if (!version) {
     return false;
   }
-  if (version.major !== minMajor) {
-    return version.major > minMajor;
-  }
-  return version.minor >= minMinor;
+  const versionKey = version.major * 100 + version.minor;
+  const minimumKey = minMajor * 100 + minMinor;
+  const maximumKey = maxMajor * 100 + maxMinor;
+  return versionKey >= minimumKey && versionKey <= maximumKey;
 }

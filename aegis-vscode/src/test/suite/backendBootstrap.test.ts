@@ -103,7 +103,34 @@ suite("backendBootstrap", () => {
           workspaceFolders: [],
           runProcess,
         }),
-      /Python 3\.10 or newer is required/,
+      /Python 3\.10 through 3\.12 is required/,
+    );
+    assert.ok(!calls.some((call) => call.includes("-m venv")));
+  });
+
+  test("rejects Python 3.13 before creating the backend venv", async () => {
+    const extensionPath = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-ext-"));
+    const globalStoragePath = fs.mkdtempSync(path.join(os.tmpdir(), "aegis-storage-"));
+    createBundledBackend(extensionPath);
+    const calls: string[] = [];
+    const runProcess: RunProcessLike = async (file, args) => {
+      calls.push([file, ...args].join(" "));
+      return { stdout: "Python 3.13.4", stderr: "" };
+    };
+
+    await assert.rejects(
+      () =>
+        ensureBackendLaunch({
+          explicitCwd: "",
+          extensionPath,
+          globalStoragePath,
+          preferBundledBackend: true,
+          pythonPath: "python",
+          serverModule: "src.lsp",
+          workspaceFolders: [],
+          runProcess,
+        }),
+      /Python 3\.10 through 3\.12 is required/,
     );
     assert.ok(!calls.some((call) => call.includes("-m venv")));
   });
