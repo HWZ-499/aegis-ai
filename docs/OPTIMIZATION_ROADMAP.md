@@ -3,8 +3,8 @@
 > 本文档是项目优化阶段、完成状态和验收标准的唯一事实源。
 > 长期审查材料可作为优先级参考，但实际执行进度以本文档为准。
 
-**最后同步日期**：2026-07-11
-**当前阶段**：O10 真实项目验收（O7、O8 已完成）
+**最后同步日期**：2026-07-12
+**当前阶段**：O10 已完成；下一阶段为 O9 生态与分发
 
 ## 当前执行优先级（2026-07-10 调整）
 
@@ -36,12 +36,12 @@ O7 的架构收口与 O10 的真实项目准确率验证必须并行推进，不
 | O2 | AI 修复生成、Diff Preview、修复应用 | 已完成 |
 | O3 | 污点路径查询、可视化与 Finding 缓存 | 已完成 |
 | O4 | 多格式报告、SARIF Code Flow、CI 上传与报告验收 | 已完成 |
-| O5 | 增量扫描、跨文件分析、缓存与性能 | 代码验收完成，待提交 |
+| O5 | 增量扫描、跨文件分析、缓存与性能 | 已完成 |
 | O6 | 检测准确率、FP/FN 与规则覆盖 | 已完成 |
 | O7 | 架构治理、legacy 清理与类型安全 | 已完成 |
 | O8 | IDE 错误可见性、交互体验与扩展测试 | 已完成 |
-| O9 | PyPI、Marketplace、规则生态与社区 | 待开始 |
-| O10 | 真实项目验收、稳定版本与长期维护 | 进行中 |
+| O9 | PyPI、Marketplace、规则生态与社区 | 下一阶段 |
+| O10 | 真实项目验收、稳定版本与长期维护 | 已完成 |
 
 ## O1：Baseline 与抑制
 
@@ -107,7 +107,7 @@ O7 的架构收口与 O10 的真实项目准确率验证必须并行推进，不
 
 ## O5：增量、跨文件与性能
 
-**状态：代码验收完成，待提交稳定检查点**
+**状态：已完成**
 
 ### 已完成
 
@@ -143,7 +143,7 @@ O7 的架构收口与 O10 的真实项目准确率验证必须并行推进，不
 - [x] 并发缓存写入与中断恢复验证
 - [x] LSP 增量扫描与 CLI 项目扫描一致性验证
 - [x] 固化可重复的性能回归测试和阈值
-- [ ] 整理并提交 O5 稳定检查点
+- [x] 整理并提交 O5 稳定检查点（后续 O7/O10 检查点已完整承载并继续验证）
 
 ### O5 缓存可靠性验收证据
 
@@ -592,7 +592,7 @@ pytest-benchmark 场景成功生成 JSON 基准。
 
 ## O9：生态与分发
 
-**状态：待开始**
+**状态：下一阶段（O10 已完成）**
 
 - [ ] PyPI 稳定发布
 - [ ] VS Code Marketplace 稳定发布
@@ -602,14 +602,14 @@ pytest-benchmark 场景成功生成 JSON 基准。
 
 ## O10：稳定版
 
-**状态：进行中**
+**状态：已完成**
 
 - [x] DVWA、NodeGoat 干净版本可复跑基线
 - [x] 其它真实项目按同一 provenance 口径复跑
 - [x] 固化性能、准确率和内存指标
 - [x] 升级与兼容性测试
 - [x] 清理废弃接口
-- [ ] 稳定版本与维护策略
+- [x] 稳定版本与维护策略
 
 ### O10 第一批：真实项目指标可追溯
 
@@ -723,10 +723,33 @@ pytest-benchmark 场景成功生成 JSON 基准。
   wheel 为 `aegis_ai_core-1.5.0.dev0` 且发行内容门禁通过；bundled backend 重建后 TypeScript check
   通过、扩展测试 55 passing。
 
+### O10 第六批：稳定版本与维护策略
+
+- Core 元数据从 `1.5.0.dev0` 冻结为稳定 `1.5.0`，classifier 更新为 Production/Stable；新增 Core
+  与 VS Code 独立 changelog，扩展 README 原先指向的缺失 changelog 已补齐。PyPI/Marketplace 的
+  实际发布仍属于 O9，本批只准备可发布的稳定源码与制品口径。
+- 新增 `docs/MAINTENANCE.md`：Core 与扩展分别遵循 Semantic Versioning；最新 Core minor 获得正常
+  修复、上一 minor 提供 90 天关键/安全修复窗口；明确 Python/Node 支持矩阵、兼容与弃用约束、
+  质量门禁、阈值变更规则和发行节奏。
+- 修复发布 tag 冲突：PyPI 不再与扩展共同监听 `v*`。Core 只监听 `core-v*`，扩展只监听
+  `vscode-v*`；`check_release_tag.py` 要求 tag 与 `pyproject.toml` / `package.json` 的稳定 `X.Y.Z`
+  完全一致，交叉组件 tag、版本漂移和 prerelease 元数据都会失败。
+- 发行一致性门禁新增 changelog 版本与维护政策检查，并移除 Python 3.11-only `tomllib` 依赖，
+  保持脚本在支持的 Python 3.10–3.12 范围内仅使用标准库。当前机器未安装 Python 3.10，本地以
+  3.11 验证，3.10/3.12 继续由 CI matrix 执行。
+- VSIX 实包审计发现扩展根 `.pytest_cache` 会被默认打包；`.vscodeignore` 现统一排除 pytest/mypy/
+  Ruff 缓存，发行内容门禁扩展到 VSIX，并在 artifact 上传前执行。复验 VSIX 从 143 个文件降至
+  139 个文件（约 520 KiB），包含 changelog 与 Core 1.5.0，不含缓存或已退役 backend 模块。
+- 验证：核心 `823 passed, 50 deselected`，Ruff 通过，mypy 119 个源码文件 0 errors；Core 与扩展
+  精确 tag 门禁通过；干净构建生成 `aegis_ai_core-1.5.0-py3-none-any.whl`，Version 1.5.0、
+  Production/Stable、`Requires-Python <3.13,>=3.10` 且内容门禁通过；bundled backend 携带 Core
+  1.5.0，TypeScript check 通过，扩展宿主 55 passing。O10 全部完成，下一阶段进入 O9。
+
 ## 更新记录
 
 | 日期 | 更新 |
 |---|---|
+| 2026-07-12 | O10 第六批并完成阶段：Core 冻结为稳定 1.5.0，发布维护政策与双组件 changelog；拆分 `core-v*` / `vscode-v*` 发布 tag 并增加精确版本门禁，修复 release checker 的 Python 3.10 兼容性及 VSIX 缓存污染；稳定 wheel、核心 823 tests 与扩展 55 tests 全部通过。 |
 | 2026-07-12 | O10 第五批：核心进入 `1.5.0.dev0`，移除已过弃用窗口的旧 AST/regex/PHP/报告接口与孤立正则配置器，多语言兼容层统一委托 `analyze_source()`，补迁移文档和防回流门禁；废弃接口验收完成。 |
 | 2026-07-12 | O10 第四批：Python 支持范围收口为 3.10–3.12，新增 Python/Node CI 矩阵、3.13 启动前拒绝、wheel 隔离安装和发行元数据验证；升级与兼容性验收完成。 |
 | 2026-07-12 | O10 第三批：创建 `d51bd8b` 稳定检查点，八个真实目标通过 clean provenance 复跑；3 轮串行采样固化质量/耗时/RSS 预算，`a41f754` 上八目标机器门禁全通过，前三项 O10 验收完成。 |

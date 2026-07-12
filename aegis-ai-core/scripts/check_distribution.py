@@ -1,4 +1,4 @@
-"""Reject built distributions that contain retired compatibility modules."""
+"""Reject built distributions that contain retired modules or local caches."""
 
 from __future__ import annotations
 
@@ -15,6 +15,12 @@ _RETIRED_FILES = (
     "src/analysis/rules/php/php_taint_rules.py",
     "src/scanner/rule_config.py",
 )
+_FORBIDDEN_CACHE_MARKERS = (
+    "/.mypy_cache/",
+    "/.pytest_cache/",
+    "/.ruff_cache/",
+    "/__pycache__/",
+)
 
 
 def _archive_names(path: Path) -> list[str]:
@@ -28,11 +34,14 @@ def _archive_names(path: Path) -> list[str]:
 
 
 def validate_distribution(path: Path) -> list[str]:
-    """Return retired source paths found in a wheel or source archive."""
+    """Return forbidden paths found in a wheel, source archive, or VSIX."""
     violations: list[str] = []
     for raw_name in _archive_names(path):
         name = raw_name.replace("\\", "/").lstrip("./")
-        if any(name == retired or name.endswith(f"/{retired}") for retired in _RETIRED_FILES):
+        normalized = f"/{name.strip('/')}"
+        if any(name == retired or name.endswith(f"/{retired}") for retired in _RETIRED_FILES) or any(
+            marker in f"{normalized}/" for marker in _FORBIDDEN_CACHE_MARKERS
+        ):
             violations.append(raw_name)
     return violations
 
@@ -54,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
             failed = True
             print(f"[distribution] FAIL {distribution}")
             for violation in violations:
-                print(f"  retired module: {violation}")
+                print(f"  forbidden content: {violation}")
         else:
             print(f"[distribution] OK {distribution}")
     return 1 if failed else 0

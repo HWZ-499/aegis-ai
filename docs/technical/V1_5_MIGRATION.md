@@ -1,8 +1,8 @@
 # Aegis 1.5 analysis API migration
 
-Aegis 1.5 removes the analysis interfaces deprecated since 1.2. The package is
-marked `1.5.0.dev0` while the stable-version policy and final release checks are
-being completed.
+Aegis 1.5 removes the analysis interfaces deprecated since 1.2. The stable
+source version is `1.5.0`; PyPI publication remains a separate O9 distribution
+step.
 
 ## Analysis entry points
 

@@ -19,6 +19,7 @@
 <p align="center">
   <a href="https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml"><img alt="Security Scan" src="https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml/badge.svg"></a>
   <img alt="Python 3.10-3.12" src="https://img.shields.io/badge/Python-3.10--3.12-2563eb">
+  <img alt="Aegis Core 1.5.0" src="https://img.shields.io/badge/Core-1.5.0-7c3aed">
   <img alt="VS Code 0.6.7" src="https://img.shields.io/badge/VS%20Code-0.6.7-16a34a">
   <img alt="License MIT" src="https://img.shields.io/badge/License-MIT-111827">
 </p>

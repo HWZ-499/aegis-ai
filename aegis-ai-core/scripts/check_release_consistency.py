@@ -4,8 +4,6 @@ import json
 import re
 from pathlib import Path
 
-import tomllib
-
 
 def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -25,9 +23,24 @@ def _extract_provider_enum(package_json_text: str) -> list[str]:
 
 
 def _extract_project_urls(pyproject_text: str) -> dict[str, str]:
-    payload = tomllib.loads(pyproject_text)
-    urls = payload.get("project", {}).get("urls", {})
-    return {str(key): str(value) for key, value in urls.items()}
+    urls: dict[str, str] = {}
+    in_urls = False
+    for line in pyproject_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("["):
+            in_urls = stripped == "[project.urls]"
+            continue
+        if not in_urls:
+            continue
+        match = re.match(r"([A-Za-z][A-Za-z0-9_-]*)\s*=\s*[\"']([^\"']*)[\"']", stripped)
+        if match:
+            urls[match.group(1)] = match.group(2)
+    return urls
+
+
+def _extract_project_version(pyproject_text: str) -> str:
+    match = re.search(r"(?m)^version\s*=\s*[\"']([^\"']+)[\"']", pyproject_text)
+    return match.group(1) if match else ""
 
 
 def _extract_extension_metadata(package_json_text: str) -> dict[str, str]:
@@ -101,8 +114,11 @@ def validate_repo_consistency(repo_root: Path) -> list[str]:
     extension_readme = _read_text(repo_root / "aegis-vscode" / "README.md")
     verification_doc = _read_text(repo_root / "docs" / "VERIFICATION_GUIDE.md")
     detection_doc = _read_text(repo_root / "docs" / "technical" / "DETECTION_QUALITY.md")
+    maintenance_doc = _read_text(repo_root / "docs" / "MAINTENANCE.md")
     pyproject = _read_text(repo_root / "aegis-ai-core" / "pyproject.toml")
+    core_changelog = _read_text(repo_root / "aegis-ai-core" / "CHANGELOG.md")
     package_json = _read_text(repo_root / "aegis-vscode" / "package.json")
+    extension_changelog = _read_text(repo_root / "aegis-vscode" / "CHANGELOG.md")
     src_readme = _read_text(repo_root / "aegis-ai-core" / "src" / "README.md")
 
     python_requirement = _extract_python_requirement(pyproject)
@@ -167,6 +183,16 @@ def validate_repo_consistency(repo_root: Path) -> list[str]:
 
     if extension_metadata["version"] and extension_metadata["version"] not in root_readme:
         errors.append(f"Root README must mention the packaged extension version {extension_metadata['version']}.")
+
+    core_version = _extract_project_version(pyproject)
+    if core_version and core_version not in core_changelog:
+        errors.append(f"Core changelog must mention package version {core_version}.")
+    if extension_metadata["version"] and extension_metadata["version"] not in extension_changelog:
+        errors.append(f"Extension changelog must mention package version {extension_metadata['version']}.")
+
+    maintenance_markers = ("core-v", "vscode-v", "Semantic Versioning", "90 days")
+    if not all(marker in maintenance_doc for marker in maintenance_markers):
+        errors.append("Maintenance policy must document versioning, component tag prefixes, and support window.")
 
     src_root = repo_root / "aegis-ai-core" / "src"
     for directory_ref in _extract_src_directory_refs(src_readme):

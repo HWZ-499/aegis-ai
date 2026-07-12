@@ -26,14 +26,20 @@ def _write_minimal_consistent_repo(repo: Path) -> Path:
         "python -m pytest tests/\npython -m src.scanner.cli . --format json\n",
         encoding="utf-8",
     )
+    (repo / "docs" / "MAINTENANCE.md").write_text(
+        "Semantic Versioning\ncore-vX.Y.Z\nvscode-vX.Y.Z\nprevious minor: 90 days\n",
+        encoding="utf-8",
+    )
     (core / "pyproject.toml").write_text(
         "[project]\nrequires-python='>=3.10,<3.13'\nversion='1.4.0'\n\n[project.urls]\nHomepage='https://github.com/HWZ-499/aegis-ai'\nRepository='https://github.com/HWZ-499/aegis-ai'\nIssues='https://github.com/HWZ-499/aegis-ai/issues'\n",
         encoding="utf-8",
     )
+    (core / "CHANGELOG.md").write_text("# Changelog\n\n## 1.4.0\n", encoding="utf-8")
     (repo / "aegis-vscode" / "package.json").write_text(
         '{ "version": "0.5.1", "repository": { "type": "git", "url": "https://github.com/HWZ-499/aegis-ai.git" }, "bugs": { "url": "https://github.com/HWZ-499/aegis-ai/issues" }, "homepage": "https://github.com/HWZ-499/aegis-ai#readme", "contributes": { "configuration": { "properties": { "aegisAI.ai.provider": { "enum": ["deepseek", "openai", "ollama", "custom"] } } } } }',
         encoding="utf-8",
     )
+    (repo / "aegis-vscode" / "CHANGELOG.md").write_text("# Changelog\n\n## 0.5.1\n", encoding="utf-8")
     (src_dir / "README.md").write_text(
         "# Core\n\n- `analysis/` - analyzers\n- `scanner/` - scanning\n- `lsp/` - language server\n",
         encoding="utf-8",
@@ -121,3 +127,13 @@ def test_validate_repo_consistency_flags_undocumented_python_upper_bound(tmp_pat
     errors = validate_repo_consistency(repo)
 
     assert any("python requirement" in error.lower() for error in errors)
+
+
+def test_validate_repo_consistency_flags_missing_component_changelog_version(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _write_minimal_consistent_repo(repo)
+    (repo / "aegis-ai-core" / "CHANGELOG.md").write_text("# Changelog\n", encoding="utf-8")
+
+    errors = validate_repo_consistency(repo)
+
+    assert any("core changelog" in error.lower() for error in errors)
