@@ -36,6 +36,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.scanner.benchmark import (
+    BenchmarkResult,
     _expected_ground_truth_lines,
     evaluate_project_against_ground_truth,
     format_report_json,
@@ -255,6 +256,83 @@ def format_performance_md(performance: dict[str, float | None]) -> str:
     )
 
 
+def load_target_thresholds(path: Path, target_name: str) -> dict[str, Any]:
+    """Load one target's stable quality/performance budget."""
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    targets = payload.get("targets") if isinstance(payload, dict) else None
+    threshold = targets.get(target_name) if isinstance(targets, dict) else None
+    if not isinstance(threshold, dict):
+        raise ValueError(f"No thresholds are defined for target '{target_name}'.")
+    return threshold
+
+
+def baseline_gate_violations(
+    result: BenchmarkResult,
+    performance: dict[str, float | None],
+    provenance: dict[str, str | bool | None],
+    thresholds: dict[str, Any],
+) -> list[str]:
+    """Return stable-baseline regressions for one evaluated target."""
+    violations: list[str] = []
+
+    expected_target_revision = thresholds.get("target_revision")
+    if expected_target_revision and provenance.get("target_revision") != expected_target_revision:
+        violations.append(f"target_revision={provenance.get('target_revision')} must equal {expected_target_revision}")
+    expected_ground_truth = thresholds.get("ground_truth_sha256")
+    if expected_ground_truth and provenance.get("ground_truth_sha256") != expected_ground_truth:
+        violations.append(
+            f"ground_truth_sha256={provenance.get('ground_truth_sha256')} must equal {expected_ground_truth}"
+        )
+
+    quality = thresholds.get("quality")
+    if isinstance(quality, dict):
+        checks = (
+            ("tp", result.tp, quality.get("min_tp"), ">="),
+            ("fp", result.fp, quality.get("max_fp"), "<="),
+            ("fn", result.fn, quality.get("max_fn"), "<="),
+            ("tn", result.tn, quality.get("min_tn"), ">="),
+        )
+        for metric, actual, expected, operator in checks:
+            if not isinstance(expected, int):
+                continue
+            failed = actual < expected if operator == ">=" else actual > expected
+            if failed:
+                violations.append(f"{metric}={actual} must be {operator} {expected}")
+
+    performance_budget = thresholds.get("performance")
+    if isinstance(performance_budget, dict):
+        checks = (
+            ("scan_duration_seconds", "max_scan_duration_seconds"),
+            ("process_peak_rss_mb", "max_process_peak_rss_mb"),
+        )
+        for actual_key, budget_key in checks:
+            budget = performance_budget.get(budget_key)
+            if not isinstance(budget, (int, float)):
+                continue
+            actual = performance.get(actual_key)
+            if actual is None:
+                violations.append(f"{actual_key} is unavailable but budget {budget} is required")
+            elif actual > budget:
+                violations.append(f"{actual_key}={actual:.3f} must be <= {budget:.3f}")
+
+    return violations
+
+
+def format_baseline_gate_md(threshold_path: Path, violations: list[str]) -> str:
+    lines = [
+        "---",
+        "",
+        "## Stable baseline gate",
+        "",
+        f"- Thresholds: `{_display_path(threshold_path)}`",
+        f"- Result: `{'passed' if not violations else 'failed'}`",
+    ]
+    if violations:
+        lines.extend(["", "### Violations", *[f"- {violation}" for violation in violations]])
+    lines.append("")
+    return "\n".join(lines)
+
+
 def split_ground_truth_scope(
     ground_truth: list[dict[str, Any]],
     *,
@@ -413,6 +491,12 @@ def main() -> None:
         action="store_true",
         help="仅允许扫描器和目标项目均为可识别的干净 Git 工作区时产出报告",
     )
+    parser.add_argument(
+        "--thresholds",
+        type=Path,
+        default=None,
+        help="可选稳定基线阈值 JSON；启用后同时要求 clean provenance，并在回归时以退出码 3 失败",
+    )
     args = parser.parse_args()
 
     project_dir = Path(args.project_dir)
@@ -422,6 +506,10 @@ def main() -> None:
         sys.exit(1)
     if not gt_path.is_file():
         print(f"错误: ground-truth 文件不存在: {gt_path}")
+        sys.exit(1)
+    threshold_path = Path(args.thresholds) if args.thresholds else None
+    if threshold_path is not None and not threshold_path.is_file():
+        print(f"错误: 稳定基线阈值文件不存在: {threshold_path}")
         sys.exit(1)
     target_repository_root = Path(args.target_repository_root) if args.target_repository_root else None
     if target_repository_root is not None:
@@ -445,10 +533,15 @@ def main() -> None:
         args.engine,
         target_repository_root=target_repository_root,
     )
-    if args.require_clean and provenance["reproducible"] is not True:
+    if (args.require_clean or threshold_path is not None) and provenance["reproducible"] is not True:
         print("错误: 正式基线要求扫描器和目标项目均为可识别的干净 Git 工作区。")
         print(format_provenance_md(provenance))
         sys.exit(2)
+    try:
+        thresholds = load_target_thresholds(threshold_path, target_name) if threshold_path else None
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"错误: 无法加载稳定基线阈值: {exc}")
+        sys.exit(1)
     scoped_ground_truth, excluded_entries = split_ground_truth_scope(
         ground_truth,
         include_out_of_scope=args.include_out_of_scope,
@@ -486,6 +579,9 @@ def main() -> None:
         ),
         "process_peak_rss_mb": round(process_peak_rss_mb, 3) if process_peak_rss_mb is not None else None,
     }
+    gate_violations = (
+        baseline_gate_violations(result, performance, provenance, thresholds) if thresholds is not None else []
+    )
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     date_str = datetime.now().strftime("%Y-%m-%d")
@@ -498,6 +594,7 @@ def main() -> None:
                 format_report_md(result, target_name=target_name, date_str=date_str),
                 format_scope_md(len(ground_truth), len(evaluated_ground_truth), excluded_entries, invalid_entries),
                 format_performance_md(performance),
+                format_baseline_gate_md(threshold_path, gate_violations) if threshold_path else "",
                 format_provenance_md(provenance),
             ]
         ),
@@ -506,6 +603,12 @@ def main() -> None:
     report_json = format_report_json(result, target_name=target_name, date_str=date_str)
     report_json["scope"] = scope
     report_json["performance"] = performance
+    if threshold_path is not None:
+        report_json["stable_baseline_gate"] = {
+            "thresholds": _display_path(threshold_path),
+            "passed": not gate_violations,
+            "violations": gate_violations,
+        }
     report_json["provenance"] = provenance
     json_path.write_text(
         json.dumps(report_json, ensure_ascii=False, indent=2),
@@ -519,6 +622,11 @@ def main() -> None:
         f"Scan: {performance['scan_duration_seconds']:.3f}s, "
         f"peak RSS: {performance['process_peak_rss_mb'] or 'unavailable'} MiB"
     )
+    if gate_violations:
+        print("稳定基线门禁失败:")
+        for violation in gate_violations:
+            print(f"- {violation}")
+        sys.exit(3)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,8 @@ import hashlib
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from scripts.benchmark import evaluate_project
 
 
@@ -81,6 +83,41 @@ def test_format_performance_md_records_time_and_memory() -> None:
     assert "Scan duration: `1.235 s`" in report
     assert "RSS delta: `8.500 MiB`" in report
     assert "Process peak RSS: `52.250 MiB`" in report
+
+
+def test_baseline_gate_reports_quality_performance_and_provenance_regressions() -> None:
+    result = evaluate_project.BenchmarkResult(tp=2, fp=4, fn=1, tn=3)
+    violations = evaluate_project.baseline_gate_violations(
+        result,
+        {"scan_duration_seconds": 2.5, "process_peak_rss_mb": None},
+        {"target_revision": "wrong", "ground_truth_sha256": "wrong"},
+        {
+            "target_revision": "expected-revision",
+            "ground_truth_sha256": "expected-ground-truth",
+            "quality": {"min_tp": 3, "max_fp": 2, "max_fn": 0, "min_tn": 4},
+            "performance": {"max_scan_duration_seconds": 2.0, "max_process_peak_rss_mb": 64.0},
+        },
+    )
+
+    assert violations == [
+        "target_revision=wrong must equal expected-revision",
+        "ground_truth_sha256=wrong must equal expected-ground-truth",
+        "tp=2 must be >= 3",
+        "fp=4 must be <= 2",
+        "fn=1 must be <= 0",
+        "tn=3 must be >= 4",
+        "scan_duration_seconds=2.500 must be <= 2.000",
+        "process_peak_rss_mb is unavailable but budget 64.0 is required",
+    ]
+
+
+def test_load_target_thresholds_rejects_unknown_target(tmp_path: Path) -> None:
+    thresholds = tmp_path / "thresholds.json"
+    thresholds.write_text('{"targets": {"known": {"quality": {}}}}\n', encoding="utf-8")
+
+    assert evaluate_project.load_target_thresholds(thresholds, "known") == {"quality": {}}
+    with pytest.raises(ValueError, match="No thresholds are defined"):
+        evaluate_project.load_target_thresholds(thresholds, "unknown")
 
 
 def test_git_worktree_state_fingerprints_tracked_and_untracked_changes(tmp_path: Path) -> None:
