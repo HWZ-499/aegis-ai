@@ -10,6 +10,7 @@ This folder keeps the product-facing technical material for Aegis AI.
 | [Maintenance Policy](MAINTENANCE.md) | Versioning, support window, compatibility rules, release gates, and component tags |
 | [Adding a Language](technical/ADDING_NEW_LANGUAGE.md) | Notes for extending language support |
 | [DSL Evaluation](technical/DSL_EVALUATION.md) | YAML rule DSL design and evaluation notes |
+| [DSL Rule Authoring](technical/DSL_RULE_AUTHORING.md) | Create, test, load, and contribute YAML security rules |
 | [Aegis 1.5 Migration](technical/V1_5_MIGRATION.md) | Replacements for analysis APIs removed after the 1.4 deprecation window |
 
 For normal users, start from the root [README](../README.md).

@@ -123,6 +123,13 @@ npm run check
 
 Rule behavior changes should include focused true-positive or false-positive fixtures under `aegis-ai-core/tests/rules/`.
 
+## Community
+
+- [Contributing guide](CONTRIBUTING.md)
+- [YAML DSL rule authoring](docs/technical/DSL_RULE_AUTHORING.md)
+- [Community rule template](aegis-ai-core/templates/rules/community-rule.yaml)
+- [Security policy](SECURITY.md)
+
 ## License
 
 MIT

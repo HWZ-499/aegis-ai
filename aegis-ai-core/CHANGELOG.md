@@ -12,6 +12,8 @@ All notable Core changes are recorded here. Releases follow the
 - Clean-provenance real-project reports and machine-enforced accuracy, duration,
   and peak-memory thresholds.
 - Python 3.10–3.12 compatibility gates and wheel/sdist retired-file checks.
+- A validated community YAML rule template and language-aware `aegis rules init`
+  skeleton checks.
 
 ### Changed
 

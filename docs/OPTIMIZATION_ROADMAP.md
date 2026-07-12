@@ -40,7 +40,7 @@ O7 的架构收口与 O10 的真实项目准确率验证必须并行推进，不
 | O6 | 检测准确率、FP/FN 与规则覆盖 | 已完成 |
 | O7 | 架构治理、legacy 清理与类型安全 | 已完成 |
 | O8 | IDE 错误可见性、交互体验与扩展测试 | 已完成 |
-| O9 | PyPI、Marketplace、规则生态与社区 | 下一阶段 |
+| O9 | PyPI、Marketplace、规则生态与社区 | 进行中 |
 | O10 | 真实项目验收、稳定版本与长期维护 | 已完成 |
 
 ## O1：Baseline 与抑制
@@ -592,13 +592,30 @@ pytest-benchmark 场景成功生成 JSON 基准。
 
 ## O9：生态与分发
 
-**状态：下一阶段（O10 已完成）**
+**状态：进行中（O10 已完成）**
 
 - [ ] PyPI 稳定发布
 - [ ] VS Code Marketplace 稳定发布
-- [ ] DSL 规则编写与测试文档
-- [ ] 社区规则模板
-- [ ] 安全披露与贡献流程
+- [x] DSL 规则编写与测试文档
+- [x] 社区规则模板
+- [x] 安全披露与贡献流程
+
+### O9 第一批：社区规则与贡献入口
+
+- 新增 `docs/technical/DSL_RULE_AUTHORING.md`，覆盖规则生成、schema、元变量约束、文件过滤、
+  嵌入式 TP/TN、退出码、项目自动加载、DSL 能力边界和内置规则贡献流程；明确 DSL 是行级模式
+  补充，复杂多行/跨函数 Source→Sink 应使用 AST/taint 规则。
+- 新增可直接复制的 `templates/rules/community-rule.yaml`，包含不安全 `yaml.load` 的一个 TP 与两个
+  TN；真实执行 `aegis rules test` 为 3/3 通过，并由 pytest 门禁持续验证。
+- `aegis rules init` 规范化 `py/js/ts` 别名，并按规则类型校验可生成的语言组合；不再为 PHP XSS
+  之类未实现的组合生成 Python 语义骨架，而是明确提示使用 `--type custom`。DSL schema 同时拒绝
+  未支持语言、非标准 severity、空 patterns 和损坏正则，避免规则静默不加载或产生非法 finding。
+- 新增根级 `CONTRIBUTING.md`、`SECURITY.md` 和 PR checklist，定义开发环境、规则 TP/TN 要求、
+  全量检查、兼容性说明与私密安全披露流程；Issue 配置修复为当前 `HWZ-499/aegis-ai` 仓库和真实
+  roadmap 路径，并增加 Security Policy 入口。
+- 新增社区就绪结构门禁，锁定 README/文档索引、DSL 可执行契约、安全披露提示和 Issue 仓库链接。
+  验证：核心 `835 passed, 50 deselected`，Ruff 通过，mypy 119 个源码文件 0 errors，发行一致性检查
+  通过。PyPI 与 Marketplace 尚未执行外部发布，继续保留为 O9 后续任务。
 
 ## O10：稳定版
 
@@ -749,6 +766,7 @@ pytest-benchmark 场景成功生成 JSON 基准。
 
 | 日期 | 更新 |
 |---|---|
+| 2026-07-12 | O9 第一批：发布 DSL 规则创作/测试指南、可执行社区规则模板、贡献指南、安全策略与 PR 门禁；修复旧 Issue 链接，强化规则模板语言组合和 DSL schema 校验；核心 835 tests 通过，O9 进入进行中。 |
 | 2026-07-12 | O10 第六批并完成阶段：Core 冻结为稳定 1.5.0，发布维护政策与双组件 changelog；拆分 `core-v*` / `vscode-v*` 发布 tag 并增加精确版本门禁，修复 release checker 的 Python 3.10 兼容性及 VSIX 缓存污染；稳定 wheel、核心 823 tests 与扩展 55 tests 全部通过。 |
 | 2026-07-12 | O10 第五批：核心进入 `1.5.0.dev0`，移除已过弃用窗口的旧 AST/regex/PHP/报告接口与孤立正则配置器，多语言兼容层统一委托 `analyze_source()`，补迁移文档和防回流门禁；废弃接口验收完成。 |
 | 2026-07-12 | O10 第四批：Python 支持范围收口为 3.10–3.12，新增 Python/Node CI 矩阵、3.13 启动前拒绝、wheel 隔离安装和发行元数据验证；升级与兼容性验收完成。 |

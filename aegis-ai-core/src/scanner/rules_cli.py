@@ -22,6 +22,11 @@ _LANGUAGE_SUFFIXES = {
     "python": ".py",
     "typescript": ".ts",
 }
+_LANGUAGE_ALIASES = {
+    "js": "javascript",
+    "py": "python",
+    "ts": "typescript",
+}
 _TYPE_ALIASES = {
     "command-exec": "rce",
     "command_exec": "rce",
@@ -77,6 +82,14 @@ _TYPE_DEFAULTS = {
         "severity": "HIGH",
         "message": "Detected user-controlled data reaching an HTML output sink.",
     },
+}
+_TEMPLATE_LANGUAGES = {
+    "custom": frozenset(_LANGUAGE_SUFFIXES),
+    "hardcoded-credentials": frozenset({"go", "javascript", "python", "typescript"}),
+    "path-traversal": frozenset({"javascript", "python", "typescript"}),
+    "rce": frozenset({"javascript", "python", "typescript"}),
+    "sql-injection": frozenset({"go", "javascript", "python", "typescript"}),
+    "xss": frozenset({"javascript", "python", "typescript"}),
 }
 
 
@@ -154,8 +167,21 @@ def _build_parser(prog: str) -> argparse.ArgumentParser:
 
 
 def _init_rule(args: argparse.Namespace) -> int:
-    language = str(args.language).lower()
+    raw_language = str(args.language).strip().lower()
+    language = _LANGUAGE_ALIASES.get(raw_language, raw_language)
     rule_type = _normalize_rule_type(args.rule_type)
+    if language not in _LANGUAGE_SUFFIXES:
+        supported = ", ".join(sorted(_LANGUAGE_SUFFIXES))
+        print(f"Unsupported rule language: {args.language}. Supported languages: {supported}.")
+        return 2
+    supported_template_languages = _TEMPLATE_LANGUAGES.get(rule_type)
+    if supported_template_languages is not None and language not in supported_template_languages:
+        supported = ", ".join(sorted(supported_template_languages))
+        print(
+            f"Template type {rule_type!r} does not provide a {language} skeleton. "
+            f"Supported languages: {supported}. Use --type custom and add language-specific patterns."
+        )
+        return 2
     spec = _template_spec(rule_type)
     path = Path(args.path or _default_rule_path(rule_type, language, spec))
     if path.exists() and not args.force:

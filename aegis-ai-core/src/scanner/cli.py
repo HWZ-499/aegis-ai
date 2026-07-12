@@ -52,7 +52,10 @@ def main(argv: list[str] | None = None):
         sys.exit(run_rules_command(argv[1:]))
 
     parser = argparse.ArgumentParser(
-        description="Aegis SAST 安全扫描工具 — JavaScript/TypeScript、Python 深度 AST 检测；Java/C/Go 基础正则检测",
+        description=(
+            "Aegis SAST 安全扫描工具 — Python、JavaScript/TypeScript、PHP、Java、Go AST/规则检测；"
+            "C/C++ 基础上下文检测"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:

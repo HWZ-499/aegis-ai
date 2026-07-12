@@ -13,6 +13,9 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
 
+_SUPPORTED_DSL_LANGUAGES = frozenset({"go", "java", "javascript", "php", "python", "typescript"})
+_SUPPORTED_SEVERITIES = frozenset({"CRITICAL", "HIGH", "INFO", "LOW", "MEDIUM"})
+
 
 class MetaVarConstraint(BaseModel):
     """对单个元变量的约束配置。
@@ -24,6 +27,16 @@ class MetaVarConstraint(BaseModel):
 
     regex: str | None = None
     not_regex: str | None = Field(default=None, alias="not_regex")
+
+    @field_validator("regex", "not_regex")
+    @classmethod
+    def _validate_regex(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                re.compile(value)
+            except re.error as exc:
+                raise ValueError(f"invalid regular expression: {exc}") from exc
+        return value
 
 
 class WhereClause(BaseModel):
@@ -38,6 +51,16 @@ class WhereClause(BaseModel):
 
     file_regex: str | None = None
     file_not_regex: str | None = None
+
+    @field_validator("file_regex", "file_not_regex")
+    @classmethod
+    def _validate_regex(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                re.compile(value)
+            except re.error as exc:
+                raise ValueError(f"invalid regular expression: {exc}") from exc
+        return value
 
     def matches(self, file_path: Path) -> bool:
         """判断给定文件路径是否满足过滤条件。
@@ -65,7 +88,7 @@ class DslPattern(BaseModel):
         where: 可选的附加过滤条件。
     """
 
-    pattern: str
+    pattern: str = Field(min_length=1)
     metavariables: dict[str, MetaVarConstraint] = Field(
         default_factory=dict,
     )
@@ -101,12 +124,12 @@ class DslRule(BaseModel):
         tests: 可选的内嵌规则样例，用于 `aegis rules test`。
     """
 
-    id: str
+    id: str = Field(min_length=1)
     language: str
     severity: str
-    message: str
-    vuln_type: str
-    patterns: list[DslPattern]
+    message: str = Field(min_length=1)
+    vuln_type: str = Field(min_length=1)
+    patterns: list[DslPattern] = Field(min_length=1)
     tests: list[DslRuleTestCase] = Field(default_factory=list)
 
     @field_validator("language")
@@ -120,7 +143,11 @@ class DslRule(BaseModel):
         Returns:
             归一化后的语言标识。
         """
-        return value.lower()
+        normalized = value.lower()
+        if normalized not in _SUPPORTED_DSL_LANGUAGES:
+            supported = ", ".join(sorted(_SUPPORTED_DSL_LANGUAGES))
+            raise ValueError(f"unsupported DSL language {value!r}; expected one of: {supported}")
+        return normalized
 
     @field_validator("severity")
     @classmethod
@@ -133,7 +160,11 @@ class DslRule(BaseModel):
         Returns:
             归一化后的严重级别。
         """
-        return value.upper()
+        normalized = value.upper()
+        if normalized not in _SUPPORTED_SEVERITIES:
+            supported = ", ".join(sorted(_SUPPORTED_SEVERITIES))
+            raise ValueError(f"unsupported severity {value!r}; expected one of: {supported}")
+        return normalized
 
 
 __all__ = ["MetaVarConstraint", "WhereClause", "DslPattern", "DslRule", "DslRuleTestCase"]
