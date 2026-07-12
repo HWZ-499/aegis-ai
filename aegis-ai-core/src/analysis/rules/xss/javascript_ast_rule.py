@@ -395,6 +395,8 @@ class JavaScriptXSSAstRule(SecurityRule):
             return None, None
         property_node = function.child_by_field_name("property")
         object_node = function.child_by_field_name("object")
+        if property_node is None or object_node is None:
+            return None, None
         return self._get_node_text(property_node), self._get_node_text(object_node)
 
     def _arg_contains_user_or_session_input(self, node: Node) -> bool:

@@ -87,6 +87,7 @@ SCAN_TIMEOUT_SECONDS: float = 30.0
 MAX_FILE_SIZE_BYTES: int = 2 * 1024 * 1024  # 2 MB
 _pending_validation: dict[str, threading.Timer] = {}
 _pending_lock: threading.Lock = threading.Lock()
+_workspace_scan_lock: threading.Lock = threading.Lock()
 
 # O3: 每个 URI 的 findings 缓存，用于 aegis/getTaintPath 等后续查询
 _findings_cache: dict[str, list[dict]] = {}
@@ -881,19 +882,26 @@ def create_server() -> LanguageServer:
             logger.warning("Manual scan failed for %s: %s", uri, e)
 
     # P1-2 / P5-4：扩展命令「扫描工作区」触发的自定义通知（按 workspace 文件发现扫描）
+    @server.thread()
     @server.feature("aegis/requestScanWorkspace")
     def on_request_scan_workspace(_params: dict[str, Any] | None) -> None:
         total = 0
         completed = 0
+        scan_id = str((_params or {}).get("scanId") or "")
 
         def _notify_progress(current: int, total_count: int, uri: str = "") -> None:
             try:
                 server.protocol.notify(
                     "aegis/scanProgress",
-                    {"current": current, "total": total_count, "uri": uri},
+                    {"scanId": scan_id, "current": current, "total": total_count, "uri": uri},
                 )
             except RuntimeError as e:
                 logger.debug("Failed to send workspace scan progress: %s", e)
+
+        if not _workspace_scan_lock.acquire(blocking=False):
+            logger.info("Ignoring duplicate workspace scan request while another scan is active")
+            _notify_progress(0, 0)
+            return
 
         try:
             root = getattr(_workspace_ctx, "_project_path", None)
@@ -933,10 +941,13 @@ def create_server() -> LanguageServer:
             except RuntimeError as send_err:
                 logger.debug("Failed to send workspace scan error: %s", send_err)
         finally:
-            if total == 0:
-                _notify_progress(0, 0)
-            elif completed < total:
-                _notify_progress(total, total)
+            try:
+                if total == 0:
+                    _notify_progress(0, 0)
+                elif completed < total:
+                    _notify_progress(total, total)
+            finally:
+                _workspace_scan_lock.release()
 
     @server.feature(
         lsp.TEXT_DOCUMENT_CODE_ACTION,
@@ -1214,7 +1225,7 @@ def create_server() -> LanguageServer:
                         message=f"Aegis: Cannot update baseline because {baseline_path.name} is invalid.",
                     )
                 )
-            except Exception as notify_error:  # noqa: BLE001 - notification failure must not mask baseline state
+            except (OSError, RuntimeError) as notify_error:
                 logger.debug("Failed to notify corrupt baseline: %s", notify_error)
             return
 

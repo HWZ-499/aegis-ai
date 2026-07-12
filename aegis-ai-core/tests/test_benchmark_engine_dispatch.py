@@ -9,6 +9,7 @@ from src.scanner.benchmark import (
     _expected_ground_truth_lines,
     evaluate_project_against_ground_truth,
     format_report_json,
+    format_report_md,
     quality_gate_violations,
     run_benchmark,
 )
@@ -242,3 +243,64 @@ def test_evaluate_project_matches_line_candidates(monkeypatch, tmp_path: Path) -
     result = evaluate_project_against_ground_truth(project_dir, ground_truth, engine="new")
     assert result.tp == 1
     assert result.fn == 0
+    assert result.details == [
+        {
+            "verdict": "TP",
+            "ground_truth_index": 0,
+            "expected": ground_truth[0],
+            "finding": {
+                "type": "XSS_RISK",
+                "line": 20,
+                "file": "vulnerabilities/sqli/source/low.php",
+            },
+        }
+    ]
+
+
+def test_evaluate_project_reports_unmatched_findings_for_fp_review(monkeypatch, tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    class FakeScanner:
+        def __init__(self, project_path: str, **kwargs) -> None:
+            pass
+
+        def scan_project(self, verbose: bool = False):
+            return {
+                "src/demo.py": [
+                    {
+                        "type": "RCE_COMMAND_EXEC",
+                        "rule_id": "PY_RCE",
+                        "severity": "High",
+                        "line": 8,
+                        "details": "user data reaches exec",
+                        "file_path": "ignored-absolute-path",
+                    }
+                ]
+            }
+
+    import src.scanner.project_scanner as project_scanner_module
+
+    monkeypatch.setattr(project_scanner_module, "ProjectScanner", FakeScanner)
+
+    result = evaluate_project_against_ground_truth(project_dir, [], engine="new")
+
+    assert result.fp == 1
+    assert result.details == [
+        {
+            "verdict": "FP",
+            "ground_truth_index": None,
+            "expected": None,
+            "finding": {
+                "type": "RCE_COMMAND_EXEC",
+                "rule_id": "PY_RCE",
+                "severity": "High",
+                "line": 8,
+                "details": "user data reaches exec",
+                "file": "src/demo.py",
+            },
+        }
+    ]
+    report = format_report_md(result, target_name="demo")
+    assert "| # | 判定 | 漏洞类型 | 位置 | 规则 | 说明 |" in report
+    assert "| 1 | FP | RCE_COMMAND_EXEC | src/demo.py:8 | PY_RCE | user data reaches exec |" in report

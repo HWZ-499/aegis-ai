@@ -490,9 +490,36 @@ def format_report_md(
         ]
     )
 
-    for d in result.details:
-        res_str = "FOUND" if d["detected"] else "CLEAN"
-        lines.append(f"| {d['id']} | {d['category']} | {d['pattern']} | {d['expect']} | {res_str} | {d['verdict']} |")
+    project_details = bool(result.details and "ground_truth_index" in result.details[0])
+    if project_details:
+        lines[-2:] = [
+            "| # | 判定 | 漏洞类型 | 位置 | 规则 | 说明 |",
+            "|---:|------|----------|------|------|------|",
+        ]
+
+        def markdown_cell(value: Any) -> str:
+            return str(value or "").replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+
+        for index, detail in enumerate(result.details, start=1):
+            expected_entry = cast(dict[str, Any], detail.get("expected") or {})
+            finding_entry = cast(dict[str, Any], detail.get("finding") or {})
+            finding_type = finding_entry.get("type") or expected_entry.get("type") or "UNKNOWN"
+            file_name = finding_entry.get("file") or expected_entry.get("file") or "unknown"
+            line = finding_entry.get("line") or expected_entry.get("line")
+            location = f"{file_name}:{line}" if line else file_name
+            note = finding_entry.get("details") or finding_entry.get("content") or expected_entry.get("comment") or ""
+            lines.append(
+                f"| {index} | {markdown_cell(detail.get('verdict'))} | {markdown_cell(finding_type)} | "
+                f"{markdown_cell(location)} | "
+                f"{markdown_cell(finding_entry.get('rule_id') or finding_entry.get('source'))} | "
+                f"{markdown_cell(note)} |"
+            )
+    else:
+        for d in result.details:
+            res_str = "FOUND" if d["detected"] else "CLEAN"
+            lines.append(
+                f"| {d['id']} | {d['category']} | {d['pattern']} | {d['expect']} | {res_str} | {d['verdict']} |"
+            )
 
     lines.append("")
     return "\n".join(lines)
@@ -620,8 +647,8 @@ def evaluate_project_against_ground_truth(
     positives = [(i, e) for i, e in enumerate(ground_truth) if e.get("is_true_positive", True)]
     negatives = [(i, e) for i, e in enumerate(ground_truth) if not e.get("is_true_positive", True)]
 
-    used_positive: list[bool] = [False] * len(positives)
-    used_negative: list[bool] = [False] * len(negatives)
+    positive_matches: list[int | None] = [None] * len(positives)
+    negative_matches: list[int | None] = [None] * len(negatives)
     matched_finding_idx: set = set()
 
     # 行号容差：±LINE_TOLERANCE 内视为匹配
@@ -649,7 +676,7 @@ def evaluate_project_against_ground_truth(
             if j in matched_finding_idx:
                 continue
             if _match(exp, finding):
-                used_positive[k] = True
+                positive_matches[k] = j
                 matched_finding_idx.add(j)
                 break
 
@@ -658,16 +685,16 @@ def evaluate_project_against_ground_truth(
             if j in matched_finding_idx:
                 continue
             if _match(exp, finding):
-                used_negative[k] = True
+                negative_matches[k] = j
                 matched_finding_idx.add(j)
                 break
 
-    tp = sum(1 for u in used_positive if u)
+    tp = sum(1 for match in positive_matches if match is not None)
     fn = len(positives) - tp
-    fp_neg = sum(1 for u in used_negative if u)
+    fp_neg = sum(1 for match in negative_matches if match is not None)
     fp_extra = sum(1 for j in range(len(all_findings)) if j not in matched_finding_idx)
     fp = fp_neg + fp_extra
-    tn = sum(1 for u in used_negative if not u)
+    tn = sum(1 for match in negative_matches if match is None)
 
     result = BenchmarkResult(tp=tp, fp=fp, fn=fn, tn=tn)
     result.by_category = {}
@@ -676,13 +703,13 @@ def evaluate_project_against_ground_truth(
         cat = exp.get("type", "UNKNOWN")
         if cat not in result.by_category:
             result.by_category[cat] = {"tp": 0, "tn": 0, "fp": 0, "fn": 0}
-        result.by_category[cat]["tp" if used_positive[k] else "fn"] += 1
+        result.by_category[cat]["tp" if positive_matches[k] is not None else "fn"] += 1
 
     for k, (_, exp) in enumerate(negatives):
         cat = exp.get("type", "UNKNOWN")
         if cat not in result.by_category:
             result.by_category[cat] = {"tp": 0, "tn": 0, "fp": 0, "fn": 0}
-        result.by_category[cat]["fp" if used_negative[k] else "tn"] += 1
+        result.by_category[cat]["fp" if negative_matches[k] is not None else "tn"] += 1
 
     for j in range(len(all_findings)):
         if j in matched_finding_idx:
@@ -691,6 +718,58 @@ def evaluate_project_against_ground_truth(
         if cat not in result.by_category:
             result.by_category[cat] = {"tp": 0, "tn": 0, "fp": 0, "fn": 0}
         result.by_category[cat]["fp"] += 1
+
+    def report_finding(finding_index: int) -> dict[str, Any]:
+        finding = all_findings[finding_index]
+        keys = (
+            "type",
+            "rule_id",
+            "severity",
+            "confidence",
+            "line",
+            "column",
+            "end_line",
+            "language",
+            "details",
+            "content",
+            "source",
+        )
+        report = {key: finding[key] for key in keys if key in finding}
+        report["file"] = finding.get("_file") or finding.get("file")
+        return report
+
+    for k, (ground_truth_index, expected) in enumerate(positives):
+        finding_index = positive_matches[k]
+        result.details.append(
+            {
+                "verdict": "TP" if finding_index is not None else "FN",
+                "ground_truth_index": ground_truth_index,
+                "expected": expected,
+                "finding": report_finding(finding_index) if finding_index is not None else None,
+            }
+        )
+
+    for k, (ground_truth_index, expected) in enumerate(negatives):
+        finding_index = negative_matches[k]
+        result.details.append(
+            {
+                "verdict": "FP" if finding_index is not None else "TN",
+                "ground_truth_index": ground_truth_index,
+                "expected": expected,
+                "finding": report_finding(finding_index) if finding_index is not None else None,
+            }
+        )
+
+    for finding_index in range(len(all_findings)):
+        if finding_index not in matched_finding_idx:
+            result.details.append(
+                {
+                    "verdict": "FP",
+                    "ground_truth_index": None,
+                    "expected": None,
+                    "finding": report_finding(finding_index),
+                }
+            )
 
     return result
 

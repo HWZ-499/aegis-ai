@@ -121,11 +121,13 @@
   },
   {
     "file": "files/storage.py",
-    "line": 1,
+    "line": 76,
     "type": "PATH_TRAVERSAL",
     "cve": "CVE-2021-31542",
-    "severity": "High",
+    "reference": "https://www.djangoproject.com/weblog/2021/may/04/security-releases/",
+    "severity": "Low",
     "is_true_positive": true,
-    "comment": "CVE-2021-31542: Django FileField 文件名处理不当导致路径遍历。攻击者可上传文件名含 ../ 的文件绕过目录限制。修复版本：3.2.4。当前引擎无 PATH_TRAVERSAL 规则，属检测覆盖空白（漏报）。"
+    "expected_pattern": "dir_name, file_name = os.path.split(name)",
+    "comment": "CVE-2021-31542: Django 3.2 的 MultiPartParser、UploadedFile 与 FieldFile 对恶意上传文件名的路径清理不足；官方定级 Low，并在 3.2.1 修复。该条定位到 3.2 storage.py 中后续补入路径校验的入口。"
   }
 ]

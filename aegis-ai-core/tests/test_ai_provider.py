@@ -343,6 +343,17 @@ class TestGatewayIntegration:
 
 
 class TestAiResponseErrors:
+    def test_unexpected_analyzer_bug_is_not_hidden_as_provider_failure(self, monkeypatch):
+        analyzer = AIAnalyzer(enabled=False)
+
+        def fail_prompt(*_args, **_kwargs):
+            raise TypeError("prompt builder bug")
+
+        monkeypatch.setattr(analyzer, "_build_analysis_prompt", fail_prompt)
+
+        with pytest.raises(TypeError, match="prompt builder bug"):
+            analyzer._call_ai_analysis({"severity": "High"})
+
     def test_parse_response_without_fixed_code_marks_no_applicable_fix(self):
         analyzer = AIAnalyzer(enabled=False)
         result = analyzer._parse_ai_response(

@@ -3,7 +3,7 @@ analysis.rules
 
 规则库命名空间：
 - 按漏洞类型（sql_injection / rce / xss 等）组织子包；
-- 每个子包内部可以同时包含多种实现方式（正则、AST、数据流分析等）。
+- 每个子包内部可以包含 AST、数据流和声明式 DSL 等实现方式。
 - php/ 子包提供基于 PhpTaintGraph 的精确 PHP 规则。
 """
 
@@ -59,7 +59,6 @@ from .sql_injection import (
     JavaSQLInjectionAstRule,
     PhpSQLInjectionAstRule,
     PythonSQLInjectionAstRule,
-    SQLInjectionRegexRule,
 )
 from .ssrf import (
     GoSSRFAstRule,
@@ -71,7 +70,6 @@ from .ssrf import (
 from .xss import GoXSSAstRule, JavaScriptXSSAstRule, JavaXSSAstRule, PhpXSSAstRule, PythonXSSAstRule
 
 __all__ = [
-    "SQLInjectionRegexRule",
     "PythonSQLInjectionAstRule",
     "JavaScriptSQLInjectionAstRule",
     "JavaSQLInjectionAstRule",

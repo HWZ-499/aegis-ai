@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 from lsprotocol import types as lsp
+from pygls.feature_manager import is_thread_function
 from pygls.protocol.language_server import _prepare_command_arguments
 
 from src.lsp import server as lsp_server
@@ -518,6 +519,13 @@ class TestPathExcludeMatching:
 
 class TestWorkspaceScanDiscovery:
     """M3：workspace scan 应发现未打开的 workspace 源码文件。"""
+
+    def test_workspace_scan_handler_runs_off_the_lsp_event_loop(self):
+        server = lsp_server.create_server()
+
+        handler = server.protocol.fm.features["aegis/requestScanWorkspace"]
+
+        assert is_thread_function(handler)
 
     def test_discovers_unopened_workspace_source_files(self, tmp_path: Path):
         src_file = tmp_path / "src" / "app.js"

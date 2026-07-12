@@ -7,6 +7,15 @@ import pytest
 from src.scanner.performance_optimizer import PerformanceOptimizer, ScanCache
 
 
+def test_scan_cache_version_excludes_deprecated_regex_compatibility_module(tmp_path: Path) -> None:
+    cache = ScanCache(cache_dir=str(tmp_path / ".aegis-cache"))
+
+    rule_files = cache._iter_rule_version_files()
+
+    assert rule_files
+    assert all(path.name != "security_rules.py" for path in rule_files)
+
+
 def test_scan_cache_keeps_identical_same_named_files_separate(tmp_path: Path) -> None:
     first_file = tmp_path / "first" / "index.py"
     second_file = tmp_path / "second" / "index.py"

@@ -67,8 +67,6 @@ class ScanCache:
         """Return rule definition files that should invalidate scan cache."""
         analysis_dir = Path(__file__).resolve().parent.parent / "analysis"
         files: list[Path] = []
-        if (analysis_dir / "security_rules.py").exists():
-            files.append(analysis_dir / "security_rules.py")
         rules_dir = analysis_dir / "rules"
         if rules_dir.exists():
             files.extend(rules_dir.rglob("*.py"))

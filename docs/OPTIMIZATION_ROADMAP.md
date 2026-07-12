@@ -3,8 +3,8 @@
 > 本文档是项目优化阶段、完成状态和验收标准的唯一事实源。
 > 长期审查材料可作为优先级参考，但实际执行进度以本文档为准。
 
-**最后同步日期**：2026-07-10
-**当前阶段**：O7 架构治理 + O8 IDE 错误可见性（并行）
+**最后同步日期**：2026-07-11
+**当前阶段**：O10 真实项目验收（O7、O8 已完成）
 
 ## 当前执行优先级（2026-07-10 调整）
 
@@ -38,8 +38,8 @@ O7 的架构收口与 O10 的真实项目准确率验证必须并行推进，不
 | O4 | 多格式报告、SARIF Code Flow、CI 上传与报告验收 | 已完成 |
 | O5 | 增量扫描、跨文件分析、缓存与性能 | 代码验收完成，待提交 |
 | O6 | 检测准确率、FP/FN 与规则覆盖 | 已完成 |
-| O7 | 架构治理、legacy 清理与类型安全 | 进行中 |
-| O8 | IDE 错误可见性、交互体验与扩展测试 | 进行中 |
+| O7 | 架构治理、legacy 清理与类型安全 | 已完成 |
+| O8 | IDE 错误可见性、交互体验与扩展测试 | 已完成 |
 | O9 | PyPI、Marketplace、规则生态与社区 | 待开始 |
 | O10 | 真实项目验收、稳定版本与长期维护 | 进行中 |
 
@@ -264,17 +264,17 @@ pytest-benchmark 场景成功生成 JSON 基准。
 
 ## O7：架构治理
 
-**状态：进行中**
+**状态：已完成**
 
-- [ ] 移除剩余 legacy regex 路径
+- [x] 移除剩余生产可达的 legacy regex 路径
 - [x] 移除 CLI / ProjectScanner 可达的 legacy 扫描引擎
 - [x] 移除 PHP 生产入口的 legacy regex 补充层
 - [x] 统一生产分析入口与语言识别
 - [x] 统一项目扫描会话与缓存生命周期边界
 - [x] 收紧 mypy（全仓 `src/` 已纳入发布阻断门禁）
-- [ ] 清理静默异常与宽泛异常捕获
+- [x] 清理静默异常与宽泛异常捕获（仅保留 5 个显式边界）
 - [x] 清理五语言分析器的静默解析/污点/遍历异常
-- [ ] 拆分大型模块
+- [x] 拆分大型模块
 
 ### O7 第一批：统一分析入口与类型边界
 
@@ -456,15 +456,64 @@ pytest-benchmark 场景成功生成 JSON 基准。
   O6 acceptance `30 passed`；Ruff lint、191 文件格式门禁与全仓 mypy
   125 个源码文件均通过。
 
+### O7 第十五批：移除最后一个生产 legacy regex 规则
+
+- 删除 `SQLInjectionRegexRule`、`sql_injection/regex_rule.py` 及其包级公开导出；Python 默认规则
+  工厂不再注册行级 legacy regex，统一使用 AST / taint 与声明式 DSL 路径。
+- Python analyzer demo 改用 `PythonSQLInjectionAstRule`；新增架构门禁，要求六种生产语言的默认
+  非 DSL 规则中不存在 `SQL_INJECTION_REGEX` 或 `regex_rule` 实现，并要求已删除模块不能回流。
+- `%` 格式化 SQLi 的生产回归仍由 `SQL_INJECTION_PY_AST` 在原 sink 行检出。
+- 对受控测试、核心源码、Flask 2.3.2、Django 3.2 做同源码差分：legacy 规则独有 26 条 finding，
+  均来自测试/文档字符串或 Django 内部受控 SQL 标识符；其中 Django 独有 15 条，没有新增真实 TP。
+- 删除后 Django 3.2 可追溯 ground truth 复跑为 SQL_INJECTION FP 7；项目总体仍为 TP 0、FP 136、
+  FN 1、TN 7，剩余 PATH_TRAVERSAL FN 与其它类别 FP 保留给 O10 治理，不在 O7 静默处理。
+- 全量验证：`809 passed, 1 xfailed, 50 deselected`；acceptance `30 passed`；
+  规则/XSS 定向 `265 passed`；Ruff 通过，全仓 mypy 124 个源码文件 0 errors。
+- 复验时修复 JavaScript XSS member call helper 的 `Node | None` 类型边界，不改变检测行为。
+- 显式兼容测试 API `scan_code_locally()` 仍与生产入口隔离，最终废弃由 O10 兼容性清理统一处理；
+  宽泛异常边界在第十六批收口。
+
+### O7 第十六批：宽泛异常边界白名单
+
+- 移除 `AIAnalyzer._call_ai_analysis()` 的兜底 `except Exception`；prompt 构造等内部编程错误不再
+  伪装成 `provider_unavailable`，只有已分类的 gateway、解析、I/O 和数据错误转为结构化失败。
+- corrupt baseline 的 UI 通知捕获从任意异常收窄为 `OSError / RuntimeError`，baseline 文件保护与
+  用户提示行为保持不变。
+- 全仓仅保留 5 个必要宽泛边界：CLI 顶层、worker request 顶层、LSP `scan_document()` 适配器、
+  OpenAI-compatible SDK 适配器和第三方 provider fallback。后两者必须兼容可选 SDK / 插件的未知
+  异常类型，并会立即分类或降级到下一个 provider。
+- 新增 AST 架构门禁，精确锁定允许的文件与函数，并禁止全仓新增 bare `except`、
+  `except BaseException` 或第 6 个 `except Exception`。
+- 新增 AIAnalyzer 编程错误可见性回归；边界相关定向 `125 passed`。
+- 2026-07-11 全量验证：`811 passed, 1 xfailed, 50 deselected`；Ruff 通过；
+  全仓 mypy 124 个源码文件 0 errors。
+- O7 仅余大型模块拆分；异常可观测性与宽泛捕获清理完成。
+
+### O7 第十七批：AI 分析与本地修复职责拆分
+
+- 将确定性的 C/C++ local replacement 常量、解析和 builder 从 `scanner/ai_analyzer.py` 迁到
+  独立 `scanner/local_fix.py`；新模块不依赖 AI provider、gateway 或 `AIAnalyzer`。
+- `AIAnalysisResult` 与公共 `build_local_fix_analysis()` 继续保留在原模块，LSP、扩展和既有调用方
+  无需迁移；内部只通过 `_build_local_cpp_fix_replacement()` 单向调用本地修复模块。
+- `ai_analyzer.py` 从 1536 行降至 1067 行；`local_fix.py` 为 474 行，职责限定为本地 C/C++ 修复。
+- 新增架构门禁：AI orchestration 模块不得超过 1150 行、不得重新内联 local builder，
+  `local_fix.py` 只能依赖 `re/dataclasses/typing` 标准库。
+- 本地修复、AI provider 与 LSP 定向 `110 passed`；2026-07-11 全量
+  `812 passed, 1 xfailed, 50 deselected`；Ruff 通过；全仓 mypy 扩展为 125 个源码文件 0 errors。
+- `cross_file_analyzer.py`、`taint_analyzer.py` 保持单一分析引擎职责；`source_sink_registry.py`
+  主要承载声明式规则数据；deprecated `security_rules.py` 留给 O10 兼容 API 清理。避免仅为减少行数
+  引入跨模块共享可变状态或循环依赖。
+- O7 所有验收项完成；后续架构变化继续由统一入口、类型、异常边界和模块体量门禁保护。
+
 ## O8：IDE 产品体验
 
-**状态：进行中**
+**状态：已完成**
 
 - [x] 扫描失败状态明确可见
-- [ ] 完善 Findings/Baseline 视图
-- [ ] AI 修复失败提示与重试
-- [ ] VS Code 端到端测试
-- [ ] 大型工作区启动与后台扫描优化
+- [x] 完善 Findings/Baseline 视图
+- [x] AI 修复失败提示与重试
+- [x] VS Code 端到端测试
+- [x] 大型工作区启动与后台扫描优化
 
 ### O8 第一批：扫描失败状态可见且不误报“安全”
 
@@ -476,6 +525,70 @@ pytest-benchmark 场景成功生成 JSON 基准。
   才清除该状态，其他文件的失败不会污染当前文件。
 - 新增 3 个 `scanFailureState` 回归，覆盖多行/缺失错误、按文件隔离，以及重新扫描后恢复。
 - 2026-07-10 验证：`npm run check` 通过；`npm test` 通过（41 passing）。
+
+### O8 第二批：AI 修复失败提示与重试
+
+- 扩展端保留后端结构化失败语义：配置缺失会提供“打开 AI 设置”和“查看日志”，服务不可用、
+  LSP 请求失败及未知服务错误会提供“重试”和“查看日志”。
+- LSP 传输异常不再被误报为“AI 没有返回安全替换”，而是显示原始失败原因并允许重试。
+- 重试复用原 finding 的 URI、规则、行范围与消息，不依赖重试时的当前编辑器或光标位置。
+- `no_applicable_fix` 仍只显示信息，不提供无意义的重试入口。
+- 新增 2 个 `aiFixResult` 回归；2026-07-11 验证：`npm run check` 通过，`npm test`
+  通过（43 passing）。
+
+### O8 第三批：Findings 严重度与状态一致性
+
+- Findings 按严重度、行号和消息稳定排序；规则分组与文件分组同样严重度优先，避免高风险项被
+  诊断到达顺序埋在列表后方。
+- 规则和 finding 显示 Critical / High、Medium、Low、Info 安全语义标签与图标，文件节点显示
+  finding 数量。
+- 状态栏 fallback 现在统计所有 Aegis diagnostics；修复 Low / Info finding 在切换编辑器后被
+  错误显示为 `Safe` 的问题。
+- Findings provider 会在扩展释放时注销 diagnostics/editor 监听器，避免重复激活后的监听泄漏。
+- 新增 3 个 `findingsTreeProvider` 回归；2026-07-11 验证：`npm run check` 通过，`npm test`
+  通过（46 passing）。
+
+### O8 第四批：Baseline 多工作区与坏条目可见性
+
+- 单根工作区保持原有文件 → 规则 → 条目层级；多根工作区增加工作区根节点，分别展示每个
+  `.aegis-baseline.json` 的 finding 数量和状态。
+- Baseline 条目携带所属工作区根目录；移除 suppression 和随后复扫均使用该根目录，不再默认
+  操作第一个 workspace folder。
+- 监听 workspace folder 增删并即时刷新 Baseline roots，无需重载扩展。
+- 格式合法但混有坏条目的 baseline 不再静默丢弃：视图显示无效条目数量和修复/重建提示，
+  同时保留所有有效条目。
+- Baseline 文件、规则节点显示 finding 数量；文件和规则顺序保持确定性。
+- 新增 2 个 `baselineTreeProvider` 回归；2026-07-11 验证：`npm run check` 通过，`npm test`
+  通过（48 passing）。Findings/Baseline 视图收尾完成。
+
+### O8 第五批：后台工作区扫描与端到端完成语义
+
+- `aegis/requestScanWorkspace` 由 pygls 工作线程执行，逐文件扫描不再占用 LSP 事件线程；编辑器
+  请求可以在大型工作区扫描期间继续处理。
+- 后端用非阻塞锁拒绝重叠 workspace scans，扩展端同样禁止第二次触发覆盖第一次的进度 Promise。
+- 每轮扫描携带 scan ID；前端忽略上一轮迟到的进度，并按实际完成比例增量更新，不再因重复或
+  跳号通知累计超过 100%。
+- 工作区扫描改用 LSP request：流式通知负责进度，request response 负责最终完成。即使末条通知
+  在初始化边界丢失，进度 UI 也不会永久悬挂。
+- 手动文件/工作区扫描会等待 LSP 完成连接后再发请求，修复扩展已激活但通知 handler 尚未就绪的
+  启动竞态。
+- 新增 4 个进度状态机回归、1 个 pygls 后台 handler 回归，以及 1 个真实扩展宿主端到端测试。
+  2026-07-11 验证：`npm run check` 通过，`npm test` 通过（53 passing）；
+  `tests/test_lsp_server.py` 71 passed；Ruff lint/format 通过。
+- VS Code 端到端测试项完成；大型工作区启动路径在第六批以 watcher 审计和结构门禁收尾。
+
+### O8 第六批：大型工作区启动收尾
+
+- 移除 LanguageClient 的 `**/*.{js,…}` 全工作区递归 watcher。后端没有注册
+  `workspace/didChangeWatchedFiles`，原 watcher 只产生大型仓库启动和文件变更开销，没有功能消费方。
+- 打开、修改与保存同步继续由完整的 10 语言 document selector 和 LanguageClient 文档同步负责；
+  baseline 继续使用独立的窄范围 `**/.aegis-baseline.json` watcher。
+- 客户端选项从大型 `extension.ts` 拆分为独立模块，新增结构门禁：10 种语言必须完整，初始化参数
+  必须透传，递归源码 `synchronize.fileEvents` 必须保持为空。
+- 与第五批的 LSP 后台 workspace scan、重入保护和 request 完成语义合并验收后，大型工作区不再
+  在启动时注册无效源码树 watcher，手动全仓扫描也不再阻塞 LSP 事件线程。
+- 2026-07-11 验证：`npm run check` 通过，完整扩展宿主 `npm test` 通过（54 passing）；
+  打开/保存扫描、C++、remediation comment 和 workspace scan E2E 均通过。O8 全部完成。
 
 ## O9：生态与分发
 
@@ -491,7 +604,7 @@ pytest-benchmark 场景成功生成 JSON 基准。
 
 **状态：进行中**
 
-- [x] DVWA、NodeGoat 可复跑基线：报告记录 scanner/target revision 与 ground-truth SHA-256
+- [ ] DVWA、NodeGoat 干净版本可复跑基线（当前候选指标稳定，待检查点提交后通过 `--require-clean` 固化）
 - [ ] 其它真实项目按同一 provenance 口径复跑
 - [ ] 固化性能、准确率和内存指标
 - [ ] 升级与兼容性测试
@@ -523,10 +636,50 @@ pytest-benchmark 场景成功生成 JSON 基准。
 - 下一步：按该优先级补真实 TN/TP 并重跑其它目标；Express 的失效 OPEN_REDIRECT 标注与 Flask
   的范围外硬编码凭据条目继续保留在 provenance 报告中，不误归因为扫描器漏报。
 
+### O10 第二批：干净基线门禁与逐 finding 审计
+
+- provenance 不再只记录 `HEAD`：报告同时记录 scanner/target dirty 状态；dirty 时对 tracked diff 与
+  meaningful untracked 文件路径/内容生成 SHA-256。扫描器自产的 `.aegis-cache` 不算目标源码改动，
+  真实 tracked 删除或其它 untracked 源码仍会使目标变脏。目标目录也不再意外借用父仓库 revision。
+- 新增 `--require-clean`。正式基线只有在扫描器与目标均为可识别的干净 Git 工作区时才会产出，
+  否则在扫描前以退出码 2 拒绝；当前 O7/O8/O10 尚未提交，因此本批复跑只写入临时候选目录，
+  不覆盖正式 reports。
+- 报告新增 Python/平台/处理器、扫描耗时、RSS 起止/增量和独立评估器进程生命周期峰值；每个
+  TP/FP/FN/TN 也写入可审计明细，未匹配 finding 不再只计数而不展示。
+- 支持 `--target-repository-root`：当评估对象是 mono-repo 子目录时，扫描范围保持在子目录，revision
+  与 dirty 状态由显式仓库根提供。Java 反序列化 pilot 因此从错误的“扫描整个 security lab、只用
+  2 条 Java 标注”修正为只扫描 `java-deserialization-demo`。
+- 核验并纠正 ground truth：CVE-2022-24434 属于 dicer，CVE-2014-6394 属于 send，均不能把
+  body-parser 1.20.0 源码当作 TP；Flask 2.3.2 已修复 CVE-2023-30861，该漏洞实际是缓存代理条件下
+  缺少 `Vary: Cookie`，不是未设置 `SECRET_KEY`；Django CVE-2021-31542 按官方口径修正为 Low、
+  3.2.1 修复并定位到实际 storage 代码。
+- dirty-scanner 候选快照（仅用于治理，不可发布为稳定门槛）：DVWA 23/29/0/4、NodeGoat
+  12/2/0/0、Go pilot 3/0/0/2、Java deserialization pilot 1/0/0/1；Django 为 0/136/1/7，
+  Flask 为 0/10/0/2。body-parser 两条旧标注均转为范围外，Express 仍是 1 条范围外、1 条失效，
+  两者目前没有可用于产品准确率的范围内正样本。
+- 本机并行候选性能观测：DVWA 2.679 s / 55.320 MiB peak RSS，NodeGoat 0.246 s / 52.641 MiB，
+  Django 38.811 s / 153.570 MiB，Flask 1.362 s / 70.324 MiB，Go 0.070 s / 48.207 MiB，
+  Java 子项目 0.060 s / 47.930 MiB。正式性能阈值须在干净检查点上串行多轮采样后再固化。
+- 回归验证：核心 `819 passed, 1 xfailed, 50 deselected`，Ruff 通过，mypy 125 个源码文件
+  0 errors；VS Code TypeScript check 通过、扩展测试 54 passing。
+- 废弃接口盘点确认 `security_rules.py` 已退出生产分析入口，但仍是 v1.4 兼容导出及 deprecated PHP
+  类的依赖，不能在未声明 breaking change 时直接删除。生产扫描缓存版本哈希已停止读取该 100KB
+  legacy 模块，只由当前 `analysis/rules/` 与自定义 DSL 规则变化触发失效；完整移除安排在稳定版兼容
+  迁移与版本策略明确后执行。
+
 ## 更新记录
 
 | 日期 | 更新 |
 |---|---|
+| 2026-07-11 | O10 第二批：provenance 增加 dirty/diff 指纹与 `--require-clean`，报告加入耗时、RSS、运行环境和逐 finding 审计；纠正 body-parser/Flask/Django 的错误 CVE 标注及 Java mono-repo 扫描范围，完成八目标 dirty-scanner 候选复跑。 |
+| 2026-07-11 | O7 第十七批并完成阶段：C/C++ local fix 从 AI orchestration 拆出为零 provider 依赖模块，主模块 1536→1067 行并增加依赖/体量门禁；全量 812 passed、mypy 125 文件清零。 |
+| 2026-07-11 | O7 第十六批：内部宽泛捕获收窄，全仓仅保留 CLI/daemon/LSP/SDK/plugin 5 个显式边界并用 AST 门禁锁定；全量 811 passed、mypy 清零。 |
+| 2026-07-11 | O7 第十五批：删除最后一个生产可达的 `SQLInjectionRegexRule`，Python SQLi 统一到 AST/taint/DSL；差分移除 26 条独有误报候选，Django SQLi FP 复跑为 7；全量 809 passed、acceptance 30 passed、mypy 清零。 |
+| 2026-07-11 | O8 大型工作区启动收尾并完成阶段：移除无消费方的递归源码 watcher，固化 10 语言 document selector 与零递归 watcher 门禁；扩展测试 54 passing。 |
+| 2026-07-11 | O8 后台扫描与 E2E：workspace scan 移出 LSP 事件线程，增加重入保护、scan ID、request 完成兜底和连接就绪等待；扩展 53 passing、LSP 71 passed。 |
+| 2026-07-11 | O8 Baseline 视图收尾：支持多根工作区隔离、动态 roots、坏条目警告与层级数量；移除/复扫使用条目所属根目录；扩展测试 48 passing。 |
+| 2026-07-11 | O8 Findings 视图增强：严重度优先稳定排序、层级数量与安全语义标签；状态栏统计 Low/Info finding，不再错误显示 Safe；扩展测试 46 passing。 |
+| 2026-07-11 | O8 AI 修复失败体验完成：配置错误可直达设置，服务/传输错误可复用原 finding 重试并查看日志；扩展测试 43 passing。 |
 | 2026-07-10 | 规则强化：JS/TS sink 改为按真实 callee 匹配，消除回调中常量跳转的 NodeGoat 误报；PHP heredoc 增加 `document.location` → `document.write` DOM XSS 检测；核验并修正 DVWA 常量命令的 RCE 标注。重跑后 DVWA 为 23/29/0/4（F1 0.61），NodeGoat 为 12/2/0/0（F1 0.92）。 |
 | 2026-07-10 | 评估器增加文件、行号与可选代码模式的 ground-truth 有效性校验；Express 4.18.1 的开放重定向标注确认与当前靶场漂移，单列为 invalid 而非规则漏报。 |
 | 2026-07-10 | 修正 Git 全局代理端口至 SakuraCat 监听的 7897，拉取并复跑 NodeGoat；修复 HTTP 回调响应体直接写入 `res.write` 的 XSS 漏报，新增正/负样本并更新可复跑质量基线。 |

@@ -7,20 +7,56 @@ import {
   TreeDataProvider,
   TreeItem,
   TreeItemCollapsibleState,
+  Diagnostic,
+  DiagnosticSeverity,
+  Disposable,
   Event,
   EventEmitter,
+  ThemeIcon,
   Uri,
   languages,
   window,
 } from "vscode";
 
-const AEGIS_SOURCE = "Aegis AI";
+export const AEGIS_SOURCE = "Aegis AI";
+
+export function getAegisDiagnostics(diagnostics: readonly Diagnostic[]): Diagnostic[] {
+  return diagnostics.filter((diagnostic) => diagnostic.source === AEGIS_SOURCE);
+}
+
+export function severityLabel(severity: number): string {
+  switch (severity) {
+    case DiagnosticSeverity.Error:
+      return "Critical / High";
+    case DiagnosticSeverity.Warning:
+      return "Medium";
+    case DiagnosticSeverity.Information:
+      return "Low";
+    case DiagnosticSeverity.Hint:
+      return "Info";
+    default:
+      return "Unknown";
+  }
+}
+
+interface FindingSortKey {
+  severity: number;
+  line: number;
+  message: string;
+}
+
+export function compareFindingPriority(left: FindingSortKey, right: FindingSortKey): number {
+  return left.severity - right.severity
+    || left.line - right.line
+    || left.message.localeCompare(right.message);
+}
 
 /** Group key: vuln type or "Other" */
 interface GroupNode {
   kind: "group";
   label: string;
   type: string;
+  severity: number;
 }
 
 /** File under a group */
@@ -28,6 +64,8 @@ interface FileNode {
   kind: "file";
   uri: Uri;
   type: string;
+  count: number;
+  severity: number;
 }
 
 /** Single finding (line) */
@@ -63,13 +101,23 @@ function isFileNode(n: TreeNode): n is FileNode {
 /**
  * TreeDataProvider that lists Aegis AI diagnostics grouped by type and file.
  */
-export class FindingsTreeProvider implements TreeDataProvider<TreeNode> {
+export class FindingsTreeProvider implements TreeDataProvider<TreeNode>, Disposable {
   private _onDidChangeTreeData = new EventEmitter<TreeNode | undefined | void>();
   readonly onDidChangeTreeData: Event<TreeNode | undefined | void> = this._onDidChangeTreeData.event;
+  private readonly subscriptions: Disposable[];
 
   constructor() {
-    languages.onDidChangeDiagnostics(() => this._onDidChangeTreeData.fire());
-    window.onDidChangeActiveTextEditor(() => this._onDidChangeTreeData.fire());
+    this.subscriptions = [
+      languages.onDidChangeDiagnostics(() => this._onDidChangeTreeData.fire()),
+      window.onDidChangeActiveTextEditor(() => this._onDidChangeTreeData.fire()),
+    ];
+  }
+
+  dispose(): void {
+    for (const subscription of this.subscriptions) {
+      subscription.dispose();
+    }
+    this._onDidChangeTreeData.dispose();
   }
 
   refresh(): void {
@@ -80,13 +128,16 @@ export class FindingsTreeProvider implements TreeDataProvider<TreeNode> {
     if (isGroupNode(element)) {
       const item = new TreeItem(element.label, TreeItemCollapsibleState.Expanded);
       item.contextValue = "aegisGroup";
+      item.description = severityLabel(element.severity);
+      item.iconPath = severityIcon(element.severity);
       return item;
     }
     if (isFileNode(element)) {
       const item = new TreeItem(element.uri.fsPath.split(/[/\\]/).pop() ?? element.uri.fsPath, TreeItemCollapsibleState.Expanded);
       item.resourceUri = element.uri;
+      item.description = `${element.count}`;
       item.contextValue = "aegisFile";
-      item.tooltip = element.uri.fsPath;
+      item.tooltip = `${element.uri.fsPath} · ${element.count} finding${element.count === 1 ? "" : "s"}`;
       return item;
     }
     const finding = element as FindingNode;
@@ -95,12 +146,14 @@ export class FindingsTreeProvider implements TreeDataProvider<TreeNode> {
       TreeItemCollapsibleState.None,
     );
     item.resourceUri = finding.uri;
+    item.description = severityLabel(finding.severity);
+    item.iconPath = severityIcon(finding.severity);
     item.command = {
       command: "vscode.open",
       title: "Go to line",
       arguments: [finding.uri, { selection: { start: { line: finding.line - 1, character: 0 }, end: { line: finding.line - 1, character: 0 } } }],
     };
-    item.tooltip = finding.message;
+    item.tooltip = `${severityLabel(finding.severity)} · ${finding.message}`;
     item.contextValue = finding.hasTaintPath ? "aegisFindingWithTaintPath" : "aegisFinding";
     return item;
   }
@@ -110,7 +163,7 @@ export class FindingsTreeProvider implements TreeDataProvider<TreeNode> {
     const aegisByType = new Map<string, Map<string, { line: number; message: string; severity: number; ruleId: string; hasTaintPath: boolean }[]>>();
 
     for (const [uri, diags] of allDiags) {
-      const aegis = diags.filter((d) => d.source === AEGIS_SOURCE);
+      const aegis = getAegisDiagnostics(diags);
       if (aegis.length === 0) continue;
 
       const uriStr = uri.toString();
@@ -131,25 +184,31 @@ export class FindingsTreeProvider implements TreeDataProvider<TreeNode> {
     }
 
     if (element === undefined) {
-      return Array.from(aegisByType.entries()).map(([type, byFile]) => {
-        let count = 0;
-        for (const entries of byFile.values()) count += entries.length;
-        return {
-          kind: "group" as const,
-          label: `${type} (${count})`,
-          type,
-        };
-      });
+      return Array.from(aegisByType.entries())
+        .map(([type, byFile]) => {
+          const findings = Array.from(byFile.values()).flat();
+          return {
+            kind: "group" as const,
+            label: `${type} (${findings.length})`,
+            type,
+            severity: Math.min(...findings.map((finding) => finding.severity)),
+          };
+        })
+        .sort((left, right) => left.severity - right.severity || left.type.localeCompare(right.type));
     }
 
     if (isGroupNode(element)) {
       const byFile = aegisByType.get(element.type);
       if (!byFile) return [];
-      return Array.from(byFile.keys()).map((uriStr) => ({
-        kind: "file" as const,
-        uri: Uri.parse(uriStr),
-        type: element.type,
-      }));
+      return Array.from(byFile.entries())
+        .map(([uriStr, findings]) => ({
+          kind: "file" as const,
+          uri: Uri.parse(uriStr),
+          type: element.type,
+          count: findings.length,
+          severity: Math.min(...findings.map((finding) => finding.severity)),
+        }))
+        .sort((left, right) => left.severity - right.severity || left.uri.fsPath.localeCompare(right.uri.fsPath));
     }
 
     if (isFileNode(element)) {
@@ -157,17 +216,32 @@ export class FindingsTreeProvider implements TreeDataProvider<TreeNode> {
       if (!byFile) return [];
       const list = byFile.get(element.uri.toString());
       if (!list) return [];
-      return list.map((f) => ({
-        kind: "finding" as const,
-        uri: element.uri,
-        line: f.line,
-        message: f.message,
-        severity: f.severity,
-        ruleId: f.ruleId,
-        hasTaintPath: f.hasTaintPath,
-      }));
+      return [...list]
+        .sort(compareFindingPriority)
+        .map((f) => ({
+          kind: "finding" as const,
+          uri: element.uri,
+          line: f.line,
+          message: f.message,
+          severity: f.severity,
+          ruleId: f.ruleId,
+          hasTaintPath: f.hasTaintPath,
+        }));
     }
 
     return [];
+  }
+}
+
+function severityIcon(severity: number): ThemeIcon {
+  switch (severity) {
+    case DiagnosticSeverity.Error:
+      return new ThemeIcon("error");
+    case DiagnosticSeverity.Warning:
+      return new ThemeIcon("warning");
+    case DiagnosticSeverity.Information:
+      return new ThemeIcon("info");
+    default:
+      return new ThemeIcon("lightbulb");
   }
 }

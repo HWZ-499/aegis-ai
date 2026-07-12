@@ -193,7 +193,7 @@ DVWA 当前复评命令（在 `aegis-ai-core` 下）：
 
 ```powershell
 cd c:\Users\HT341\aegis-ai\aegis-ai-core
-python scripts/benchmark/evaluate_project.py --project-dir real_world_targets/DVWA --ground-truth scripts/data/ground_truth_dvwa.json
+python scripts/benchmark/evaluate_project.py --project-dir real_world_targets/DVWA --ground-truth scripts/data/ground_truth_dvwa.json --require-clean
 ```
 
 结果会输出到：
@@ -201,8 +201,14 @@ python scripts/benchmark/evaluate_project.py --project-dir real_world_targets/DV
 - `reports/evaluate_DVWA_YYYY-MM-DD.md`
 - `reports/evaluate_DVWA_YYYY-MM-DD.json`
 
-每份报告的 `provenance` 都包含 scanner revision、target revision、ground-truth 路径与 SHA-256，
-避免不同代码版本、靶场版本或标注版本的指标被混为同一口径。
+每份报告的 `provenance` 都包含 scanner/target revision、dirty 状态、dirty diff SHA-256、
+ground-truth 路径与 SHA-256，以及 Python/平台/处理器。`--require-clean` 会在扫描前拒绝 dirty 或
+无法识别 revision 的输入，避免不同代码版本、靶场版本或标注版本的指标被混为同一口径。
+`.aegis-cache` 是扫描器自产物，不计入目标源码 dirty 状态；其它 tracked/untracked 变化仍会被记录。
+
+报告同时记录扫描耗时、RSS 起止/增量、独立评估器进程生命周期峰值，以及逐条 TP/FP/FN/TN。
+未匹配 finding 会作为带文件、行号、规则和消息的 FP 明细输出，必须完成审阅后才能把候选指标升级为
+稳定发布门槛。
 
 Ground truth 中明确标记 `"in_scope": false` 的条目会在 `scope.excluded_entries` 和 Markdown 的
 “Excluded entries”中保留原因，但默认不计入产品覆盖率；它们通常是未承诺的漏洞类别、
@@ -214,7 +220,8 @@ Ground truth 中明确标记 `"in_scope": false` 的条目会在 `scope.excluded
 Express 4.18.1 的旧 OPEN_REDIRECT 标注指向 `lib/router/index.js:284`，该处当前不存在
 `res.redirect`，因此必须先更新靶场/标注，不能误归因为扫描器漏报。
 
-当前可复跑快照：
+当前已发布的 pre-gate 快照如下；其准确率在 2026-07-11 dirty-scanner 候选复跑中保持不变，
+但仍需在检查点提交后使用新 `--require-clean` 门禁重新固化：
 
 | 目标 | TP | FP | FN | TN | Recall | Precision | F1 |
 |------|----|----|----|----|--------|-----------|----|
@@ -241,7 +248,12 @@ Express 4.18.1 的旧 OPEN_REDIRECT 标注指向 `lib/router/index.js:284`，该
   逐条人工归因后，增加真实安全反例，再调整规则。
 - DVWA 的 29 条额外 finding 主要在 SSRF、XSS、SQLi 与 Path Traversal；后续治理必须增加相应
   TN 与真实项目 ground truth，避免仅通过删除规则“优化”指标。
-- `scripts/reports/` 中的旧项目报告为历史资料；公开 README 仅展示带 provenance 的当前基线，其他目标须按同一流程重跑后才可重新发布指标。
+- `scripts/reports/` 中的旧项目报告为历史资料；公开 README 当前数字属于 pre-gate 基线，须经
+  新 clean-worktree 门禁重跑后才能升级为 O10 稳定门槛。
+- mono-repo pilot 必须把扫描范围与 ground truth 对齐。例如 Java 命令应扫描
+  `real_world_targets/java-webapp-security-lab/java-deserialization-demo`，并通过
+  `--target-repository-root real_world_targets/java-webapp-security-lab` 记录父仓库 provenance；禁止扫描
+  整个 security lab 后只用 Java 子项目的两条标注计算 Precision。
 
 ---
 

@@ -81,7 +81,6 @@ from .rules import (
     PythonSQLInjectionAstRule,
     PythonSSRFAstRule,
     PythonXSSAstRule,
-    SQLInjectionRegexRule,
 )
 
 logger = logging.getLogger(__name__)
@@ -205,7 +204,6 @@ def get_default_rules_for_language(
 _DEFAULT_RULE_FACTORIES: dict[AnalysisLanguage, tuple[RuleFactory, ...]] = {
     "python": (
         PythonRCEAstRule,
-        SQLInjectionRegexRule,
         PythonSQLInjectionAstRule,
         PythonXSSAstRule,
         PythonPathTraversalAstRule,

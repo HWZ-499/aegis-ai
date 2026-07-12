@@ -148,3 +148,29 @@ def test_php_production_entry_has_no_regex_supplement_dependency() -> None:
 
     assert "scan_code_locally" not in function_source
     assert "PHP-Regex" not in function_source
+
+
+def test_production_rule_factories_have_no_legacy_regex_rules() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+
+    for language in ("python", "javascript", "typescript", "php", "java", "go"):
+        rules = rule_engine.get_default_rules_for_language(language, include_dsl=False)
+        assert all(rule.rule_id != "SQL_INJECTION_REGEX" for rule in rules)
+        assert all("regex_rule" not in type(rule).__module__ for rule in rules)
+
+    assert not (repo_root / "src/analysis/rules/sql_injection/regex_rule.py").exists()
+
+
+def test_python_ast_rule_keeps_percent_format_sqli_after_regex_removal() -> None:
+    findings = rule_engine.analyze_source(
+        """
+def load_user(cursor, user_id):
+    cursor.execute("SELECT * FROM users WHERE id=%s" % user_id)
+""",
+        "app.py",
+        language="python",
+        include_dsl=False,
+    )
+
+    sql_findings = [finding for finding in findings if finding.get("type") == "SQL_INJECTION"]
+    assert [(finding.get("rule_id"), finding.get("line")) for finding in sql_findings] == [("SQL_INJECTION_PY_AST", 3)]

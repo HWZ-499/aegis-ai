@@ -6,6 +6,7 @@ import {
   TreeDataProvider,
   TreeItem,
   TreeItemCollapsibleState,
+  ThemeIcon,
   Uri,
   workspace,
 } from "vscode";
@@ -17,19 +18,36 @@ export interface BaselineEntry {
   fingerprint: string;
 }
 
+interface BaselineWorkspaceNode {
+  kind: "workspace";
+  workspaceRoot: string;
+  count: number;
+  invalidEntryCount: number;
+  hasError: boolean;
+}
+
 interface BaselineFileNode {
   kind: "file";
+  workspaceRoot: string;
   filePath: string;
+  count: number;
 }
 
 interface BaselineRuleNode {
   kind: "rule";
+  workspaceRoot: string;
   filePath: string;
   ruleId: string;
+  count: number;
 }
 
 interface BaselineErrorNode {
   kind: "error";
+  message: string;
+}
+
+interface BaselineWarningNode {
+  kind: "warning";
   message: string;
 }
 
@@ -39,11 +57,39 @@ export interface BaselineEntryNode {
   workspaceRoot: string;
 }
 
-type BaselineNode = BaselineFileNode | BaselineRuleNode | BaselineErrorNode | BaselineEntryNode;
+type BaselineNode =
+  | BaselineWorkspaceNode
+  | BaselineFileNode
+  | BaselineRuleNode
+  | BaselineErrorNode
+  | BaselineWarningNode
+  | BaselineEntryNode;
 
 export interface BaselineReadStatus {
   entries: BaselineEntry[];
   error?: string;
+  invalidEntryCount: number;
+}
+
+function normalizeWorkspaceRoots(workspaceRoots: string | readonly string[] | undefined): string[] {
+  const roots = typeof workspaceRoots === "string" ? [workspaceRoots] : [...(workspaceRoots ?? [])];
+  return [...new Set(roots.filter(Boolean).map((root) => path.resolve(root)))].sort((a, b) => a.localeCompare(b));
+}
+
+function isBaselineEntry(item: unknown): item is BaselineEntry {
+  if (!item || typeof item !== "object") {
+    return false;
+  }
+  const candidate = item as Partial<BaselineEntry>;
+  return typeof candidate.rule_id === "string"
+    && candidate.rule_id.trim().length > 0
+    && typeof candidate.file_path === "string"
+    && candidate.file_path.trim().length > 0
+    && typeof candidate.line === "number"
+    && Number.isInteger(candidate.line)
+    && candidate.line > 0
+    && typeof candidate.fingerprint === "string"
+    && candidate.fingerprint.trim().length > 0;
 }
 
 function sortEntries(entries: BaselineEntry[]): BaselineEntry[] {
@@ -95,11 +141,11 @@ export function readBaselineEntries(workspaceRoot: string | undefined): Baseline
 
 export function readBaselineEntriesWithStatus(workspaceRoot: string | undefined): BaselineReadStatus {
   if (!workspaceRoot) {
-    return { entries: [] };
+    return { entries: [], invalidEntryCount: 0 };
   }
   const baselinePath = path.join(workspaceRoot, ".aegis-baseline.json");
   if (!fs.existsSync(baselinePath)) {
-    return { entries: [] };
+    return { entries: [], invalidEntryCount: 0 };
   }
 
   try {
@@ -108,6 +154,7 @@ export function readBaselineEntriesWithStatus(workspaceRoot: string | undefined)
       return {
         entries: [],
         error: `Cannot read baseline ${baselinePath}: root value must be an object.`,
+        invalidEntryCount: 0,
       };
     }
     if (
@@ -117,25 +164,21 @@ export function readBaselineEntriesWithStatus(workspaceRoot: string | undefined)
       return {
         entries: [],
         error: `Cannot read baseline ${baselinePath}: findings must be an array.`,
+        invalidEntryCount: 0,
       };
     }
     const findings = Array.isArray(payload?.findings) ? payload.findings : [];
-    const entries = findings.filter((item: unknown): item is BaselineEntry => {
-      if (!item || typeof item !== "object") {
-        return false;
-      }
-      const candidate = item as Partial<BaselineEntry>;
-      return typeof candidate.rule_id === "string"
-        && typeof candidate.file_path === "string"
-        && typeof candidate.line === "number"
-        && typeof candidate.fingerprint === "string";
-    });
-    return { entries: sortEntries(entries) };
+    const entries = findings.filter(isBaselineEntry);
+    return {
+      entries: sortEntries(entries),
+      invalidEntryCount: findings.length - entries.length,
+    };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return {
       entries: [],
       error: `Cannot read baseline ${baselinePath}: ${reason}`,
+      invalidEntryCount: 0,
     };
   }
 }
@@ -169,10 +212,18 @@ export class BaselineTreeProvider implements TreeDataProvider<BaselineNode> {
   private readonly _onDidChangeTreeData = new EventEmitter<BaselineNode | undefined | void>();
   readonly onDidChangeTreeData: Event<BaselineNode | undefined | void> = this._onDidChangeTreeData.event;
 
-  constructor(private workspaceRoot: string | undefined) {}
+  private workspaceRoots: string[];
+
+  constructor(workspaceRoots: string | readonly string[] | undefined) {
+    this.workspaceRoots = normalizeWorkspaceRoots(workspaceRoots);
+  }
 
   setWorkspaceRoot(workspaceRoot: string | undefined): void {
-    this.workspaceRoot = workspaceRoot;
+    this.setWorkspaceRoots(workspaceRoot);
+  }
+
+  setWorkspaceRoots(workspaceRoots: string | readonly string[] | undefined): void {
+    this.workspaceRoots = normalizeWorkspaceRoots(workspaceRoots);
     this.refresh();
   }
 
@@ -181,17 +232,31 @@ export class BaselineTreeProvider implements TreeDataProvider<BaselineNode> {
   }
 
   getTreeItem(element: BaselineNode): TreeItem {
+    if (element.kind === "workspace") {
+      const item = new TreeItem(path.basename(element.workspaceRoot), TreeItemCollapsibleState.Expanded);
+      item.contextValue = "aegisBaselineWorkspace";
+      item.description = element.hasError
+        ? "Cannot read baseline"
+        : `${element.count} finding${element.count === 1 ? "" : "s"}`
+          + (element.invalidEntryCount ? ` · ${element.invalidEntryCount} invalid` : "");
+      item.tooltip = element.workspaceRoot;
+      item.iconPath = new ThemeIcon(element.hasError ? "error" : "root-folder");
+      return item;
+    }
+
     if (element.kind === "file") {
       const item = new TreeItem(element.filePath, TreeItemCollapsibleState.Expanded);
       item.contextValue = "aegisBaselineFile";
-      item.tooltip = element.filePath;
+      item.description = `${element.count}`;
+      item.tooltip = `${element.filePath} · ${element.count} finding${element.count === 1 ? "" : "s"}`;
       return item;
     }
 
     if (element.kind === "rule") {
       const item = new TreeItem(element.ruleId, TreeItemCollapsibleState.Expanded);
       item.contextValue = "aegisBaselineRule";
-      item.tooltip = `${element.filePath} · ${element.ruleId}`;
+      item.description = `${element.count}`;
+      item.tooltip = `${element.filePath} · ${element.ruleId} · ${element.count} finding${element.count === 1 ? "" : "s"}`;
       return item;
     }
 
@@ -199,6 +264,15 @@ export class BaselineTreeProvider implements TreeDataProvider<BaselineNode> {
       const item = new TreeItem("Cannot read baseline", TreeItemCollapsibleState.None);
       item.contextValue = "aegisBaselineError";
       item.tooltip = element.message;
+      item.iconPath = new ThemeIcon("error");
+      return item;
+    }
+
+    if (element.kind === "warning") {
+      const item = new TreeItem(element.message, TreeItemCollapsibleState.None);
+      item.contextValue = "aegisBaselineWarning";
+      item.tooltip = element.message;
+      item.iconPath = new ThemeIcon("warning");
       return item;
     }
 
@@ -239,32 +313,51 @@ export class BaselineTreeProvider implements TreeDataProvider<BaselineNode> {
       return [];
     }
 
-    const baselineStatus = readBaselineEntriesWithStatus(this.workspaceRoot);
-    if (baselineStatus.error) {
-      return [{ kind: "error", message: baselineStatus.error }];
+    if (!element) {
+      if (this.workspaceRoots.length > 1) {
+        return this.workspaceRoots.map((workspaceRoot) => {
+          const status = readBaselineEntriesWithStatus(workspaceRoot);
+          return {
+            kind: "workspace" as const,
+            workspaceRoot,
+            count: status.entries.length,
+            invalidEntryCount: status.invalidEntryCount,
+            hasError: Boolean(status.error),
+          };
+        });
+      }
+      const workspaceRoot = this.workspaceRoots[0];
+      return workspaceRoot ? this.getWorkspaceChildren(workspaceRoot) : [];
     }
 
-    const entries = baselineStatus.entries;
-    if (!this.workspaceRoot || entries.length === 0) {
+    if (element.kind === "workspace") {
+      return this.getWorkspaceChildren(element.workspaceRoot);
+    }
+
+    if (element.kind === "error" || element.kind === "warning" || element.kind === "entry") {
       return [];
     }
 
-    if (!element) {
-      const filePaths = new Set(entries.map((entry) => entry.file_path));
-      return [...filePaths].map((filePath) => ({ kind: "file" as const, filePath }));
+    const baselineStatus = readBaselineEntriesWithStatus(element.workspaceRoot);
+    if (baselineStatus.error) {
+      return [{ kind: "error", message: baselineStatus.error }];
     }
+    const entries = baselineStatus.entries;
 
     if (element.kind === "file") {
-      const ruleIds = new Set(
-        entries
-          .filter((entry) => entry.file_path === element.filePath)
-          .map((entry) => entry.rule_id),
-      );
-      return [...ruleIds].map((ruleId) => ({
-        kind: "rule" as const,
-        filePath: element.filePath,
-        ruleId,
-      }));
+      const ruleCounts = new Map<string, number>();
+      for (const entry of entries.filter((entry) => entry.file_path === element.filePath)) {
+        ruleCounts.set(entry.rule_id, (ruleCounts.get(entry.rule_id) ?? 0) + 1);
+      }
+      return [...ruleCounts.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([ruleId, count]) => ({
+          kind: "rule" as const,
+          workspaceRoot: element.workspaceRoot,
+          filePath: element.filePath,
+          ruleId,
+          count,
+        }));
     }
 
     if (element.kind === "rule") {
@@ -273,10 +366,39 @@ export class BaselineTreeProvider implements TreeDataProvider<BaselineNode> {
         .map((entry) => ({
           kind: "entry" as const,
           entry,
-          workspaceRoot: this.workspaceRoot!,
+          workspaceRoot: element.workspaceRoot,
         }));
     }
 
     return [];
+  }
+
+  private getWorkspaceChildren(workspaceRoot: string): BaselineNode[] {
+    const status = readBaselineEntriesWithStatus(workspaceRoot);
+    if (status.error) {
+      return [{ kind: "error", message: status.error }];
+    }
+
+    const children: BaselineNode[] = [];
+    if (status.invalidEntryCount > 0) {
+      children.push({
+        kind: "warning",
+        message: `Ignored ${status.invalidEntryCount} invalid baseline entr${status.invalidEntryCount === 1 ? "y" : "ies"}. Fix or regenerate .aegis-baseline.json.`,
+      });
+    }
+
+    const fileCounts = new Map<string, number>();
+    for (const entry of status.entries) {
+      fileCounts.set(entry.file_path, (fileCounts.get(entry.file_path) ?? 0) + 1);
+    }
+    children.push(
+      ...[...fileCounts.entries()].map(([filePath, count]) => ({
+        kind: "file" as const,
+        workspaceRoot,
+        filePath,
+        count,
+      })),
+    );
+    return children;
   }
 }
