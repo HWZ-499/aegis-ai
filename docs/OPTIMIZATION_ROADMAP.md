@@ -606,7 +606,7 @@ pytest-benchmark 场景成功生成 JSON 基准。
 
 - [x] DVWA、NodeGoat 干净版本可复跑基线
 - [x] 其它真实项目按同一 provenance 口径复跑
-- [ ] 固化性能、准确率和内存指标
+- [x] 固化性能、准确率和内存指标
 - [ ] 升级与兼容性测试
 - [ ] 清理废弃接口
 - [ ] 稳定版本与维护策略
@@ -660,7 +660,7 @@ pytest-benchmark 场景成功生成 JSON 基准。
 - 本机并行候选性能观测：DVWA 2.679 s / 55.320 MiB peak RSS，NodeGoat 0.246 s / 52.641 MiB，
   Django 38.811 s / 153.570 MiB，Flask 1.362 s / 70.324 MiB，Go 0.070 s / 48.207 MiB，
   Java 子项目 0.060 s / 47.930 MiB。正式性能阈值须在干净检查点上串行多轮采样后再固化。
-- 回归验证：核心 `819 passed, 1 xfailed, 50 deselected`，Ruff 通过，mypy 125 个源码文件
+- 回归验证：核心 `822 passed, 1 xfailed, 50 deselected`，Ruff 通过，mypy 125 个源码文件
   0 errors；VS Code TypeScript check 通过、扩展测试 54 passing。
 - 废弃接口盘点确认 `security_rules.py` 已退出生产分析入口，但仍是 v1.4 兼容导出及 deprecated PHP
   类的依赖，不能在未声明 breaking change 时直接删除。生产扫描缓存版本哈希已停止读取该 100KB
@@ -679,12 +679,19 @@ pytest-benchmark 场景成功生成 JSON 基准。
   Java 子项目 0.067 s / 48.797 MiB。正式报告已归档到 `aegis-ai-core/scripts/reports/`。
 - Java 使用父仓库的干净本地 clone，扫描范围仅为 `java-deserialization-demo`；没有修改原靶场中
   用户已有的 tracked `.class` 删除。
+- 在同一 `d51bd8b` clean worktree 上完成每目标 3 轮串行采样，准确率计数三轮完全一致；
+  `scripts/data/o10_stable_thresholds.json` 固化 target revision、ground-truth SHA-256、最低 TP/TN、
+  最高 FP/FN、耗时与峰值 RSS 预算。耗时预算取至少 1 秒或观测最大值的 1.5 倍，RSS 预算取至少
+  64 MiB 或观测最大值的 1.25 倍。
+- 评估器新增 `--thresholds`：自动要求 clean provenance，目标或 ground truth 漂移、质量计数回退、
+  耗时或内存超预算时将 violations 写入 JSON/Markdown 并以退出码 3 失败。提交 `a41f754` 上八目标
+  实跑全部 gate passed；Django 39.763 秒 / 143.238 MiB，低于 61 秒 / 180 MiB 预算。
 
 ## 更新记录
 
 | 日期 | 更新 |
 |---|---|
-| 2026-07-12 | O10 第三批：创建 `d51bd8b` 稳定检查点，八个真实目标全部通过 `--require-clean` 串行复跑并归档逐 finding、性能和内存报告；DVWA/NodeGoat 与其它项目 provenance 复跑项完成。 |
+| 2026-07-12 | O10 第三批：创建 `d51bd8b` 稳定检查点，八个真实目标通过 clean provenance 复跑；3 轮串行采样固化质量/耗时/RSS 预算，`a41f754` 上八目标机器门禁全通过，前三项 O10 验收完成。 |
 | 2026-07-11 | O10 第二批：provenance 增加 dirty/diff 指纹与 `--require-clean`，报告加入耗时、RSS、运行环境和逐 finding 审计；纠正 body-parser/Flask/Django 的错误 CVE 标注及 Java mono-repo 扫描范围，完成八目标 dirty-scanner 候选复跑。 |
 | 2026-07-11 | O7 第十七批并完成阶段：C/C++ local fix 从 AI orchestration 拆出为零 provider 依赖模块，主模块 1536→1067 行并增加依赖/体量门禁；全量 812 passed、mypy 125 文件清零。 |
 | 2026-07-11 | O7 第十六批：内部宽泛捕获收窄，全仓仅保留 CLI/daemon/LSP/SDK/plugin 5 个显式边界并用 AST 门禁锁定；全量 811 passed、mypy 清零。 |

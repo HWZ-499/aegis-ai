@@ -193,7 +193,7 @@ DVWA 当前复评命令（在 `aegis-ai-core` 下）：
 
 ```powershell
 cd c:\Users\HT341\aegis-ai\aegis-ai-core
-python scripts/benchmark/evaluate_project.py --project-dir real_world_targets/DVWA --ground-truth scripts/data/ground_truth_dvwa.json --require-clean
+python scripts/benchmark/evaluate_project.py --project-dir real_world_targets/DVWA --ground-truth scripts/data/ground_truth_dvwa.json --require-clean --thresholds scripts/data/o10_stable_thresholds.json
 ```
 
 结果会输出到：
@@ -209,6 +209,11 @@ ground-truth 路径与 SHA-256，以及 Python/平台/处理器。`--require-cle
 报告同时记录扫描耗时、RSS 起止/增量、独立评估器进程生命周期峰值，以及逐条 TP/FP/FN/TN。
 未匹配 finding 会作为带文件、行号、规则和消息的 FP 明细输出，必须完成审阅后才能把候选指标升级为
 稳定发布门槛。
+
+`scripts/data/o10_stable_thresholds.json` 是机器可读的稳定门槛。`--thresholds` 会隐式要求 clean
+provenance，并核对 target revision 与 ground-truth SHA-256；TP/TN 低于下限、FP/FN 高于上限、
+扫描耗时或峰值 RSS 超预算时，报告写入 `stable_baseline_gate.violations` 并以退出码 3 失败。
+当前预算来自同一 clean scanner/target 上每目标 3 轮串行采样，而不是单次最佳结果。
 
 Ground truth 中明确标记 `"in_scope": false` 的条目会在 `scope.excluded_entries` 和 Markdown 的
 “Excluded entries”中保留原因，但默认不计入产品覆盖率；它们通常是未承诺的漏洞类别、
