@@ -187,7 +187,7 @@ ground-truth 基准覆盖。
 
 ---
 
-## 10. O10 可复跑真实项目基线（2026-07-10）
+## 10. O10 可复跑真实项目基线（2026-07-12）
 
 DVWA 当前复评命令（在 `aegis-ai-core` 下）：
 
@@ -198,8 +198,8 @@ python scripts/benchmark/evaluate_project.py --project-dir real_world_targets/DV
 
 结果会输出到：
 
-- `reports/evaluate_DVWA_YYYY-MM-DD.md`
-- `reports/evaluate_DVWA_YYYY-MM-DD.json`
+- `scripts/reports/evaluate_DVWA_YYYY-MM-DD.md`
+- `scripts/reports/evaluate_DVWA_YYYY-MM-DD.json`
 
 每份报告的 `provenance` 都包含 scanner/target revision、dirty 状态、dirty diff SHA-256、
 ground-truth 路径与 SHA-256，以及 Python/平台/处理器。`--require-clean` 会在扫描前拒绝 dirty 或
@@ -220,20 +220,19 @@ Ground truth 中明确标记 `"in_scope": false` 的条目会在 `scope.excluded
 Express 4.18.1 的旧 OPEN_REDIRECT 标注指向 `lib/router/index.js:284`，该处当前不存在
 `res.redirect`，因此必须先更新靶场/标注，不能误归因为扫描器漏报。
 
-当前已发布的 pre-gate 快照如下；其准确率在 2026-07-11 dirty-scanner 候选复跑中保持不变，
-但仍需在检查点提交后使用新 `--require-clean` 门禁重新固化：
+当前 clean-worktree 稳定快照如下，所有报告的 `provenance.reproducible` 均为 `true`：
 
 | 目标 | TP | FP | FN | TN | Recall | Precision | F1 |
 |------|----|----|----|----|--------|-----------|----|
 | DVWA | 23 | 29 | 0 | 4 | 100.0% | 44.2% | 0.61 |
 | NodeGoat | 12 | 2 | 0 | 0 | 100.0% | 85.7% | 0.92 |
 
-2026-07-10 本机复跑使用：
+2026-07-12 本机复跑使用：
 
-- Scanner revision：`8c35f5f0c5a601450ba9b17b5a93e5184f879597`
+- Scanner revision：`d51bd8b946492fe1799f431b45c1da070a35cbc1`
 - DVWA revision：`33e364c556e91473a5e979a4db16ee3b393d05ba`
 - Ground-truth SHA-256：`ca7b1f6eac6481a18d7e5011670a133e6ccb68fefd446b420af2baee2a0e28cb`
-- NodeGoat scanner revision：`8c35f5f0c5a601450ba9b17b5a93e5184f879597`
+- NodeGoat scanner revision：`d51bd8b946492fe1799f431b45c1da070a35cbc1`
 - NodeGoat revision：`c5cb68a7084e4ae7dcc60e6a98768720a81841e8`
 - NodeGoat ground-truth SHA-256：`dd5a525953802218f83b632cf933b3759d6ebaaa7c7015e5973d894c9538e0a4`
 
@@ -248,8 +247,8 @@ Express 4.18.1 的旧 OPEN_REDIRECT 标注指向 `lib/router/index.js:284`，该
   逐条人工归因后，增加真实安全反例，再调整规则。
 - DVWA 的 29 条额外 finding 主要在 SSRF、XSS、SQLi 与 Path Traversal；后续治理必须增加相应
   TN 与真实项目 ground truth，避免仅通过删除规则“优化”指标。
-- `scripts/reports/` 中的旧项目报告为历史资料；公开 README 当前数字属于 pre-gate 基线，须经
-  新 clean-worktree 门禁重跑后才能升级为 O10 稳定门槛。
+- `scripts/reports/` 中 2026-07-12 以前的项目报告为历史资料；公开 README 只展示通过
+  clean-worktree 门禁的当前稳定快照。
 - mono-repo pilot 必须把扫描范围与 ground truth 对齐。例如 Java 命令应扫描
   `real_world_targets/java-webapp-security-lab/java-deserialization-demo`，并通过
   `--target-repository-root real_world_targets/java-webapp-security-lab` 记录父仓库 provenance；禁止扫描

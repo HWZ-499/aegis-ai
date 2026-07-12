@@ -31,6 +31,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+DEFAULT_REPORT_DIR = PROJECT_ROOT / "scripts" / "reports"
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -388,7 +389,7 @@ def main() -> None:
     )
     parser.add_argument("--project-dir", type=Path, required=True, help="项目根目录")
     parser.add_argument("--ground-truth", type=Path, required=True, help="ground-truth JSON 文件路径")
-    parser.add_argument("--output-dir", type=Path, default=PROJECT_ROOT / "reports", help="报告输出目录")
+    parser.add_argument("--output-dir", type=Path, default=DEFAULT_REPORT_DIR, help="报告输出目录")
     parser.add_argument("--target-name", type=str, default=None, help="报告中的目标名称，默认用项目目录名")
     parser.add_argument(
         "--target-repository-root",

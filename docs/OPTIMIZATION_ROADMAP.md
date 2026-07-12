@@ -604,8 +604,8 @@ pytest-benchmark 场景成功生成 JSON 基准。
 
 **状态：进行中**
 
-- [ ] DVWA、NodeGoat 干净版本可复跑基线（当前候选指标稳定，待检查点提交后通过 `--require-clean` 固化）
-- [ ] 其它真实项目按同一 provenance 口径复跑
+- [x] DVWA、NodeGoat 干净版本可复跑基线
+- [x] 其它真实项目按同一 provenance 口径复跑
 - [ ] 固化性能、准确率和内存指标
 - [ ] 升级与兼容性测试
 - [ ] 清理废弃接口
@@ -655,7 +655,7 @@ pytest-benchmark 场景成功生成 JSON 基准。
   3.2.1 修复并定位到实际 storage 代码。
 - dirty-scanner 候选快照（仅用于治理，不可发布为稳定门槛）：DVWA 23/29/0/4、NodeGoat
   12/2/0/0、Go pilot 3/0/0/2、Java deserialization pilot 1/0/0/1；Django 为 0/136/1/7，
-  Flask 为 0/10/0/2。body-parser 两条旧标注均转为范围外，Express 仍是 1 条范围外、1 条失效，
+  Flask 为 0/10/0/1。body-parser 两条旧标注均转为范围外，Express 仍是 1 条范围外、1 条失效，
   两者目前没有可用于产品准确率的范围内正样本。
 - 本机并行候选性能观测：DVWA 2.679 s / 55.320 MiB peak RSS，NodeGoat 0.246 s / 52.641 MiB，
   Django 38.811 s / 153.570 MiB，Flask 1.362 s / 70.324 MiB，Go 0.070 s / 48.207 MiB，
@@ -667,10 +667,24 @@ pytest-benchmark 场景成功生成 JSON 基准。
   legacy 模块，只由当前 `analysis/rules/` 与自定义 DSL 规则变化触发失效；完整移除安排在稳定版兼容
   迁移与版本策略明确后执行。
 
+### O10 第三批：clean-worktree 正式基线
+
+- 在检查点 `d51bd8b` 上串行执行八个目标的 `--require-clean` 复跑，scanner 与 target 均为干净、
+  可识别的 Git revision，所有 JSON 报告的 `provenance.reproducible` 均为 `true`。
+- 正式准确率结果：DVWA 23/29/0/4，NodeGoat 12/2/0/0，Go pilot 3/0/0/2，Java
+  deserialization pilot 1/0/0/1，Django 0/136/1/7，Flask 0/10/0/1。body-parser 无范围内
+  标注；Express 的一条范围外、一条失效标注继续单列，不把 0 分解释为产品 Recall。
+- 单轮串行观测：DVWA 2.566 s / 58.508 MiB peak RSS，NodeGoat 0.232 s / 53.020 MiB，
+  Django 39.491 s / 141.875 MiB，Flask 1.194 s / 69.578 MiB，Go 0.066 s / 49.309 MiB，
+  Java 子项目 0.067 s / 48.797 MiB。正式报告已归档到 `aegis-ai-core/scripts/reports/`。
+- Java 使用父仓库的干净本地 clone，扫描范围仅为 `java-deserialization-demo`；没有修改原靶场中
+  用户已有的 tracked `.class` 删除。
+
 ## 更新记录
 
 | 日期 | 更新 |
 |---|---|
+| 2026-07-12 | O10 第三批：创建 `d51bd8b` 稳定检查点，八个真实目标全部通过 `--require-clean` 串行复跑并归档逐 finding、性能和内存报告；DVWA/NodeGoat 与其它项目 provenance 复跑项完成。 |
 | 2026-07-11 | O10 第二批：provenance 增加 dirty/diff 指纹与 `--require-clean`，报告加入耗时、RSS、运行环境和逐 finding 审计；纠正 body-parser/Flask/Django 的错误 CVE 标注及 Java mono-repo 扫描范围，完成八目标 dirty-scanner 候选复跑。 |
 | 2026-07-11 | O7 第十七批并完成阶段：C/C++ local fix 从 AI orchestration 拆出为零 provider 依赖模块，主模块 1536→1067 行并增加依赖/体量门禁；全量 812 passed、mypy 125 文件清零。 |
 | 2026-07-11 | O7 第十六批：内部宽泛捕获收窄，全仓仅保留 CLI/daemon/LSP/SDK/plugin 5 个显式边界并用 AST 门禁锁定；全量 811 passed、mypy 清零。 |

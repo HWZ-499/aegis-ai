@@ -5,6 +5,10 @@ from pathlib import Path
 from scripts.benchmark import evaluate_project
 
 
+def test_default_report_directory_is_versioned_scripts_report_directory() -> None:
+    assert evaluate_project.DEFAULT_REPORT_DIR == evaluate_project.PROJECT_ROOT / "scripts" / "reports"
+
+
 def test_build_provenance_records_reproducible_project_inputs(tmp_path: Path, monkeypatch) -> None:
     target = tmp_path / "target"
     target.mkdir()
