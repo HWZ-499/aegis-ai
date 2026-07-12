@@ -4,7 +4,7 @@ import tarfile
 import zipfile
 from pathlib import Path
 
-from scripts.check_distribution import validate_distribution
+from scripts.check_distribution import _expand_distribution_paths, validate_distribution
 
 
 def test_distribution_gate_accepts_current_package_layout(tmp_path: Path) -> None:
@@ -39,6 +39,31 @@ def test_distribution_gate_rejects_retired_module_in_sdist(tmp_path: Path) -> No
 def test_distribution_gate_rejects_local_cache_in_vsix(tmp_path: Path) -> None:
     vsix = tmp_path / "aegis-ai-security-0.6.7.vsix"
     with zipfile.ZipFile(vsix, "w") as archive:
+        archive.writestr("extension/CHANGELOG.md", "")
+        archive.writestr("extension/resources/aegis-ai-core/pyproject.toml", "")
+        archive.writestr("extension/resources/aegis-ai-core/README.md", "")
         archive.writestr("extension/.pytest_cache/v/cache/nodeids", "[]")
 
     assert validate_distribution(vsix) == ["extension/.pytest_cache/v/cache/nodeids"]
+
+
+def test_distribution_gate_rejects_vsix_missing_core_package_readme(tmp_path: Path) -> None:
+    vsix = tmp_path / "aegis-ai-security-0.6.7.vsix"
+    with zipfile.ZipFile(vsix, "w") as archive:
+        archive.writestr("extension/CHANGELOG.md", "")
+        archive.writestr("extension/resources/aegis-ai-core/pyproject.toml", "")
+
+    assert validate_distribution(vsix) == [
+        "missing required VSIX file: extension/resources/aegis-ai-core/readme.md"
+    ]
+
+
+def test_distribution_gate_expands_globs_for_powershell_callers(tmp_path: Path) -> None:
+    first = tmp_path / "aegis-ai-core-1.5.0.whl"
+    second = tmp_path / "aegis-ai-core-1.5.0.tar.gz"
+    first.touch()
+    second.touch()
+
+    expanded = _expand_distribution_paths([tmp_path / "aegis-ai-core-1.5.0*"])
+
+    assert set(expanded) == {first, second}

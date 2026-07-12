@@ -2,11 +2,11 @@
 
 **Find and fix SQL injection, XSS, RCE, and 7+ more vulnerability types as you code.**
 
-Real-time SAST scanning for VS Code / Cursor using Tree-sitter AST + taint analysis + AI-driven patches. No CI pipeline. No regex guessing. Framework-aware code generation.
+Real-time SAST scanning for VS Code / Cursor using Tree-sitter AST, taint analysis, validated rules, and optional AI-driven patches.
 
 Supports: **JavaScript / TypeScript / Python / PHP / Java / Go / C/C++ basic scanning**
 
-> **v0.6.7** — Latest packaged build. [See what changed →](CHANGELOG.md)
+> **v0.6.7** — Stable package version. [See what changed →](CHANGELOG.md)
 
 ---
 
@@ -105,11 +105,11 @@ Suppressed findings can be inspected in the **Suppressed Findings** view after e
 
 ## Key Features
 
-- **1-second feedback** — diagnostics appear on save, no CI pipeline
-- **Real data-flow analysis** — Tree-sitter AST + TaintGraph, not regex  
+- **Fast local feedback** — diagnostics appear on save without waiting for CI
+- **Language-aware analysis** — Tree-sitter AST, taint tracking, and validated rules
 - **One-click AI fix** — click lightbulb → framework-aware patch auto-generated
 - **10+ vulnerability types** — SQL/NoSQL injection, XSS, RCE, path traversal, deserialization, SSRF, hardcoded credentials, open redirect
-- **Real-world validated** — 100% F1 on OWASP NodeGoat, 92% F1 on Django 3.2 core
+- **Auditable real-project baselines** — DVWA Recall 100.0% / Precision 44.2%; NodeGoat Recall 100.0% / Precision 85.7% on the 2026-07-12 clean snapshots
 
 ---
 
@@ -147,7 +147,7 @@ Suppressed findings can be inspected in the **Suppressed Findings** view after e
 
 - First run may take longer while the managed Python backend environment is created
 - Python 3.10–3.12 must be installed separately and available through `aegisAI.pythonPath`
-- PHP analysis uses Tree-sitter AST for core rules; some niche patterns may still fall back to line-level matching
+- PHP production analysis uses maintained AST/taint rules; niche patterns outside the current rule set may remain undetected
 - Cross-file taint propagation requires `module.exports` patterns (CommonJS)
 
 ---

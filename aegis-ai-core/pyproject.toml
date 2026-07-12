@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "aegis-ai-core"
 version = "1.5.0"
 description = "Local-first SAST engine with AST analysis, taint tracking, and AI-powered fix suggestions"
-readme = "src/README.md"
+readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10,<3.13"
 authors = [{ name = "Aegis AI Team" }]
@@ -68,6 +68,8 @@ dev = [
 Homepage = "https://github.com/HWZ-499/aegis-ai"
 Repository = "https://github.com/HWZ-499/aegis-ai"
 Issues = "https://github.com/HWZ-499/aegis-ai/issues"
+Documentation = "https://github.com/HWZ-499/aegis-ai/tree/main/docs"
+Changelog = "https://github.com/HWZ-499/aegis-ai/blob/main/aegis-ai-core/CHANGELOG.md"
 
 [project.scripts]
 aegis = "src.scanner.cli:main"

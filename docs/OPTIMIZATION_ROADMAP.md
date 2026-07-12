@@ -617,6 +617,20 @@ pytest-benchmark 场景成功生成 JSON 基准。
   验证：核心 `835 passed, 50 deselected`，Ruff 通过，mypy 119 个源码文件 0 errors，发行一致性检查
   通过。PyPI 与 Marketplace 尚未执行外部发布，继续保留为 O9 后续任务。
 
+### O9 第二批：稳定分发预检与发布门禁
+
+- Core 的 PyPI 元数据改为独立包 README，并补齐安装、CLI、Python 3.10–3.12、语言能力、可选 AI
+  与经审计的真实项目指标；wheel 和 sdist 均通过构建、`twine check`、内容门禁及全新环境安装验证。
+- Marketplace 元数据退出 Preview，清理过期的 Python/精度宣传口径，VSIX 固化为先打包、检查内容，
+  再通过 `VSCE_PAT` 发布同一制品；发布 workflow 新增运行时依赖审计，避免存在已知漏洞的依赖进入稳定包。
+- VSIX 现在强制包含 Core 的 `pyproject.toml` 与包 README；在全新 Python 环境中从 bundled backend
+  安装后，Core 元数据版本确认为 1.5.0。发布一致性与制品内容测试覆盖这些契约。
+- 新增独立发布 checklist，记录 PyPI Trusted Publisher、Marketplace secret、精确组件 tag、预检、
+  发布后验证和回滚策略。外部发布仍需维护者明确批准并配置凭据，因此 O9 的两个发布项暂不勾选。
+- 2026-07-12 验证：Core `839 passed, 50 deselected`，Ruff 与 mypy 119 个源码文件通过；扩展运行时
+  `npm audit` 为 0 vulnerabilities，TypeScript check 与扩展宿主 `55 passing`；最终 VSIX 140 个文件、
+  535,592 bytes，内容门禁通过。完整 npm 审计剩余 3 条仅开发期 Mocha 传递依赖告警，不进入 VSIX。
+
 ## O10：稳定版
 
 **状态：已完成**

@@ -2,6 +2,7 @@
 
 ## 0.6.7
 
+- Promotes the extension from Marketplace Preview to the stable channel.
 - Bundles the local Aegis backend and bootstraps it in a managed Python 3.10–3.12
   environment.
 - Shows scan failures, workspace progress, baseline findings, taint paths, and

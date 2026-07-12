@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import glob
 import tarfile
 import zipfile
 from pathlib import Path
@@ -21,6 +22,11 @@ _FORBIDDEN_CACHE_MARKERS = (
     "/.ruff_cache/",
     "/__pycache__/",
 )
+_REQUIRED_VSIX_SUFFIXES = (
+    "extension/changelog.md",
+    "extension/resources/aegis-ai-core/pyproject.toml",
+    "extension/resources/aegis-ai-core/readme.md",
+)
 
 
 def _archive_names(path: Path) -> list[str]:
@@ -36,14 +42,29 @@ def _archive_names(path: Path) -> list[str]:
 def validate_distribution(path: Path) -> list[str]:
     """Return forbidden paths found in a wheel, source archive, or VSIX."""
     violations: list[str] = []
-    for raw_name in _archive_names(path):
+    archive_names = _archive_names(path)
+    for raw_name in archive_names:
         name = raw_name.replace("\\", "/").lstrip("./")
         normalized = f"/{name.strip('/')}"
         if any(name == retired or name.endswith(f"/{retired}") for retired in _RETIRED_FILES) or any(
             marker in f"{normalized}/" for marker in _FORBIDDEN_CACHE_MARKERS
         ):
             violations.append(raw_name)
+    if path.suffix.lower() == ".vsix":
+        normalized_names = {name.replace("\\", "/").lstrip("./").lower() for name in archive_names}
+        for required in _REQUIRED_VSIX_SUFFIXES:
+            if not any(name.endswith(required) for name in normalized_names):
+                violations.append(f"missing required VSIX file: {required}")
     return violations
+
+
+def _expand_distribution_paths(paths: list[Path]) -> list[Path]:
+    """Expand shell-style globs even when the caller shell does not."""
+    expanded: list[Path] = []
+    for path in paths:
+        matches = [Path(match) for match in glob.glob(str(path))]
+        expanded.extend(matches or [path])
+    return expanded
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -52,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     failed = False
-    for distribution in args.distributions:
+    for distribution in _expand_distribution_paths(args.distributions):
         try:
             violations = validate_distribution(distribution)
         except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile) as exc:

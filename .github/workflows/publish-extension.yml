@@ -34,10 +34,20 @@ jobs:
           cd aegis-vscode
           npm ci
 
+      - name: Audit runtime dependencies
+        run: |
+          cd aegis-vscode
+          npm audit --omit=dev --audit-level=moderate
+
       - name: Type check
         run: |
           cd aegis-vscode
           npm run check
+
+      - name: Extension tests
+        run: |
+          cd aegis-vscode
+          xvfb-run -a npm test
 
       - name: Compile
         run: |
@@ -57,3 +67,10 @@ jobs:
         with:
           name: aegis-ai-security-vsix
           path: aegis-vscode/*.vsix
+
+      - name: Publish to VS Code Marketplace
+        run: |
+          cd aegis-vscode
+          npx vsce publish --packagePath *.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
