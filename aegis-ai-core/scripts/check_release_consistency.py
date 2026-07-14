@@ -135,6 +135,7 @@ def validate_repo_consistency(repo_root: Path) -> list[str]:
     extension_changelog = _read_text(repo_root / "aegis-vscode" / "CHANGELOG.md")
     publish_core_workflow = _read_text(repo_root / ".github" / "workflows" / "publish-pypi.yml")
     publish_extension_workflow = _read_text(repo_root / ".github" / "workflows" / "publish-extension.yml")
+    security_scan_workflow = _read_text(repo_root / ".github" / "workflows" / "security-scan.yml")
     src_readme = _read_text(repo_root / "aegis-ai-core" / "src" / "README.md")
 
     python_requirement = _extract_python_requirement(pyproject)
@@ -233,7 +234,7 @@ def validate_repo_consistency(repo_root: Path) -> list[str]:
     extension_workflow_markers = (
         "vscode-v*",
         "check_release_tag.py vscode",
-        "npm audit --omit=dev --audit-level=moderate",
+        "npm audit --audit-level=low",
         "xvfb-run -a npm test",
         "check_distribution.py aegis-vscode/*.vsix",
         "vsce publish",
@@ -241,8 +242,10 @@ def validate_repo_consistency(repo_root: Path) -> list[str]:
     )
     if not all(marker in publish_extension_workflow for marker in extension_workflow_markers):
         errors.append(
-            "Extension workflow must audit runtime dependencies, validate the VSIX, and publish with the Marketplace secret."
+            "Extension workflow must audit all dependencies, validate the VSIX, and publish with the Marketplace secret."
         )
+    if "npm audit --audit-level=low" not in security_scan_workflow:
+        errors.append("Extension CI must audit all dependencies at every severity level.")
 
     stale_marketplace_claims = ("100% F1", "92% F1", "Python 3.10+")
     if any(claim in extension_readme for claim in stale_marketplace_claims):

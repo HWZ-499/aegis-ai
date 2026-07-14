@@ -62,8 +62,12 @@ def _write_minimal_consistent_repo(repo: Path) -> Path:
         encoding="utf-8",
     )
     (workflows / "publish-extension.yml").write_text(
-        "vscode-v*\ncheck_release_tag.py vscode\nnpm audit --omit=dev --audit-level=moderate\n"
+        "vscode-v*\ncheck_release_tag.py vscode\nnpm audit --audit-level=low\n"
         "xvfb-run -a npm test\ncheck_distribution.py aegis-vscode/*.vsix\nvsce publish\nsecrets.VSCE_PAT\n",
+        encoding="utf-8",
+    )
+    (workflows / "security-scan.yml").write_text(
+        "npm audit --audit-level=low\n",
         encoding="utf-8",
     )
     return core
@@ -170,15 +174,25 @@ def test_validate_repo_consistency_flags_preview_extension(tmp_path: Path) -> No
     assert any("preview" in error.lower() for error in errors)
 
 
-def test_validate_repo_consistency_flags_missing_extension_runtime_audit(tmp_path: Path) -> None:
+def test_validate_repo_consistency_flags_missing_extension_dependency_audit(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _write_minimal_consistent_repo(repo)
     workflow_path = repo / ".github" / "workflows" / "publish-extension.yml"
     workflow = workflow_path.read_text(encoding="utf-8").replace(
-        "npm audit --omit=dev --audit-level=moderate\n", ""
+        "npm audit --audit-level=low\n", ""
     )
     workflow_path.write_text(workflow, encoding="utf-8")
 
     errors = validate_repo_consistency(repo)
 
-    assert any("audit runtime dependencies" in error.lower() for error in errors)
+    assert any("audit all dependencies" in error.lower() for error in errors)
+
+
+def test_validate_repo_consistency_flags_missing_extension_ci_audit(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _write_minimal_consistent_repo(repo)
+    (repo / ".github" / "workflows" / "security-scan.yml").write_text("npm test\n", encoding="utf-8")
+
+    errors = validate_repo_consistency(repo)
+
+    assert any("extension ci" in error.lower() and "audit all dependencies" in error.lower() for error in errors)

@@ -101,6 +101,7 @@ jobs:
         run: |
           cd aegis-vscode
           npm ci
+          npm audit --audit-level=low
           npm test
 
   # ── Test Suite + Security Scan ───────────────────────────────

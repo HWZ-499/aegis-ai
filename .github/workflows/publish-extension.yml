@@ -34,10 +34,10 @@ jobs:
           cd aegis-vscode
           npm ci
 
-      - name: Audit runtime dependencies
+      - name: Audit all dependencies
         run: |
           cd aegis-vscode
-          npm audit --omit=dev --audit-level=moderate
+          npm audit --audit-level=low
 
       - name: Type check
         run: |

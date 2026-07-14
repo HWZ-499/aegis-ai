@@ -12,5 +12,7 @@
 - Uses the component-scoped release tag `vscode-v0.6.7` for VSIX packaging.
 - Excludes local test/type/lint caches and rejects forbidden content before a
   VSIX artifact is uploaded.
+- Pins patched Mocha transitive dependencies and requires the full development
+  and runtime dependency audit to report zero vulnerabilities before release.
 
 Marketplace publication and wider distribution remain tracked under O9.

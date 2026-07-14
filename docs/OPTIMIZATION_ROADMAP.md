@@ -629,7 +629,20 @@ pytest-benchmark 场景成功生成 JSON 基准。
   发布后验证和回滚策略。外部发布仍需维护者明确批准并配置凭据，因此 O9 的两个发布项暂不勾选。
 - 2026-07-12 验证：Core `839 passed, 50 deselected`，Ruff 与 mypy 119 个源码文件通过；扩展运行时
   `npm audit` 为 0 vulnerabilities，TypeScript check 与扩展宿主 `55 passing`；最终 VSIX 140 个文件、
-  535,592 bytes，内容门禁通过。完整 npm 审计剩余 3 条仅开发期 Mocha 传递依赖告警，不进入 VSIX。
+  535,592 bytes，内容门禁通过。
+
+### O9 第三批：开发供应链审计收口
+
+- 完整 `npm audit` 发现 Mocha 11.7.6 的两个传递依赖仍落在公开漏洞范围：`diff 7.0.0` 与
+  `serialize-javascript 6.0.2`。生产依赖不受影响，但测试与打包工具链仍应在稳定发布前归零。
+- 在 Mocha 子树内精确固定 `diff 8.0.3` 与 `serialize-javascript 7.0.5`；两者分别保留 CommonJS
+  入口并符合项目 Node 20+ CI 下限，避免扩大到其它依赖树。
+- 常规 Windows 扩展 smoke CI、Marketplace workflow 与发布清单从“仅审计生产依赖”提升为
+  `npm audit --audit-level=low`，同时审计生产、开发和打包工具，任意级别已知漏洞都会在日常 CI
+  或发布前阻止流程。
+- 2026-07-14 验证：干净 `npm ci` 后完整 `npm audit` 为 0 vulnerabilities；TypeScript check、扩展
+  宿主 55 tests、Core 839 tests、Ruff 和 mypy 全部通过；最终 0.6.7 VSIX 为 140 文件、535,715 bytes，
+  精确制品内容门禁通过且不包含开发依赖。
 
 ## O10：稳定版
 
@@ -780,6 +793,7 @@ pytest-benchmark 场景成功生成 JSON 基准。
 
 | 日期 | 更新 |
 |---|---|
+| 2026-07-14 | O9 第三批：修复 Mocha 工具链中的 `diff` / `serialize-javascript` 传递漏洞，并把 Marketplace 发布门禁提升为全依赖、全严重度审计。 |
 | 2026-07-12 | O9 第一批：发布 DSL 规则创作/测试指南、可执行社区规则模板、贡献指南、安全策略与 PR 门禁；修复旧 Issue 链接，强化规则模板语言组合和 DSL schema 校验；核心 835 tests 通过，O9 进入进行中。 |
 | 2026-07-12 | O10 第六批并完成阶段：Core 冻结为稳定 1.5.0，发布维护政策与双组件 changelog；拆分 `core-v*` / `vscode-v*` 发布 tag 并增加精确版本门禁，修复 release checker 的 Python 3.10 兼容性及 VSIX 缓存污染；稳定 wheel、核心 823 tests 与扩展 55 tests 全部通过。 |
 | 2026-07-12 | O10 第五批：核心进入 `1.5.0.dev0`，移除已过弃用窗口的旧 AST/regex/PHP/报告接口与孤立正则配置器，多语言兼容层统一委托 `analyze_source()`，补迁移文档和防回流门禁；废弃接口验收完成。 |

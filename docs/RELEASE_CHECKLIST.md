@@ -61,19 +61,20 @@ classifier. Install the wheel in a fresh supported Python environment and run
 ```console
 cd aegis-vscode
 npm ci
-npm audit --omit=dev --audit-level=moderate
+npm audit --audit-level=low
 npm run check
 npm test
 npx vsce package --no-dependencies
 cd ..
-python aegis-ai-core/scripts/check_distribution.py aegis-vscode/*.vsix
+python aegis-ai-core/scripts/check_distribution.py aegis-vscode/aegis-ai-security-0.6.7.vsix
 python aegis-ai-core/scripts/check_release_tag.py vscode vscode-v0.6.7
 ```
 
 Inspect the VSIX manifest and file list. It must include `CHANGELOG.md`, the
 bundled Core 1.5.0 backend, and no cache, test, source-map, or retired backend
-files. The runtime dependency audit must report zero vulnerabilities. Review a
-full `npm audit` separately for development-tool advisories; do not use
+files. Checking the exact versioned VSIX avoids mixing retained artifacts from
+older releases into the local preflight. The full dependency audit must report
+zero vulnerabilities, including development and packaging tools. Do not use
 `npm audit fix --force` during release preparation because it may perform
 breaking tool downgrades or upgrades.
 
