@@ -2,7 +2,10 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - exercised by the Python 3.10 CI job
+    import tomli as tomllib
 
 
 def _load_pytest_config() -> dict[str, Any]:
@@ -25,6 +28,10 @@ def test_default_pytest_addopts_skip_heavy_markers() -> None:
     assert "not benchmark" in addopts
     assert "not acceptance" in addopts
     assert "not integration" in addopts
+
+
+def test_asyncio_fixture_loop_scope_is_explicit() -> None:
+    assert _load_pytest_config()["asyncio_default_fixture_loop_scope"] == "function"
 
 
 def test_acceptance_benchmark_module_is_marked_acceptance() -> None:

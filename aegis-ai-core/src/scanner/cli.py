@@ -53,8 +53,7 @@ def main(argv: list[str] | None = None):
 
     parser = argparse.ArgumentParser(
         description=(
-            "Aegis SAST 安全扫描工具 — Python、JavaScript/TypeScript、PHP、Java、Go AST/规则检测；"
-            "C/C++ 基础上下文检测"
+            "Aegis SAST 安全扫描工具 — Python、JavaScript/TypeScript、PHP、Java、Go AST/规则检测；C/C++ 基础上下文检测"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""

@@ -31,9 +31,7 @@ def test_distribution_gate_rejects_retired_module_in_sdist(tmp_path: Path) -> No
     with tarfile.open(archive_path, "w:gz") as archive:
         archive.add(source_file, arcname="aegis_ai_core-1.5.0/src/scanner/rule_config.py")
 
-    assert validate_distribution(archive_path) == [
-        "aegis_ai_core-1.5.0/src/scanner/rule_config.py"
-    ]
+    assert validate_distribution(archive_path) == ["aegis_ai_core-1.5.0/src/scanner/rule_config.py"]
 
 
 def test_distribution_gate_rejects_local_cache_in_vsix(tmp_path: Path) -> None:
@@ -53,9 +51,7 @@ def test_distribution_gate_rejects_vsix_missing_core_package_readme(tmp_path: Pa
         archive.writestr("extension/CHANGELOG.md", "")
         archive.writestr("extension/resources/aegis-ai-core/pyproject.toml", "")
 
-    assert validate_distribution(vsix) == [
-        "missing required VSIX file: extension/resources/aegis-ai-core/readme.md"
-    ]
+    assert validate_distribution(vsix) == ["missing required VSIX file: extension/resources/aegis-ai-core/readme.md"]
 
 
 def test_distribution_gate_expands_globs_for_powershell_callers(tmp_path: Path) -> None:

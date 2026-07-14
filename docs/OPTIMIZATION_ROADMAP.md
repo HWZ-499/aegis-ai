@@ -644,6 +644,23 @@ pytest-benchmark 场景成功生成 JSON 基准。
   宿主 55 tests、Core 839 tests、Ruff 和 mypy 全部通过；最终 0.6.7 VSIX 为 140 文件、535,715 bytes，
   精确制品内容门禁通过且不包含开发依赖。
 
+### O9 第四批：Python 3.10 与 CI 工具链收口
+
+- 修复 pytest 配置测试直接导入 Python 3.11+ `tomllib` 的兼容缺口；Python 3.10 的 dev extra 现在按
+  环境标记安装 `tomli`，测试使用标准库优先、3.10 回退的同一 API，不再在 3.10 CI 收集阶段失败。
+- 显式固定 `asyncio_default_fixture_loop_scope = function`，消除 pytest-asyncio 的未来默认值警告，
+  避免插件升级后异步 fixture 的事件循环生命周期静默变化。
+- 修复 Ruff 工具链漂移：pre-commit 固定在 0.4.4、dev extra 却允许任意 `>=0.4`，导致当前 CI
+  解析到新版后 12 个正式门禁文件格式失败；两处统一固定为 Ruff 0.15.21，并用同一版本机械格式化
+  `src/tests`；pre-commit 的 lint/format 文件过滤也与 CI 对齐，实验脚本与故意不安全的规则样本不再
+  使正式 hook 产生范围外失败。`src/scripts` 同时显式声明为 first-party，保证仓库根 pre-commit 与
+  Core 子目录 CI 对 import 分组给出相同结果。
+- Python 3.10 本机未安装，真实 3.10 执行仍由 GitHub Actions 兼容矩阵负责。2026-07-14 本地验证：
+  Python 3.11 Core `841 passed, 50 deselected` 且无 pytest-asyncio 警告；Ruff lint/format 190 文件、
+  两个 pre-commit hook、mypy 119 文件与发行一致性门禁全部通过；wheel/sdist、Twine 与内容检查通过，
+  元数据正确包含 `tomli` 的 `<3.11` 条件和 Ruff 0.15.21 dev pin；扩展宿主 55 tests、完整 npm audit
+  0 vulnerabilities，最终 0.6.7 VSIX 为 140 文件、535,757 bytes 并通过内容门禁。
+
 ## O10：稳定版
 
 **状态：已完成**
@@ -793,6 +810,7 @@ pytest-benchmark 场景成功生成 JSON 基准。
 
 | 日期 | 更新 |
 |---|---|
+| 2026-07-14 | O9 第四批：修复 Python 3.10 `tomllib` 兼容和 pytest-asyncio 默认值缺口；统一 Ruff 0.15.21 的 dev/pre-commit 版本并恢复可复现格式门禁。 |
 | 2026-07-14 | O9 第三批：修复 Mocha 工具链中的 `diff` / `serialize-javascript` 传递漏洞，并把 Marketplace 发布门禁提升为全依赖、全严重度审计。 |
 | 2026-07-12 | O9 第一批：发布 DSL 规则创作/测试指南、可执行社区规则模板、贡献指南、安全策略与 PR 门禁；修复旧 Issue 链接，强化规则模板语言组合和 DSL schema 校验；核心 835 tests 通过，O9 进入进行中。 |
 | 2026-07-12 | O10 第六批并完成阶段：Core 冻结为稳定 1.5.0，发布维护政策与双组件 changelog；拆分 `core-v*` / `vscode-v*` 发布 tag 并增加精确版本门禁，修复 release checker 的 Python 3.10 兼容性及 VSIX 缓存污染；稳定 wheel、核心 823 tests 与扩展 55 tests 全部通过。 |

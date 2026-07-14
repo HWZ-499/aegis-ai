@@ -20,6 +20,11 @@ All notable Core changes are recorded here. Releases follow the
 - Multi-language compatibility calls now delegate to the maintained rule engine;
   unsupported languages return no generic regex findings.
 - Core packaging uses stable version 1.5.0 and component tag `core-v1.5.0`.
+- Python 3.10 development installs use the `tomli` compatibility parser, and
+  pytest fixes the async fixture loop scope instead of relying on a changing
+  plugin default.
+- Ruff and its pre-commit hook use the same pinned formatter version so clean
+  commits do not change status as the global tool resolver advances.
 
 ### Removed
 

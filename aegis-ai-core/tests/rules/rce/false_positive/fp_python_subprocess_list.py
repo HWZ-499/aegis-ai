@@ -9,4 +9,3 @@ import subprocess
 def safe_ls():
     # 常量命令 + 参数列表，shell=False（默认）
     subprocess.run(["ls", "-la"])
-

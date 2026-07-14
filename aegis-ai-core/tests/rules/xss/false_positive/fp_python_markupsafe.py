@@ -14,4 +14,3 @@ def safe_xss():
     name = request.args.get("name")
     safe_name = html.escape(name or "", quote=True)
     return f"<h1>Hello {safe_name}</h1>"
-

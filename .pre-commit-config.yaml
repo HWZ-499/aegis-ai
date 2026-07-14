@@ -1,11 +1,15 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.4.4
+    rev: v0.15.21
     hooks:
       - id: ruff
         args: [--fix, --config, aegis-ai-core/pyproject.toml]
+        files: ^aegis-ai-core/(src|tests)/.*\.py$
+        exclude: ^aegis-ai-core/tests/(rules/|debug_.*\.py$|test_vulnerable_code\.py$)
       - id: ruff-format
         args: [--config, aegis-ai-core/pyproject.toml]
+        files: ^aegis-ai-core/(src|tests)/.*\.py$
+        exclude: ^aegis-ai-core/tests/(rules/|debug_.*\.py$|test_vulnerable_code\.py$)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0

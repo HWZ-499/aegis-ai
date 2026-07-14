@@ -9,4 +9,3 @@ import os
 def load_password():
     password = os.environ.get("DB_PASSWORD")
     return password
-

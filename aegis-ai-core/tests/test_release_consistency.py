@@ -145,7 +145,9 @@ def test_validate_repo_consistency_flags_undocumented_python_upper_bound(tmp_pat
     repo = tmp_path / "repo"
     _write_minimal_consistent_repo(repo)
     root_readme = repo / "README.md"
-    root_readme.write_text(root_readme.read_text(encoding="utf-8").replace("; Python 3.13 unsupported", ""), encoding="utf-8")
+    root_readme.write_text(
+        root_readme.read_text(encoding="utf-8").replace("; Python 3.13 unsupported", ""), encoding="utf-8"
+    )
 
     errors = validate_repo_consistency(repo)
 
@@ -178,9 +180,7 @@ def test_validate_repo_consistency_flags_missing_extension_dependency_audit(tmp_
     repo = tmp_path / "repo"
     _write_minimal_consistent_repo(repo)
     workflow_path = repo / ".github" / "workflows" / "publish-extension.yml"
-    workflow = workflow_path.read_text(encoding="utf-8").replace(
-        "npm audit --audit-level=low\n", ""
-    )
+    workflow = workflow_path.read_text(encoding="utf-8").replace("npm audit --audit-level=low\n", "")
     workflow_path.write_text(workflow, encoding="utf-8")
 
     errors = validate_repo_consistency(repo)
