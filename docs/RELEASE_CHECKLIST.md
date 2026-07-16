@@ -54,7 +54,10 @@ python -m twine check dist/*
 
 Confirm wheel metadata has version 1.5.0, Python `>=3.10,<3.13`, and the stable
 classifier. Install the wheel in a fresh supported Python environment and run
-`aegis --help` before tagging.
+`aegis --help` before tagging. The tag workflow repeats this against the final
+wheel in an isolated virtual environment, verifies all three console entry
+points, imports the scanner and LSP modules, and only then enters the Trusted
+Publisher step.
 
 ## Extension preflight
 
@@ -72,9 +75,11 @@ python aegis-ai-core/scripts/check_release_tag.py vscode vscode-v0.6.7
 
 Inspect the VSIX manifest and file list. It must include `CHANGELOG.md`, the
 bundled Core 1.5.0 backend, and no cache, test, source-map, or retired backend
-files. Checking the exact versioned VSIX avoids mixing retained artifacts from
-older releases into the local preflight. The full dependency audit must report
-zero vulnerabilities, including development and packaging tools. Do not use
+files. The distribution gate also checks that the package/file versions match
+and recomputes the bundled backend file count and SHA-256 fingerprint. Checking
+the exact versioned VSIX avoids mixing retained artifacts from older releases
+into the local preflight. The full dependency audit must report zero
+vulnerabilities, including development and packaging tools. Do not use
 `npm audit fix --force` during release preparation because it may perform
 breaking tool downgrades or upgrades.
 

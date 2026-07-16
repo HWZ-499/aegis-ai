@@ -11,7 +11,8 @@ All notable Core changes are recorded here. Releases follow the
   scanning, benchmarks, and compatibility adapters.
 - Clean-provenance real-project reports and machine-enforced accuracy, duration,
   and peak-memory thresholds.
-- Python 3.10–3.12 compatibility gates and wheel/sdist retired-file checks.
+- Python 3.10–3.12 compatibility gates and wheel/sdist content, metadata,
+  version, entry-point, and isolated-install checks.
 - A validated community YAML rule template and language-aware `aegis rules init`
   skeleton checks.
 
@@ -25,6 +26,8 @@ All notable Core changes are recorded here. Releases follow the
   plugin default.
 - Ruff and its pre-commit hook use the same pinned formatter version so clean
   commits do not change status as the global tool resolver advances.
+- The PyPI Trusted Publisher step now consumes the same wheel that passed an
+  isolated installation, import, metadata, and CLI smoke test.
 
 ### Removed
 

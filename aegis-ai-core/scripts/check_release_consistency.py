@@ -227,9 +227,20 @@ def validate_repo_consistency(repo_root: Path) -> list[str]:
     if not all(marker in release_checklist for marker in release_markers):
         errors.append("Release checklist must document external credentials, exact tags, and artifact checks.")
 
-    core_workflow_markers = ("core-v*", "check_release_tag.py core", "pypa/gh-action-pypi-publish")
+    core_workflow_markers = (
+        "core-v*",
+        "check_release_tag.py core",
+        "check_distribution.py dist/*",
+        "Smoke test installed wheel",
+        'importlib.metadata.distribution("aegis-ai-core")',
+        'bin/aegis" --help',
+        "pypa/gh-action-pypi-publish",
+    )
     if not all(marker in publish_core_workflow for marker in core_workflow_markers):
-        errors.append("PyPI workflow must use the scoped core tag, version gate, and trusted publisher action.")
+        errors.append(
+            "PyPI workflow must use the scoped core tag, validate and smoke-test the final wheel, "
+            "and use the trusted publisher action."
+        )
 
     extension_workflow_markers = (
         "vscode-v*",

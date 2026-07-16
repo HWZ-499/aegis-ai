@@ -3,7 +3,7 @@
 > 本文档是项目优化阶段、完成状态和验收标准的唯一事实源。
 > 长期审查材料可作为优先级参考，但实际执行进度以本文档为准。
 
-**最后同步日期**：2026-07-12
+**最后同步日期**：2026-07-16
 **当前阶段**：O10 已完成；下一阶段为 O9 生态与分发
 
 ## 当前执行优先级（2026-07-10 调整）
@@ -661,6 +661,23 @@ pytest-benchmark 场景成功生成 JSON 基准。
   元数据正确包含 `tomli` 的 `<3.11` 条件和 Ruff 0.15.21 dev pin；扩展宿主 55 tests、完整 npm audit
   0 vulnerabilities，最终 0.6.7 VSIX 为 140 文件、535,757 bytes 并通过内容门禁。
 
+### O9 第五批：最终制品身份与安装门禁
+
+- wheel、sdist 与 VSIX 现在验证必需运行入口、项目身份、文件名/内部/源码版本、Python 版本约束和稳定
+  VSIX channel；缺文件、旧版本、错误 console script 或重复 archive path 会在上传前失败。
+- VSIX 门禁会按打包后的实际文件重新计算 bundled backend manifest 的文件数量与 SHA-256 指纹，避免
+  backend 在准备后被遗漏或修改；同时拒绝源码、测试、缓存、source map、字节码和退役模块回流。
+- PyPI workflow 在 Trusted Publisher 步骤前用最终 wheel 创建隔离环境，核对安装版本和三个 console
+  script，导入 CLI/LSP 模块，并实际运行 `aegis --help` 与 `aegis-scan --help`。
+- 新增 5 个制品/工作流回归，相关测试现为 25 passed。2026-07-16 全量验证：Core
+  `846 passed, 50 deselected`，Ruff 190 文件、mypy 119 文件与发行一致性门禁通过；扩展干净 `npm ci`
+  后完整 audit 为 0 vulnerabilities，TypeScript check 与扩展宿主 55 tests 通过。
+- 真实最终候选全部通过：wheel 403,188 bytes、sdist 406,753 bytes、Twine、隔离安装及 CLI smoke；
+  VSIX 140 文件、535,818 bytes，版本、必需文件和 bundled backend 指纹一致。
+- 2026-07-16 外部状态核验：PyPI 项目尚不存在；Marketplace 当前公开 0.6.1 且仍为 Preview；仓库尚无
+  `core-v*` / `vscode-v*` 标签。O9 只剩两项外部发布，继续等待维护者配置 Trusted Publisher、
+  Marketplace `VSCE_PAT`、合并当前分支并明确授权推送组件标签。
+
 ## O10：稳定版
 
 **状态：已完成**
@@ -810,6 +827,7 @@ pytest-benchmark 场景成功生成 JSON 基准。
 
 | 日期 | 更新 |
 |---|---|
+| 2026-07-16 | O9 第五批：最终 wheel/sdist/VSIX 增加身份、入口、版本与完整性门禁；VSIX 重算 bundled backend 指纹，PyPI 上传前隔离安装最终 wheel 并验证 CLI；Core 846 tests、扩展 55 tests 与三个真实制品通过。 |
 | 2026-07-14 | O9 第四批：修复 Python 3.10 `tomllib` 兼容和 pytest-asyncio 默认值缺口；统一 Ruff 0.15.21 的 dev/pre-commit 版本并恢复可复现格式门禁。 |
 | 2026-07-14 | O9 第三批：修复 Mocha 工具链中的 `diff` / `serialize-javascript` 传递漏洞，并把 Marketplace 发布门禁提升为全依赖、全严重度审计。 |
 | 2026-07-12 | O9 第一批：发布 DSL 规则创作/测试指南、可执行社区规则模板、贡献指南、安全策略与 PR 门禁；修复旧 Issue 链接，强化规则模板语言组合和 DSL schema 校验；核心 835 tests 通过，O9 进入进行中。 |

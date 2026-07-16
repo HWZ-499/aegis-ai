@@ -11,7 +11,8 @@
   the bundled-backend fingerprint before reuse.
 - Uses the component-scoped release tag `vscode-v0.6.7` for VSIX packaging.
 - Excludes local test/type/lint caches and rejects forbidden content before a
-  VSIX artifact is uploaded.
+  VSIX artifact is uploaded; the release gate also verifies the VSIX identity,
+  required runtime entries, bundled Core metadata, file count, and fingerprint.
 - Pins patched Mocha transitive dependencies and requires the full development
   and runtime dependency audit to report zero vulnerabilities before release.
 

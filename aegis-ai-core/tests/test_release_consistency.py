@@ -58,7 +58,11 @@ def _write_minimal_consistent_repo(repo: Path) -> Path:
     workflows = repo / ".github" / "workflows"
     workflows.mkdir(parents=True)
     (workflows / "publish-pypi.yml").write_text(
-        "core-v*\ncheck_release_tag.py core\npypa/gh-action-pypi-publish\n",
+        "core-v*\ncheck_release_tag.py core\ncheck_distribution.py dist/*\n"
+        "Smoke test installed wheel\n"
+        'importlib.metadata.distribution("aegis-ai-core")\n'
+        'bin/aegis" --help\n'
+        "pypa/gh-action-pypi-publish\n",
         encoding="utf-8",
     )
     (workflows / "publish-extension.yml").write_text(
@@ -186,6 +190,18 @@ def test_validate_repo_consistency_flags_missing_extension_dependency_audit(tmp_
     errors = validate_repo_consistency(repo)
 
     assert any("audit all dependencies" in error.lower() for error in errors)
+
+
+def test_validate_repo_consistency_flags_missing_wheel_install_smoke_test(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _write_minimal_consistent_repo(repo)
+    workflow_path = repo / ".github" / "workflows" / "publish-pypi.yml"
+    workflow = workflow_path.read_text(encoding="utf-8").replace("Smoke test installed wheel\n", "")
+    workflow_path.write_text(workflow, encoding="utf-8")
+
+    errors = validate_repo_consistency(repo)
+
+    assert any("smoke-test the final wheel" in error.lower() for error in errors)
 
 
 def test_validate_repo_consistency_flags_missing_extension_ci_audit(tmp_path: Path) -> None:
