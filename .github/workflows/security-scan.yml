@@ -126,6 +126,7 @@ jobs:
       actions: read
       contents: read
       issues: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v6
@@ -308,10 +309,14 @@ jobs:
 
               lines.push('', `[View full report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`);
               const comment = lines.join('\n');
-              github.rest.issues.createComment({
-                issue_number: context.issue.number,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: comment
-              });
+              try {
+                await github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: comment
+                });
+              } catch (error) {
+                core.warning(`Unable to post security scan summary: ${error.message}`);
+              }
             }
