@@ -5,6 +5,12 @@ on:
   push:
     tags:
       - "core-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing core release tag to publish
+        required: true
+        type: string
 
 jobs:
   publish:
@@ -13,8 +19,12 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - uses: actions/setup-python@v6
         with:
@@ -24,7 +34,7 @@ jobs:
         run: python aegis-ai-core/scripts/check_release_consistency.py
 
       - name: Release tag matches core version
-        run: python aegis-ai-core/scripts/check_release_tag.py core "${GITHUB_REF_NAME}"
+        run: python aegis-ai-core/scripts/check_release_tag.py core "${RELEASE_TAG}"
 
       - name: Install build tools
         run: pip install build twine
@@ -82,4 +92,4 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          directory: aegis-ai-core/dist
+          packages-dir: aegis-ai-core/dist
