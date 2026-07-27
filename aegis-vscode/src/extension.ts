@@ -254,7 +254,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   const serverModule = getGlobalConfigurationValue(config, "serverModule", "src.lsp");
   const explicitCwd = getGlobalConfigurationValue(config, "serverCwd", "").trim();
 
-  const outputChannel = window.createOutputChannel("Aegis AI Security Scanner");
+  const outputChannel = window.createOutputChannel("Aegis AI Security Scanner", { log: true });
   outputChannel.appendLine("[Aegis] Extension activated, starting LSP Server…");
   if (!workspace.isTrusted) {
     outputChannel.appendLine(

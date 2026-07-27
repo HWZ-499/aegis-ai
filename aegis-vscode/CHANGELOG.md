@@ -15,5 +15,9 @@
   required runtime entries, bundled Core metadata, file count, and fingerprint.
 - Pins patched Mocha transitive dependencies and requires the full development
   and runtime dependency audit to report zero vulnerabilities before release.
+- Requires VS Code 1.91 or later and uses Language Client 10.1 with patched
+  `brace-expansion` and `fast-uri` dependency paths.
+- Provisions a supported Python runtime and installs Core before CI extension-host
+  smoke tests, so end-to-end scans cannot silently depend on runner image state.
 
 Marketplace publication and wider distribution remain tracked under O9.

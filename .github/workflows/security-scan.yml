@@ -93,16 +93,28 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
 
-      - name: Install & test extension
-        run: |
-          cd aegis-vscode
-          npm ci
-          npm audit --audit-level=low
-          npm test
+      - name: Install Core backend
+        run: python -m pip install -e ./aegis-ai-core
+
+      - name: Install extension dependencies
+        working-directory: aegis-vscode
+        run: npm ci
+
+      - name: Audit extension dependencies
+        working-directory: aegis-vscode
+        run: npm audit --audit-level=low
+
+      - name: Test extension
+        working-directory: aegis-vscode
+        run: npm test
 
   # ── Test Suite + Security Scan ───────────────────────────────
   security-scan:

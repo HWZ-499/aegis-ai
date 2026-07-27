@@ -28,6 +28,7 @@ Aegis includes its Python backend in the VS Code extension package, but it still
 
 Requirements:
 
+- VS Code **1.91 or later**, or a compatible Cursor release.
 - Python **3.10, 3.11, or 3.12**. Python 3.13 is not yet supported because the pinned Tree-sitter runtime has no compatible `tree-sitter-languages` distribution.
 - `python --version` or `python3 --version` works in your terminal
 - Internet access on first run so Aegis can install its backend dependencies into a VS Code-managed virtual environment

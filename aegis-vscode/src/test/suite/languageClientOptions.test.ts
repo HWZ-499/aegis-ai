@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { OutputChannel } from "vscode";
+import { LogOutputChannel } from "vscode";
 
 import {
   AEGIS_LANGUAGE_IDS,
@@ -20,7 +20,7 @@ suite("languageClientOptions", () => {
       experimental_cross_file: false,
     };
 
-    const options = createLanguageClientOptions({} as OutputChannel, initializationOptions);
+    const options = createLanguageClientOptions({} as LogOutputChannel, initializationOptions);
     const languages = (options.documentSelector ?? []).map((selector) =>
       typeof selector === "string" ? selector : selector.language,
     );

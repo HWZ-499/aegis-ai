@@ -1,4 +1,4 @@
-import { OutputChannel } from "vscode";
+import { LogOutputChannel } from "vscode";
 import { LanguageClientOptions, RevealOutputChannelOn } from "vscode-languageclient/node";
 
 export interface AegisInitializationOptions {
@@ -31,7 +31,7 @@ export const AEGIS_LANGUAGE_IDS = [
  * does not consume workspace/didChangeWatchedFiles notifications.
  */
 export function createLanguageClientOptions(
-  outputChannel: OutputChannel,
+  outputChannel: LogOutputChannel,
   initializationOptions: AegisInitializationOptions,
 ): LanguageClientOptions {
   return {

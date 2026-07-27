@@ -1193,7 +1193,9 @@ def create_server() -> LanguageServer:
 
     # ── O1: aegis.addToBaseline 命令处理（Code Action command 触发）──
     @server.command("aegis.addToBaseline")
-    def on_add_to_baseline(*args: Any) -> None:
+    # pygls 2.1 inspects runtime annotations and calls issubclass() on them.
+    # Keep the varargs annotation static-only so Python 3.10 receives the raw LSP payload.
+    def on_add_to_baseline(*args):  # type: (*Any) -> None
         """将 finding 加入 .aegis-baseline.json（工作区根目录）。"""
         if not args:
             return
