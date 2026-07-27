@@ -16,7 +16,7 @@ JavaScript/TypeScript XSS 风险 AST 规则（新规则架构）。
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from ...base import (
     AnalysisContext,
@@ -85,6 +85,9 @@ class JavaScriptXSSAstRule(SecurityRule):
         }
     )
     _TRUSTED_SANITIZER_OBJECTS = frozenset({"DOMPurify", "dompurify"})
+    _HTTP_CALLBACK_CLIENTS = frozenset({"axios", "got", "http", "https", "needle", "request"})
+    _HTTP_CALLBACK_METHODS = frozenset({"get", "post", "request"})
+    _NODE_RESPONSE_RECEIVERS = frozenset({"res", "response"})
 
     def _check_inner_html_assignment(self, node: Node, context: AnalysisContext) -> None:
         """
@@ -281,17 +284,10 @@ class JavaScriptXSSAstRule(SecurityRule):
         检测 Express/Node 中 response.send / res.send 拼接用户/会话输入未转义（反射 XSS）。
         例如：response.send("Welcome back, " + request.session.username + "!");
         """
-        if not node.children:
+        method_name, receiver_name = self._get_member_call_target(node)
+        if method_name == "write":
+            self._check_response_write_of_http_callback_body(node, receiver_name, context)
             return
-        # 取调用对象与方法名（如 response.send -> "send"）
-        method_name = None
-        for child in node.children:
-            if child.type == "member_expression":
-                for sub in reversed(child.children):
-                    if sub.type == "property_identifier":
-                        method_name = self._get_node_text(sub)
-                        break
-                break
         if method_name != "send":
             return
         # 检查参数中是否有「字符串 + 用户/会话相关表达式」的拼接
@@ -327,6 +323,81 @@ class JavaScriptXSSAstRule(SecurityRule):
                         ]
                     context.add_finding(finding)
                     return
+
+    def _check_response_write_of_http_callback_body(
+        self,
+        node: Node,
+        receiver_name: str | None,
+        context: AnalysisContext,
+    ) -> None:
+        """Detect ``res.write(body)`` where ``body`` is an HTTP client callback response."""
+        if receiver_name not in self._NODE_RESPONSE_RECEIVERS:
+            return
+
+        arguments = node.child_by_field_name("arguments")
+        if arguments is None:
+            return
+        for argument in arguments.named_children:
+            if argument.type != "identifier" or context.is_var_sanitized(self._get_node_text(argument) or ""):
+                continue
+            if not self._is_http_response_callback_body(argument):
+                continue
+
+            line_no = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+            finding: dict[str, Any] = {
+                "type": "XSS_RISK",
+                "rule_id": self.rule_id,
+                "severity": self.severity,
+                "line": line_no,
+                "details": (
+                    "检测到 Node.js HTTP 客户端回调中的响应体直接写入 HTML 响应，未经 HTML 净化可能导致 XSS 风险。"
+                ),
+            }
+            finding.update(tree_sitter_node_to_range(node))
+            finding["related_locations"] = [
+                make_related_location(
+                    str(context.file_path),
+                    argument.start_point[0] + 1,
+                    end_line=argument.end_point[0] + 1 if hasattr(argument, "end_point") else None,
+                    message="未净化的 HTTP 响应体",
+                )
+            ]
+            context.add_finding(finding)
+            return
+
+    def _is_http_response_callback_body(self, argument: Node) -> bool:
+        """Return whether an identifier is the third callback parameter of a known HTTP client call."""
+        callback = argument.parent
+        while callback is not None and callback.type not in {"arrow_function", "function_expression"}:
+            callback = callback.parent
+        if callback is None or callback.parent is None or callback.parent.type != "arguments":
+            return False
+        call = callback.parent.parent
+        if call is None or call.type != "call_expression":
+            return False
+
+        method_name, receiver_name = self._get_member_call_target(call)
+        if receiver_name not in self._HTTP_CALLBACK_CLIENTS or method_name not in self._HTTP_CALLBACK_METHODS:
+            return False
+
+        parameters = callback.child_by_field_name("parameters")
+        if parameters is None:
+            return False
+        callback_parameters = [
+            self._get_node_text(parameter) for parameter in parameters.named_children if parameter.type == "identifier"
+        ]
+        return len(callback_parameters) >= 3 and callback_parameters[2] == self._get_node_text(argument)
+
+    def _get_member_call_target(self, node: Node) -> tuple[str | None, str | None]:
+        """Return ``(method, receiver)`` for a direct member call such as ``res.write()``."""
+        function = node.child_by_field_name("function")
+        if function is None or function.type != "member_expression":
+            return None, None
+        property_node = function.child_by_field_name("property")
+        object_node = function.child_by_field_name("object")
+        if property_node is None or object_node is None:
+            return None, None
+        return self._get_node_text(property_node), self._get_node_text(object_node)
 
     def _arg_contains_user_or_session_input(self, node: Node) -> bool:
         """判断表达式是否包含 request.session.* / req.body.* / req.query.* 等。"""
@@ -384,7 +455,7 @@ class JavaScriptXSSAstRule(SecurityRule):
     def _get_node_text(node: Node) -> str | None:
         """提取节点的文本内容。"""
         if hasattr(node, "text"):
-            return node.text.decode("utf-8")
+            return cast(bytes, node.text).decode("utf-8")
         return None
 
 

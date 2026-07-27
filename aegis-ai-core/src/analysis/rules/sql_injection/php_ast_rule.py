@@ -99,7 +99,7 @@ class PhpSQLInjectionAstRule(SecurityRule):
                         if inner.type == "string" and not self._string_has_variable(inner):
                             continue
                         if inner.type in ("string", "encapsed_string", "binary_expression"):
-                            weak_var = self._find_weakly_sanitized_unquoted_sql_var(inner, context)
+                            weak_var = self._find_weakly_sanitized_sql_var(inner, context)
                             if weak_var:
                                 if self._is_var_numeric_guarded(weak_var, line, context):
                                     continue
@@ -110,8 +110,8 @@ class PhpSQLInjectionAstRule(SecurityRule):
                                     "severity": self.severity,
                                     "line": line,
                                     "details": (
-                                        f"PHP: {call_desc}() 的 SQL 中直接使用未加引号变量 ${weak_var}。"
-                                        "仅使用 mysqli_real_escape_string/addslashes 仍存在注入风险，建议参数化查询。"
+                                        f"PHP: {call_desc}() 的 SQL 使用弱转义变量 ${weak_var}。"
+                                        "mysqli_real_escape_string/addslashes 不能替代参数化查询。"
                                     ),
                                 }
                                 finding.update(tree_sitter_node_to_range(node))
@@ -151,7 +151,7 @@ class PhpSQLInjectionAstRule(SecurityRule):
                                 context.add_finding(finding)
                                 return
                             assigned_expr = self._find_latest_assignment_expr(var, line, context)
-                            weak_var = self._find_weakly_sanitized_unquoted_sql_var_in_text(assigned_expr, context)
+                            weak_var = self._find_weakly_sanitized_sql_var_in_text(assigned_expr, context)
                             if weak_var:
                                 if self._is_var_numeric_guarded(weak_var, line, context):
                                     continue
@@ -162,8 +162,8 @@ class PhpSQLInjectionAstRule(SecurityRule):
                                     "severity": self.severity,
                                     "line": line,
                                     "details": (
-                                        f"PHP: {call_desc}() 使用变量 ${var} 执行 SQL，且其中 ${weak_var} 以未加引号方式拼接。"
-                                        "mysqli_real_escape_string/addslashes 在该场景下不足以防御注入。"
+                                        f"PHP: {call_desc}() 使用变量 ${var} 执行 SQL，且其中 ${weak_var} 仅经过弱转义。"
+                                        "请改用 prepare/bind 参数化查询。"
                                     ),
                                 }
                                 finding.update(tree_sitter_node_to_range(node))
@@ -245,25 +245,28 @@ class PhpSQLInjectionAstRule(SecurityRule):
                     return True
         return False
 
-    def _find_weakly_sanitized_unquoted_sql_var(self, node: Any, context: AnalysisContext) -> str | None:
+    def _find_weakly_sanitized_sql_var(self, node: Any, context: AnalysisContext) -> str | None:
         """
-        检测“弱净化后仍未加引号拼接”的 SQL 变量。
+        检测仅经过数据库转义后插入 SQL 的用户输入变量。
 
-        该逻辑用于补齐此类漏报：
+        包括未加引号数字上下文和带引号字符串上下文。数据库转义依赖
+        连接字符集等外部条件，不能作为参数化查询的替代。
+
+        该逻辑用于补齐：
         1) 用户输入 -> mysqli_real_escape_string/addslashes
-        2) 拼入 SQL 时未加引号（如 `... WHERE id = $id`）
+        2) 变量拼入 SQL（如 `id = $id` 或 `user = '$user'`）
         """
         sql_text = self._get_node_text(node)
         if not sql_text:
             return None
 
-        return self._find_weakly_sanitized_unquoted_sql_var_in_text(
+        return self._find_weakly_sanitized_sql_var_in_text(
             sql_text,
             context,
             var_candidates=self._collect_variable_names(node),
         )
 
-    def _find_weakly_sanitized_unquoted_sql_var_in_text(
+    def _find_weakly_sanitized_sql_var_in_text(
         self,
         sql_text: str | None,
         context: AnalysisContext,
@@ -275,6 +278,7 @@ class PhpSQLInjectionAstRule(SecurityRule):
             return None
 
         candidates = var_candidates if var_candidates is not None else set(re.findall(r"\$([A-Za-z_]\w*)", sql_text))
+        quoted_weak_vars: list[str] = []
         for var_name in sorted(candidates):
             if context.is_var_tainted(var_name) or context.is_var_tainted("$" + var_name):
                 continue
@@ -284,11 +288,29 @@ class PhpSQLInjectionAstRule(SecurityRule):
             ).lower()
             if "mysqli_real_escape_string" not in sanitizer and "addslashes" not in sanitizer:
                 continue
-            if self._is_var_wrapped_by_quotes(sql_text, var_name):
+            if not self._var_has_high_risk_source(var_name, context):
                 continue
             if self._is_sql_unquoted_var_usage(sql_text, var_name):
                 return var_name
+            if self._is_var_wrapped_by_quotes(sql_text, var_name):
+                quoted_weak_vars.append(var_name)
+
+        # Keep the quoted-string migration bounded to the legacy gap observed
+        # in authentication queries: multiple independently controlled fields
+        # are weakly escaped and interpolated into the same SQL statement.
+        if len(quoted_weak_vars) >= 2 and re.search(r"\bSELECT\b", sql_text, re.IGNORECASE):
+            return quoted_weak_vars[0]
         return None
+
+    def _var_has_high_risk_source(self, var_name: str, context: AnalysisContext) -> bool:
+        source = context.get_taint_source(var_name) or context.get_taint_source("$" + var_name)
+        if source is None:
+            return False
+        source_type = (getattr(source, "source_type", "") or "").strip().lower()
+        source_expr = (getattr(source, "source_expr", "") or "").strip()
+        return any(token in source_type for token in ("get", "post", "request", "cookie", "files")) or bool(
+            self._HIGH_RISK_SOURCE_RE.search(source_expr)
+        )
 
     def _is_sql_arg_numeric_guarded(self, node: Any, sink_line: int, context: AnalysisContext) -> bool:
         """

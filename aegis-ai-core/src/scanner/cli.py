@@ -52,7 +52,9 @@ def main(argv: list[str] | None = None):
         sys.exit(run_rules_command(argv[1:]))
 
     parser = argparse.ArgumentParser(
-        description="Aegis SAST 安全扫描工具 — JavaScript/TypeScript、Python 深度 AST 检测；Java/C/Go 基础正则检测",
+        description=(
+            "Aegis SAST 安全扫描工具 — Python、JavaScript/TypeScript、PHP、Java、Go AST/规则检测；C/C++ 基础上下文检测"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
@@ -95,9 +97,9 @@ def main(argv: list[str] | None = None):
 
     parser.add_argument(
         "--engine",
-        choices=["legacy", "new"],
+        choices=["new"],
         default="new",
-        help="选择扫描引擎：new=新规则引擎（默认），legacy=旧版（将弃用）",
+        help="兼容参数；当前仅支持统一规则引擎 new",
     )
 
     parser.add_argument("--max-workers", type=int, help="最大工作线程/进程数（默认 CPU 核心数）")
@@ -194,6 +196,7 @@ def main(argv: list[str] | None = None):
                 max_workers=args.max_workers,
                 engine=args.engine,
                 extra_rule_dirs=extra_rule_dirs or None,
+                use_cross_file=args.cross_file,
             )
 
             if args.verbose:
@@ -258,20 +261,46 @@ def main(argv: list[str] | None = None):
                     "new_findings": taint_findings_count,
                 }
 
-        # 跨文件分析
-        use_cross_file = args.cross_file
-        if use_cross_file:
+        # 跨文件分析。完整扫描由 ProjectScanner 统一执行；增量扫描在此补充全项目调用图。
+        if args.cross_file:
             if not CROSS_FILE_AVAILABLE:
                 if args.verbose:
                     print("\n⚠️ 跨文件分析不可用（缺少依赖）")
-            else:
+            elif args.incremental:
                 if args.verbose:
                     print("\n🔗 启用跨文件分析（模块依赖追踪）...")
 
                 cross_analyzer = CrossFileAnalyzer(project_path)
                 cross_analyzer.scan_project()
-
                 cross_stats = cross_analyzer.get_stats()
+                for finding in cross_analyzer.get_findings():
+                    target_file = finding.get("file")
+                    if isinstance(target_file, str) and target_file:
+                        normalized_target = target_file.replace("\\", "/")
+                        finding["file"] = normalized_target
+                        existing_findings = results.setdefault(normalized_target, [])
+                        duplicate = next(
+                            (
+                                existing
+                                for existing in existing_findings
+                                if existing.get("rule_id") == finding.get("rule_id")
+                                and existing.get("type") == finding.get("type")
+                                and existing.get("line") == finding.get("line")
+                            ),
+                            None,
+                        )
+                        if duplicate is None:
+                            existing_findings.append(finding)
+                        else:
+                            duplicate["cross_file"] = True
+                            duplicate["related_locations"] = finding.get("related_locations", [])
+                            duplicate["taint_path"] = finding.get("taint_path")
+                stats["total_issues"] = sum(len(findings) for findings in results.values())
+                stats["files_with_issues"] = len(results)
+                stats["cross_file_analysis"] = {
+                    "enabled": True,
+                    **cross_stats,
+                }
 
                 if args.verbose:
                     print("✅ 跨文件分析完成:")
@@ -279,12 +308,15 @@ def main(argv: list[str] | None = None):
                     print(f"   模块导出数: {cross_stats['total_exports']}")
                     print(f"   模块导入数: {cross_stats['total_imports']}")
                     print(f"   依赖边数: {cross_stats['dependency_edges']}")
-
-                # 获取依赖图用于报告
-                stats["cross_file_analysis"] = {
-                    "enabled": True,
-                    **cross_stats,
-                }
+                    print(f"   跨文件发现: {cross_stats['cross_file_findings']}")
+            elif args.verbose:
+                cross_stats = stats.get("cross_file_analysis", {})
+                print("\n✅ 跨文件分析完成:")
+                print(f"   分析文件数: {cross_stats.get('files_analyzed', 0)}")
+                print(f"   模块导出数: {cross_stats.get('total_exports', 0)}")
+                print(f"   模块导入数: {cross_stats.get('total_imports', 0)}")
+                print(f"   依赖边数: {cross_stats.get('dependency_edges', 0)}")
+                print(f"   跨文件发现: {cross_stats.get('cross_file_findings', 0)}")
 
         # RAG 增强
         use_rag = args.rag

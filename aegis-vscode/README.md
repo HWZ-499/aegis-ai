@@ -2,11 +2,11 @@
 
 **Find and fix SQL injection, XSS, RCE, and 7+ more vulnerability types as you code.**
 
-Real-time SAST scanning for VS Code / Cursor using Tree-sitter AST + taint analysis + AI-driven patches. No CI pipeline. No regex guessing. Framework-aware code generation.
+Real-time SAST scanning for VS Code / Cursor using Tree-sitter AST, taint analysis, validated rules, and optional AI-driven patches.
 
 Supports: **JavaScript / TypeScript / Python / PHP / Java / Go / C/C++ basic scanning**
 
-> **v0.6.7** — Latest packaged build. [See what changed →](CHANGELOG.md)
+> **v0.6.7** — Stable package version. [See what changed →](CHANGELOG.md)
 
 ---
 
@@ -15,20 +15,21 @@ Supports: **JavaScript / TypeScript / Python / PHP / Java / Go / C/C++ basic sca
 | 状态 | 当前能力 |
 |------|----------|
 | **已支持** | 实时单文件诊断、Problems / 树视图、baseline 视图、AI 精准修复、示例修复、注释建议 |
-| **实验性** | 跨文件依赖图、suppressed findings 侧栏展示、custom / Ollama provider 工作流 |
-| **规划中** | 默认启用的跨文件污点传播、更完整的多 IDE 打包与 smoke E2E |
+| **实验性** | 一跳跨文件参数 → Sink 污点传播、suppressed findings 侧栏展示、custom / Ollama provider 工作流 |
+| **规划中** | 跨文件返回值/重导出/多跳传播、更完整的多 IDE 打包与 smoke E2E |
 
 ## Installation
 
 ### Step 1: Install Extension
 VS Code Marketplace: search **"Aegis AI Security Scanner"** or ID `wen-zai.aegis-ai-security`
 
-### Step 2: Install Python 3.10+
+### Step 2: Install Python 3.10–3.12
 Aegis includes its Python backend in the VS Code extension package, but it still needs a local Python interpreter to run that backend.
 
 Requirements:
 
-- Python **3.10 or newer**
+- VS Code **1.91 or later**, or a compatible Cursor release.
+- Python **3.10, 3.11, or 3.12**. Python 3.13 is not yet supported because the pinned Tree-sitter runtime has no compatible `tree-sitter-languages` distribution.
 - `python --version` or `python3 --version` works in your terminal
 - Internet access on first run so Aegis can install its backend dependencies into a VS Code-managed virtual environment
 
@@ -41,7 +42,7 @@ python --version
 Expected:
 
 ```text
-Python 3.10.x or newer
+Python 3.10.x, 3.11.x, or 3.12.x
 ```
 
 On first activation, Aegis automatically:
@@ -105,11 +106,11 @@ Suppressed findings can be inspected in the **Suppressed Findings** view after e
 
 ## Key Features
 
-- **1-second feedback** — diagnostics appear on save, no CI pipeline
-- **Real data-flow analysis** — Tree-sitter AST + TaintGraph, not regex  
+- **Fast local feedback** — diagnostics appear on save without waiting for CI
+- **Language-aware analysis** — Tree-sitter AST, taint tracking, and validated rules
 - **One-click AI fix** — click lightbulb → framework-aware patch auto-generated
 - **10+ vulnerability types** — SQL/NoSQL injection, XSS, RCE, path traversal, deserialization, SSRF, hardcoded credentials, open redirect
-- **Real-world validated** — 100% F1 on OWASP NodeGoat, 92% F1 on Django 3.2 core
+- **Auditable real-project baselines** — DVWA Recall 100.0% / Precision 44.2%; NodeGoat Recall 100.0% / Precision 85.7% on the 2026-07-12 clean snapshots
 
 ---
 
@@ -134,11 +135,11 @@ Suppressed findings can be inspected in the **Suppressed Findings** view after e
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `aegisAI.enabled` | `true` | Enable/disable the scanner |
-| `aegisAI.pythonPath` | `python` | Path to Python 3.10+ used for the managed backend environment |
+| `aegisAI.pythonPath` | `python` | Path to Python 3.10–3.12 used for the managed backend environment |
 | `aegisAI.serverCwd` | `` | Advanced/development override for local `aegis-ai-core`; leave blank for bundled backend |
 | `aegisAI.serverModule` | `src.lsp` | Python module path for the LSP server |
 | `aegisAI.scan.exclude` | `["**/node_modules/**", ...]` | Glob patterns excluded from scanning |
-| `aegisAI.experimental.crossFileAnalysis` | `false` | Enable experimental cross-file dependency graph analysis |
+| `aegisAI.experimental.crossFileAnalysis` | `false` | Enable experimental one-hop cross-file parameter-to-sink taint analysis |
 | `aegisAI.showSuppressedFindings` | `false` | Show `.aegis-baseline.json` entries in the sidebar |
 
 ---
@@ -146,8 +147,8 @@ Suppressed findings can be inspected in the **Suppressed Findings** view after e
 ## Known Issues
 
 - First run may take longer while the managed Python backend environment is created
-- Python 3.10+ must be installed separately and available through `aegisAI.pythonPath`
-- PHP analysis uses Tree-sitter AST for core rules; some niche patterns may still fall back to line-level matching
+- Python 3.10–3.12 must be installed separately and available through `aegisAI.pythonPath`
+- PHP production analysis uses maintained AST/taint rules; niche patterns outside the current rule set may remain undetected
 - Cross-file taint propagation requires `module.exports` patterns (CommonJS)
 
 ---

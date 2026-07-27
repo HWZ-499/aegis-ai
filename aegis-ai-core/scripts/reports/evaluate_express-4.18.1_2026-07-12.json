@@ -1,0 +1,468 @@
+{
+  "target": "express-4.18.1",
+  "date": "2026-07-12",
+  "metrics": {
+    "tp": 0,
+    "fp": 24,
+    "fn": 0,
+    "tn": 0,
+    "recall": 0.0,
+    "precision": 0.0,
+    "fpr": 1.0,
+    "f1": 0.0
+  },
+  "by_category": {
+    "HARDCODED_CREDENTIALS": {
+      "tp": 0,
+      "tn": 0,
+      "fp": 5,
+      "fn": 0
+    },
+    "XSS_RISK": {
+      "tp": 0,
+      "tn": 0,
+      "fp": 18,
+      "fn": 0
+    },
+    "OPEN_REDIRECT": {
+      "tp": 0,
+      "tn": 0,
+      "fp": 1,
+      "fn": 0
+    }
+  },
+  "by_language": {},
+  "by_language_category": {},
+  "details": [
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_JS_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 25,
+        "column": 0,
+        "language": "javascript",
+        "details": "发现对象字面量中疑似硬编码凭证属性 'secret'，建议使用环境变量或安全配置管理。",
+        "file": "examples\\auth\\index.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_JS_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 13,
+        "column": 0,
+        "language": "javascript",
+        "details": "发现对象字面量中疑似硬编码凭证属性 'secret'，建议使用环境变量或安全配置管理。",
+        "file": "examples\\cookie-sessions\\index.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_JS_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 21,
+        "column": 0,
+        "end_line": 21,
+        "language": "javascript",
+        "details": "检测到 response.send 等输出中拼接用户/会话输入未转义，可能存在反射 XSS 风险，建议对输出进行 HTML 转义。",
+        "file": "examples\\cookie-sessions\\index.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_JS_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 43,
+        "column": 0,
+        "language": "javascript",
+        "details": "发现对象字面量中疑似硬编码凭证属性 'secret'，建议使用环境变量或安全配置管理。",
+        "file": "examples\\mvc\\index.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "OPEN_REDIRECT",
+        "rule_id": "OPEN_REDIRECT_JS_TAINT",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 21,
+        "column": 0,
+        "language": "javascript",
+        "details": "检测到 JavaScript/TypeScript 代码中用户可控输入直接用于重定向目标（res.redirect/location 等），可能导致 Open Redirect 漏洞，建议使用域名白名单或固定路径映射。",
+        "file": "examples\\mvc\\controllers\\user-pet\\index.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_JS_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 19,
+        "column": 0,
+        "language": "javascript",
+        "details": "发现对象字面量中疑似硬编码凭证属性 'secret'，建议使用环境变量或安全配置管理。",
+        "file": "examples\\session\\index.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_JS_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 30,
+        "column": 0,
+        "end_line": 30,
+        "language": "javascript",
+        "details": "检测到 response.send 等输出中拼接用户/会话输入未转义，可能存在反射 XSS 风险，建议对输出进行 HTML 转义。",
+        "file": "examples\\session\\index.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_JS_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 23,
+        "column": 0,
+        "language": "javascript",
+        "details": "发现对象字面量中疑似硬编码凭证属性 'secret'，建议使用环境变量或安全配置管理。",
+        "file": "examples\\session\\redis.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_JS_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 35,
+        "column": 0,
+        "end_line": 35,
+        "language": "javascript",
+        "details": "检测到 response.send 等输出中拼接用户/会话输入未转义，可能存在反射 XSS 风险，建议对输出进行 HTML 转义。",
+        "file": "examples\\session\\redis.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.javascript.xss-response-send",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 29,
+        "column": 0,
+        "language": "javascript",
+        "details": "检测到将用户输入直接传给 res.send/res.write，存在 XSS 风险。",
+        "file": "test\\app.param.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.javascript.xss-response-send",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 170,
+        "column": 0,
+        "language": "javascript",
+        "details": "检测到将用户输入直接传给 res.send/res.write，存在 XSS 风险。",
+        "file": "test\\app.param.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.javascript.xss-response-send",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 191,
+        "column": 0,
+        "language": "javascript",
+        "details": "检测到将用户输入直接传给 res.send/res.write，存在 XSS 风险。",
+        "file": "test\\app.param.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.javascript.xss-response-send",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 47,
+        "column": 0,
+        "language": "javascript",
+        "details": "检测到将用户输入直接传给 res.send/res.write，存在 XSS 风险。",
+        "file": "test\\app.route.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.javascript.xss-response-send",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 20,
+        "column": 0,
+        "language": "javascript",
+        "details": "检测到将用户输入直接传给 res.send/res.write，存在 XSS 风险。",
+        "file": "test\\app.router.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.javascript.xss-response-send",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 94,
+        "column": 0,
+        "language": "javascript",
+        "details": "检测到将用户输入直接传给 res.send/res.write，存在 XSS 风险。",
+        "file": "test\\app.router.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.javascript.xss-response-send",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 106,
+        "column": 0,
+        "language": "javascript",
+        "details": "检测到将用户输入直接传给 res.send/res.write，存在 XSS 风险。",
+        "file": "test\\app.router.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.javascript.xss-response-send",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 118,
+        "column": 0,
+        "language": "javascript",
+        "details": "检测到将用户输入直接传给 res.send/res.write，存在 XSS 风险。",
+        "file": "test\\app.router.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.javascript.xss-response-send",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 130,
+        "column": 0,
+        "language": "javascript",
+        "details": "检测到将用户输入直接传给 res.send/res.write，存在 XSS 风险。",
+        "file": "test\\app.router.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.javascript.xss-response-send",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 271,
+        "column": 0,
+        "language": "javascript",
+        "details": "检测到将用户输入直接传给 res.send/res.write，存在 XSS 风险。",
+        "file": "test\\app.router.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.javascript.xss-response-send",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 643,
+        "column": 0,
+        "language": "javascript",
+        "details": "检测到将用户输入直接传给 res.send/res.write，存在 XSS 风险。",
+        "file": "test\\app.router.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.javascript.xss-response-send",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 732,
+        "column": 0,
+        "language": "javascript",
+        "details": "检测到将用户输入直接传给 res.send/res.write，存在 XSS 风险。",
+        "file": "test\\app.router.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.javascript.xss-response-send",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 744,
+        "column": 0,
+        "language": "javascript",
+        "details": "检测到将用户输入直接传给 res.send/res.write，存在 XSS 风险。",
+        "file": "test\\app.router.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.javascript.xss-response-send",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 93,
+        "column": 0,
+        "language": "javascript",
+        "details": "检测到将用户输入直接传给 res.send/res.write，存在 XSS 风险。",
+        "file": "test\\req.query.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.javascript.xss-response-send",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 119,
+        "column": 0,
+        "language": "javascript",
+        "details": "检测到将用户输入直接传给 res.send/res.write，存在 XSS 风险。",
+        "file": "test\\req.query.js"
+      }
+    }
+  ],
+  "scope": {
+    "input_entries": 2,
+    "evaluated_entries": 0,
+    "include_out_of_scope": false,
+    "include_invalid_ground_truth": false,
+    "excluded_entries": [
+      {
+        "file": "lib/utils.js",
+        "type": "PROTOTYPE_POLLUTION",
+        "reason": "Aegis does not advertise prototype-pollution coverage, and this CVE is in the transitive qs dependency rather than Express source."
+      }
+    ],
+    "invalid_entries": [
+      {
+        "file": "lib/router/index.js",
+        "type": "OPEN_REDIRECT",
+        "reason": "Expected pattern 'res.redirect' is absent within 3 lines of the annotated line."
+      }
+    ]
+  },
+  "performance": {
+    "scan_duration_seconds": 1.621016,
+    "rss_before_mb": 44.801,
+    "rss_after_mb": 56.535,
+    "rss_delta_mb": 11.734,
+    "process_peak_rss_mb": 62.266
+  },
+  "provenance": {
+    "engine": "new",
+    "reproducible": true,
+    "scanner_revision": "d51bd8b946492fe1799f431b45c1da070a35cbc1",
+    "scanner_dirty": false,
+    "scanner_diff_sha256": null,
+    "target_revision": "d854c43ea177d1faeea56189249fff8c24a764bd",
+    "target_subdir": ".",
+    "target_dirty": false,
+    "target_diff_sha256": null,
+    "ground_truth": "scripts/data/ground_truth_express_4.18.1.json",
+    "ground_truth_sha256": "33f8e3bfc83a0ea0b584f4fb3c48140e36c2c0d6937e736aaf2cc4561e3e5d74",
+    "python_version": "3.11.0",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel"
+  }
+}

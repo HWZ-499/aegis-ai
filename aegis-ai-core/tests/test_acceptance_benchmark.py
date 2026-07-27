@@ -30,6 +30,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.analysis.base.analysis_context import AnalysisContext
 from src.analysis.base.js_dataflow_collector import JavaScriptDataFlowCollector
 from src.analysis.rule_engine import analyze_python
+from src.scanner.benchmark import (
+    QualityThresholds,
+    quality_gate_violations,
+    run_rule_sample_benchmark,
+)
 from src.scanner.benchmark_cases import BENCH_CASES_TN as TN_CASES
 from src.scanner.benchmark_cases import BENCH_CASES_TP as TP_CASES
 from src.scanner.benchmark_cases import BenchCase
@@ -200,6 +205,29 @@ def _run_benchmark(cases: list[BenchCase]) -> BenchmarkResult:
 
 class TestAcceptanceBenchmark:
     """综合验收基准测试。"""
+
+    def test_rule_sample_quality_matrix_has_no_regressions(self):
+        """Curated samples must remain clean overall and for every supported language."""
+        result = run_rule_sample_benchmark(PROJECT_ROOT / "tests" / "rules")
+        thresholds = QualityThresholds(
+            min_recall=1.0,
+            min_precision=1.0,
+            min_f1=1.0,
+            max_fpr=0.0,
+        )
+
+        violations = quality_gate_violations(
+            result,
+            thresholds,
+            per_language=True,
+            per_category=True,
+            per_language_category=True,
+        )
+
+        assert violations == []
+        assert set(result.by_language) == {"go", "java", "javascript", "php", "python"}
+        assert result.tp + result.tn + result.fp + result.fn >= 180
+        assert any(detail["id"].endswith("tp_python_cursor_execute_format.py") for detail in result.details)
 
     def test_full_benchmark(self, capsys):
         """运行完整基准测试并输出报告。"""

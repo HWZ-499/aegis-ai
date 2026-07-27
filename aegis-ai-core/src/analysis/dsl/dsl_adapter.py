@@ -8,10 +8,11 @@ dsl_adapter.py
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from pathlib import Path
 
 from ..base import AnalysisContext, SecurityRule
-from .dsl_engine import load_rules_from_directory, match_source
+from .dsl_engine import _load_rules_from_versions, _rule_file_versions, match_source
 from .rule_schema import DslRule
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,7 @@ def load_dsl_rules_for_language(
     language: str,
     extra_dirs: list[Path] | None = None,
     allowed_root: Path | None = None,
+    preloaded_rules: tuple[DslRule, ...] | None = None,
 ) -> list[SecurityRule]:
     """加载指定语言的 DSL 规则并包装为 SecurityRule 适配器。
 
@@ -118,15 +120,16 @@ def load_dsl_rules_for_language(
         language: 语言标识，例如 \"python\"、\"javascript\"、\"go\"。
         extra_dirs: 额外规则目录（如 .aegis/rules），会与内置规则合并。
         allowed_root: 若提供，则 extra_dirs 中的路径必须在此根下。
+        preloaded_rules: 已加载的目标语言规则快照，用于项目批量扫描复用。
 
     Returns:
         对应语言的 DslRuleAdapter 列表。
     """
-    root = Path(__file__).resolve().parent.parent / "rules" / "dsl"
-    all_rules: list[DslRule] = []
-    all_rules.extend(load_rules_from_directory(root))
-    for d in _safe_extra_dirs(extra_dirs or [], allowed_root):
-        all_rules.extend(load_rules_from_directory(d))
+    if preloaded_rules is None:
+        definitions = load_dsl_rule_definitions(extra_dirs=extra_dirs, allowed_root=allowed_root)
+        all_rules = definitions.get(language.lower(), ())
+    else:
+        all_rules = preloaded_rules
     adapters: list[SecurityRule] = []
     lang = language.lower()
     for rule in all_rules:
@@ -136,4 +139,18 @@ def load_dsl_rules_for_language(
     return adapters
 
 
-__all__ = ["DslRuleAdapter", "load_dsl_rules_for_language"]
+def load_dsl_rule_definitions(
+    extra_dirs: list[Path] | None = None,
+    allowed_root: Path | None = None,
+) -> dict[str, tuple[DslRule, ...]]:
+    """Load all built-in and project DSL definitions in one filesystem pass."""
+    root = Path(__file__).resolve().parent.parent / "rules" / "dsl"
+    rule_dirs = [root, *_safe_extra_dirs(extra_dirs or [], allowed_root)]
+    file_versions = tuple(version for rule_dir in rule_dirs for version in _rule_file_versions(rule_dir))
+    grouped: defaultdict[str, list[DslRule]] = defaultdict(list)
+    for rule in _load_rules_from_versions(file_versions):
+        grouped[rule.language].append(rule)
+    return {language: tuple(rules) for language, rules in grouped.items()}
+
+
+__all__ = ["DslRuleAdapter", "load_dsl_rule_definitions", "load_dsl_rules_for_language"]

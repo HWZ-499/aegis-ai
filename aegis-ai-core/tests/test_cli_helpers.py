@@ -1,6 +1,9 @@
 from pathlib import Path
 
+import pytest
+
 from src.scanner.cli import _build_ai_code_contexts
+from src.scanner.cli import main as cli_main
 
 
 def test_build_ai_code_contexts_prefers_absolute_finding_path(tmp_path: Path) -> None:
@@ -40,3 +43,10 @@ def test_build_ai_code_contexts_falls_back_to_project_relative_path(tmp_path: Pa
     contexts = _build_ai_code_contexts(results, project_path)
 
     assert contexts["src/app.js"] == "console.log('relative');"
+
+
+def test_cli_rejects_removed_legacy_engine(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        cli_main([str(tmp_path), "--engine", "legacy"])
+
+    assert exit_info.value.code == 2

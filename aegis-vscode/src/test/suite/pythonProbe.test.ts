@@ -40,9 +40,11 @@ suite("pythonProbe", () => {
     });
   });
 
-  test("requires Python 3.10 or newer", () => {
+  test("supports Python 3.10 through 3.12", () => {
     assert.strictEqual(isPythonVersionSupported("Python 3.9.18"), false);
     assert.strictEqual(isPythonVersionSupported("Python 3.10.0"), true);
     assert.strictEqual(isPythonVersionSupported("Python 3.12.1"), true);
+    assert.strictEqual(isPythonVersionSupported("Python 3.13.0"), false);
+    assert.strictEqual(isPythonVersionSupported("Python 4.0.0"), false);
   });
 });

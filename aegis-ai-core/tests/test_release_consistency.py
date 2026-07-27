@@ -9,7 +9,7 @@ def _write_minimal_consistent_repo(repo: Path) -> Path:
     src_dir.mkdir(parents=True)
 
     (repo / "README.md").write_text(
-        "# Aegis\nPython 3.10+\n`pip install -e .[dev]`\ndeepseek openai ollama custom\nOLLAMA_BASE_URL=x\nDEEPSEEK_API_KEY=x\nOPENAI_API_KEY=x\n.aegis-baseline.json not a fix\n",
+        "# Aegis\nExtension v0.5.1\nPython 3.10-3.12; Python 3.13 unsupported\n`pip install -e .[dev]`\ndeepseek openai ollama custom\nOLLAMA_BASE_URL=x\nDEEPSEEK_API_KEY=x\nOPENAI_API_KEY=x\n.aegis-baseline.json not a fix\n",
         encoding="utf-8",
     )
     (repo / "aegis-vscode").mkdir()
@@ -26,14 +26,28 @@ def _write_minimal_consistent_repo(repo: Path) -> Path:
         "python -m pytest tests/\npython -m src.scanner.cli . --format json\n",
         encoding="utf-8",
     )
+    (repo / "docs" / "MAINTENANCE.md").write_text(
+        "Semantic Versioning\ncore-vX.Y.Z\nvscode-vX.Y.Z\nprevious minor: 90 days\n",
+        encoding="utf-8",
+    )
+    (repo / "docs" / "RELEASE_CHECKLIST.md").write_text(
+        "pending trusted publisher\nVSCE_PAT\ncore-v1.5.0\nvscode-v0.6.7\ntwine check\n",
+        encoding="utf-8",
+    )
     (core / "pyproject.toml").write_text(
-        "[project]\nrequires-python='>=3.10'\nversion='1.4.0'\n\n[project.urls]\nHomepage='https://github.com/HWZ-499/aegis-ai'\nRepository='https://github.com/HWZ-499/aegis-ai'\nIssues='https://github.com/HWZ-499/aegis-ai/issues'\n",
+        "[project]\nrequires-python='>=3.10,<3.13'\nversion='1.4.0'\nreadme='README.md'\n\n[project.urls]\nHomepage='https://github.com/HWZ-499/aegis-ai'\nRepository='https://github.com/HWZ-499/aegis-ai'\nIssues='https://github.com/HWZ-499/aegis-ai/issues'\n",
         encoding="utf-8",
     )
+    (core / "README.md").write_text(
+        "Python 3.10 through Python 3.12\npip install aegis-ai-core\naegis /path/to/project --format json\n",
+        encoding="utf-8",
+    )
+    (core / "CHANGELOG.md").write_text("# Changelog\n\n## 1.4.0\n", encoding="utf-8")
     (repo / "aegis-vscode" / "package.json").write_text(
-        '{ "version": "0.5.1", "repository": { "type": "git", "url": "https://github.com/HWZ-499/aegis-ai.git" }, "bugs": { "url": "https://github.com/HWZ-499/aegis-ai/issues" }, "homepage": "https://github.com/HWZ-499/aegis-ai#readme", "contributes": { "configuration": { "properties": { "aegisAI.ai.provider": { "enum": ["deepseek", "openai", "ollama", "custom"] } } } } }',
+        '{ "version": "0.5.1", "preview": false, "repository": { "type": "git", "url": "https://github.com/HWZ-499/aegis-ai.git" }, "bugs": { "url": "https://github.com/HWZ-499/aegis-ai/issues" }, "homepage": "https://github.com/HWZ-499/aegis-ai#readme", "contributes": { "configuration": { "properties": { "aegisAI.ai.provider": { "enum": ["deepseek", "openai", "ollama", "custom"] } } } } }',
         encoding="utf-8",
     )
+    (repo / "aegis-vscode" / "CHANGELOG.md").write_text("# Changelog\n\n## 0.5.1\n", encoding="utf-8")
     (src_dir / "README.md").write_text(
         "# Core\n\n- `analysis/` - analyzers\n- `scanner/` - scanning\n- `lsp/` - language server\n",
         encoding="utf-8",
@@ -41,6 +55,25 @@ def _write_minimal_consistent_repo(repo: Path) -> Path:
     (src_dir / "analysis").mkdir()
     (src_dir / "scanner").mkdir()
     (src_dir / "lsp").mkdir()
+    workflows = repo / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "publish-pypi.yml").write_text(
+        "core-v*\ncheck_release_tag.py core\ncheck_distribution.py dist/*\n"
+        "Smoke test installed wheel\n"
+        'importlib.metadata.distribution("aegis-ai-core")\n'
+        'bin/aegis" --help\n'
+        "pypa/gh-action-pypi-publish\n",
+        encoding="utf-8",
+    )
+    (workflows / "publish-extension.yml").write_text(
+        "vscode-v*\ncheck_release_tag.py vscode\nnpm audit --audit-level=low\n"
+        "xvfb-run -a npm test\ncheck_distribution.py aegis-vscode/*.vsix\nvsce publish\nsecrets.VSCE_PAT\n",
+        encoding="utf-8",
+    )
+    (workflows / "security-scan.yml").write_text(
+        "npm audit --audit-level=low\n",
+        encoding="utf-8",
+    )
     return core
 
 
@@ -96,3 +129,86 @@ def test_validate_repo_consistency_flags_stale_src_directory_map(tmp_path: Path)
     errors = validate_repo_consistency(repo)
 
     assert any("src/readme" in error.lower() for error in errors)
+
+
+def test_validate_repo_consistency_flags_stale_root_extension_version(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _write_minimal_consistent_repo(repo)
+    (repo / "README.md").write_text(
+        "# Aegis\nExtension v0.4.0\nPython 3.10-3.12; Python 3.13 unsupported\n`pip install -e .[dev]`\ndeepseek openai ollama custom\n"
+        "OLLAMA_BASE_URL=x\nDEEPSEEK_API_KEY=x\nOPENAI_API_KEY=x\n.aegis-baseline.json not a fix\n",
+        encoding="utf-8",
+    )
+
+    errors = validate_repo_consistency(repo)
+
+    assert any("root readme" in error.lower() and "extension version" in error.lower() for error in errors)
+
+
+def test_validate_repo_consistency_flags_undocumented_python_upper_bound(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _write_minimal_consistent_repo(repo)
+    root_readme = repo / "README.md"
+    root_readme.write_text(
+        root_readme.read_text(encoding="utf-8").replace("; Python 3.13 unsupported", ""), encoding="utf-8"
+    )
+
+    errors = validate_repo_consistency(repo)
+
+    assert any("python requirement" in error.lower() for error in errors)
+
+
+def test_validate_repo_consistency_flags_missing_component_changelog_version(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _write_minimal_consistent_repo(repo)
+    (repo / "aegis-ai-core" / "CHANGELOG.md").write_text("# Changelog\n", encoding="utf-8")
+
+    errors = validate_repo_consistency(repo)
+
+    assert any("core changelog" in error.lower() for error in errors)
+
+
+def test_validate_repo_consistency_flags_preview_extension(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _write_minimal_consistent_repo(repo)
+    package_path = repo / "aegis-vscode" / "package.json"
+    package = package_path.read_text(encoding="utf-8").replace('"preview": false', '"preview": true')
+    package_path.write_text(package, encoding="utf-8")
+
+    errors = validate_repo_consistency(repo)
+
+    assert any("preview" in error.lower() for error in errors)
+
+
+def test_validate_repo_consistency_flags_missing_extension_dependency_audit(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _write_minimal_consistent_repo(repo)
+    workflow_path = repo / ".github" / "workflows" / "publish-extension.yml"
+    workflow = workflow_path.read_text(encoding="utf-8").replace("npm audit --audit-level=low\n", "")
+    workflow_path.write_text(workflow, encoding="utf-8")
+
+    errors = validate_repo_consistency(repo)
+
+    assert any("audit all dependencies" in error.lower() for error in errors)
+
+
+def test_validate_repo_consistency_flags_missing_wheel_install_smoke_test(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _write_minimal_consistent_repo(repo)
+    workflow_path = repo / ".github" / "workflows" / "publish-pypi.yml"
+    workflow = workflow_path.read_text(encoding="utf-8").replace("Smoke test installed wheel\n", "")
+    workflow_path.write_text(workflow, encoding="utf-8")
+
+    errors = validate_repo_consistency(repo)
+
+    assert any("smoke-test the final wheel" in error.lower() for error in errors)
+
+
+def test_validate_repo_consistency_flags_missing_extension_ci_audit(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _write_minimal_consistent_repo(repo)
+    (repo / ".github" / "workflows" / "security-scan.yml").write_text("npm test\n", encoding="utf-8")
+
+    errors = validate_repo_consistency(repo)
+
+    assert any("extension ci" in error.lower() and "audit all dependencies" in error.lower() for error in errors)

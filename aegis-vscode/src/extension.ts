@@ -17,7 +17,6 @@ import {
   StatusBarItem,
   StatusBarAlignment,
   languages,
-  DiagnosticSeverity,
   Uri,
   Disposable,
   ProgressLocation,
@@ -28,7 +27,7 @@ import {
   TextDocument,
   WorkspaceConfiguration,
 } from "vscode";
-import { FindingsTreeProvider } from "./findingsTreeProvider";
+import { FindingsTreeProvider, getAegisDiagnostics } from "./findingsTreeProvider";
 import { getAiConfigurationError, getAiServerEnvironment } from "./aiPreflight";
 import { GenerateFixResponse, getGenerateFixFailure, isGenerateFixSuccess } from "./aiFixResult";
 import {
@@ -40,13 +39,14 @@ import {
 import { findAegisCommentBlock } from "./commentCommands";
 import { showReport } from "./reportWebview";
 import { FixPreviewProvider } from "./fixPreviewProvider";
+import { ScanFailureState, scanFailureViewMessage } from "./scanFailureState";
+import { WorkspaceScanProgress } from "./workspaceScanProgress";
+import { createLanguageClientOptions } from "./languageClientOptions";
 import { showTaintPathPanel, disposeTaintPathPanel, TaintPathData } from "./taintPathWebview";
 import { ensureBackendLaunch } from "./backendBootstrap";
 import {
   LanguageClient,
-  LanguageClientOptions,
   ServerOptions,
-  RevealOutputChannelOn,
 } from "vscode-languageclient/node";
 
 // ─── Custom LSP notification types ─────────────────────────────────────────
@@ -64,6 +64,8 @@ const NOTIFICATION_SCAN_PROGRESS = "aegis/scanProgress";
 
 /** @type {LanguageClient | undefined} Global LSP client instance */
 let client: LanguageClient | undefined;
+/** Resolves only after notification handlers can safely receive scan completion events. */
+let clientReadyPromise: Promise<void> | undefined;
 
 /** @type {StatusBarItem | undefined} Status Bar item instance */
 let statusBar: StatusBarItem | undefined;
@@ -71,9 +73,12 @@ let statusBar: StatusBarItem | undefined;
 /** @type {Disposable | undefined} Diagnostics change listener */
 let diagnosticsListener: Disposable | undefined;
 
-/** Workspace scan progress reporter and completion callback */
-let workspaceProgressReporter: { report: (p: { message?: string; increment?: number }) => void } | null = null;
-let workspaceScanResolve: (() => void) | null = null;
+/** Scan failures are separate from diagnostics because failures clear stale diagnostics. */
+const scanFailures = new ScanFailureState();
+
+/** One active workspace scan at a time; scan IDs reject delayed notifications. */
+const workspaceScanProgress = new WorkspaceScanProgress();
+let workspaceScanSequence = 0;
 
 interface PreviewFixCommandArgs {
   uri?: string;
@@ -161,7 +166,7 @@ function codeForLineReplacement(
  * @param {AegisStatus} status - Current status
  * @param {number} [issueCount] - Issue count (only used for `issues` status)
  */
-function updateStatusBar(status: AegisStatus, issueCount?: number): void {
+function updateStatusBar(status: AegisStatus, issueCount?: number, failureMessage?: string): void {
   if (!statusBar) return;
 
   switch (status) {
@@ -193,8 +198,8 @@ function updateStatusBar(status: AegisStatus, issueCount?: number): void {
       statusBar.backgroundColor = undefined;
       break;
     case "error":
-      statusBar.text = "$(error) Aegis: Error";
-      statusBar.tooltip = "Aegis AI scan error — click to view logs";
+      statusBar.text = "$(error) Aegis: Scan failed";
+      statusBar.tooltip = `Aegis AI could not scan this file: ${failureMessage ?? "unknown error"}\n\nClick to open Aegis logs.`;
       statusBar.command = "aegisAI.showOutput";
       statusBar.backgroundColor = undefined;
       break;
@@ -213,14 +218,14 @@ function refreshStatusBarFromDiagnostics(): void {
   }
 
   const uri: Uri = activeEditor.document.uri;
+  const scanFailure = scanFailures.getForUri(uri.toString());
+  if (scanFailure) {
+    updateStatusBar("error", undefined, scanFailure);
+    return;
+  }
   const allDiags = languages.getDiagnostics(uri);
   // Only count diagnostics from Aegis AI source
-  const aegisDiags = allDiags.filter(
-    (d) =>
-      d.source === "Aegis AI" &&
-      (d.severity === DiagnosticSeverity.Error ||
-        d.severity === DiagnosticSeverity.Warning)
-  );
+  const aegisDiags = getAegisDiagnostics(allDiags);
 
   if (aegisDiags.length === 0) {
     updateStatusBar("safe");
@@ -249,7 +254,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   const serverModule = getGlobalConfigurationValue(config, "serverModule", "src.lsp");
   const explicitCwd = getGlobalConfigurationValue(config, "serverCwd", "").trim();
 
-  const outputChannel = window.createOutputChannel("Aegis AI Security Scanner");
+  const outputChannel = window.createOutputChannel("Aegis AI Security Scanner", { log: true });
   outputChannel.appendLine("[Aegis] Extension activated, starting LSP Server…");
   if (!workspace.isTrusted) {
     outputChannel.appendLine(
@@ -266,14 +271,22 @@ export async function activate(context: ExtensionContext): Promise<void> {
 
   // Aegis Findings TreeView (sidebar panel)
   const findingsProvider = new FindingsTreeProvider();
+  context.subscriptions.push(findingsProvider);
   const treeView = window.createTreeView("aegisFindings", {
     treeDataProvider: findingsProvider,
     showCollapseAll: true,
   });
   context.subscriptions.push(treeView);
 
-  const workspaceRoot = workspace.workspaceFolders?.[0]?.uri.fsPath;
-  const baselineProvider = new BaselineTreeProvider(workspaceRoot);
+  const refreshFindingsFailureMessage = (): void => {
+    const activeUri = window.activeTextEditor?.document.uri.toString();
+    const scanFailure = scanFailures.getForUri(activeUri);
+    treeView.message = scanFailure ? scanFailureViewMessage(scanFailure) : undefined;
+  };
+
+  const getWorkspaceRoots = (): string[] =>
+    workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [];
+  const baselineProvider = new BaselineTreeProvider(getWorkspaceRoots());
   const baselineTreeView = window.createTreeView("aegisBaseline", {
     treeDataProvider: baselineProvider,
     showCollapseAll: true,
@@ -316,13 +329,12 @@ export async function activate(context: ExtensionContext): Promise<void> {
       baselineProvider.refresh();
     }),
     commands.registerCommand("aegisAI.removeBaselineEntry", async (node?: BaselineEntryNode) => {
-      const activeRoot = workspace.workspaceFolders?.[0]?.uri.fsPath;
-      if (!node?.entry || !activeRoot) {
+      if (!node?.entry || !node.workspaceRoot) {
         window.showWarningMessage("Aegis: No baseline entry selected.");
         return;
       }
 
-      const removed = removeBaselineEntryFromDisk(activeRoot, node.entry.fingerprint);
+      const removed = removeBaselineEntryFromDisk(node.workspaceRoot, node.entry.fingerprint);
       if (!removed) {
         window.showWarningMessage("Aegis: Could not remove the selected baseline entry.");
         return;
@@ -335,7 +347,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       window.showInformationMessage(
         `Aegis: Removed baseline entry for ${node.entry.rule_id} at ${node.entry.file_path}:${node.entry.line}`
       );
-      const targetPath = resolveBaselineEntryPath(activeRoot, node.entry.file_path);
+      const targetPath = resolveBaselineEntryPath(node.workspaceRoot, node.entry.file_path);
       if (!targetPath) {
         outputChannel.appendLine(
           `[Aegis] Refusing to rescan baseline entry outside workspace: ${node.entry.file_path}`,
@@ -378,42 +390,66 @@ export async function activate(context: ExtensionContext): Promise<void> {
     })
   );
   context.subscriptions.push(
-    commands.registerCommand("aegisAI.scanCurrentFile", (resourceUri?: Uri) => {
+    commands.registerCommand("aegisAI.scanCurrentFile", async (resourceUri?: Uri) => {
       // Support both editor context and explorer context menu
       const uri = resourceUri?.toString() ?? window.activeTextEditor?.document.uri.toString();
       if (!uri) return;
-      if (!client) {
+      const activeClient = client;
+      const ready = clientReadyPromise;
+      if (!activeClient || !ready) {
         outputChannel.appendLine("[Aegis] Not connected. Please wait for LSP to connect.");
         outputChannel.show();
         return;
       }
-      client.sendNotification("aegis/requestScan", { uri });
+      try {
+        await ready;
+      } catch {
+        return;
+      }
+      await activeClient.sendNotification("aegis/requestScan", { uri });
       outputChannel.appendLine(`[Aegis] Manual scan triggered: ${uri}`);
     }),
-    commands.registerCommand("aegisAI.scanWorkspace", () => {
-      if (!client) {
+    commands.registerCommand("aegisAI.scanWorkspace", async () => {
+      const activeClient = client;
+      const ready = clientReadyPromise;
+      if (!activeClient || !ready) {
         outputChannel.appendLine("[Aegis] Not connected. Please wait for LSP to connect.");
         outputChannel.show();
         return;
       }
+      if (workspaceScanProgress.isActive) {
+        window.showInformationMessage("Aegis: A workspace scan is already in progress.");
+        return;
+      }
+
+      try {
+        await ready;
+      } catch {
+        return;
+      }
+
+      const scanId = `workspace-${Date.now()}-${++workspaceScanSequence}`;
       outputChannel.appendLine("[Aegis] Manual workspace scan triggered");
-      window.withProgress(
+      await window.withProgress(
         {
           title: "Aegis: Scanning Workspace",
           location: ProgressLocation.Notification,
           cancellable: false,
         },
         (progress) => {
-          workspaceProgressReporter = progress;
-          return new Promise<void>((resolve) => {
-            workspaceScanResolve = resolve;
-            client!.sendNotification("aegis/requestScanWorkspace", {});
-          });
+          const completion = workspaceScanProgress.start(scanId, progress);
+          void activeClient.sendRequest<void>("aegis/requestScanWorkspace", { scanId }).then(
+            () => workspaceScanProgress.finish(scanId),
+            (error: unknown) => {
+              const message = error instanceof Error ? error.message : String(error);
+              outputChannel.appendLine(`[Aegis] Workspace scan request failed: ${message}`);
+              window.showErrorMessage(`Aegis: Could not start workspace scan: ${message}`);
+              workspaceScanProgress.finish(scanId);
+            },
+          );
+          return completion;
         }
-      ).then(() => {
-        workspaceProgressReporter = null;
-        workspaceScanResolve = null;
-      });
+      );
     })
   );
 
@@ -422,6 +458,9 @@ export async function activate(context: ExtensionContext): Promise<void> {
   baselineWatcher.onDidChange(() => baselineProvider.refresh());
   baselineWatcher.onDidDelete(() => baselineProvider.refresh());
   context.subscriptions.push(baselineWatcher);
+  context.subscriptions.push(
+    workspace.onDidChangeWorkspaceFolders(() => baselineProvider.setWorkspaceRoots(getWorkspaceRoots())),
+  );
 
   // ── O2: Preview AI Fix — Diff Editor command ──────────────────────────
   context.subscriptions.push(
@@ -483,7 +522,13 @@ export async function activate(context: ExtensionContext): Promise<void> {
         const aiEnabled = runtimeConfig.get<boolean>("ai.enabled", true);
         const aiConfigError = getAiConfigurationError(aiProvider, aiProcessEnv, aiEnabled);
         if (aiConfigError) {
-          window.showWarningMessage(`Aegis: ${aiConfigError}`);
+          const action = await window.showWarningMessage(
+            `Aegis: ${aiConfigError}`,
+            "Open AI Settings",
+          );
+          if (action === "Open AI Settings") {
+            await commands.executeCommand("workbench.action.openSettings", "aegisAI.ai");
+          }
           return;
         }
       }
@@ -507,8 +552,12 @@ export async function activate(context: ExtensionContext): Promise<void> {
               message: requestMessage,
             });
           } catch (e) {
-            outputChannel.appendLine(`[Aegis] generateFix request failed: ${e}`);
-            return null;
+            const message = e instanceof Error ? e.message : String(e);
+            outputChannel.appendLine(`[Aegis] generateFix request failed: ${message}`);
+            return {
+              error_code: "request_failed",
+              error_message: `Could not request an AI fix: ${message}`,
+            } satisfies GenerateFixResponse;
           }
         }
       );
@@ -519,12 +568,29 @@ export async function activate(context: ExtensionContext): Promise<void> {
         outputChannel.appendLine(
           `[Aegis] generateFix failed: rule=${ruleId}, line=${requestStartLine}-${requestEndLine}, code=${errorCode}, message=${fixFailure.message}`
         );
+        let action: string | undefined;
         if (fixFailure.level === "error") {
-          window.showErrorMessage(fixFailure.message);
+          action = await window.showErrorMessage(fixFailure.message, ...fixFailure.actions);
         } else if (fixFailure.level === "warning") {
-          window.showWarningMessage(fixFailure.message);
+          action = await window.showWarningMessage(fixFailure.message, ...fixFailure.actions);
         } else {
-          window.showInformationMessage(fixFailure.message);
+          action = await window.showInformationMessage(fixFailure.message, ...fixFailure.actions);
+        }
+        if (action === "Retry") {
+          outputChannel.appendLine(
+            `[Aegis] Retrying generateFix: rule=${ruleId}, line=${requestStartLine}-${requestEndLine}`
+          );
+          await commands.executeCommand("aegisAI.previewFix", {
+            uri: targetDocument.uri.toString(),
+            rule_id: ruleId,
+            start_line: requestStartLine,
+            end_line: requestEndLine,
+            message: requestMessage,
+          } satisfies PreviewFixCommandArgs);
+        } else if (action === "Open AI Settings") {
+          await commands.executeCommand("workbench.action.openSettings", "aegisAI.ai");
+        } else if (action === "View Logs") {
+          outputChannel.show();
         }
         return;
       }
@@ -802,22 +868,9 @@ export async function activate(context: ExtensionContext): Promise<void> {
    * Client config: document selectors and initialization options.
    * Passes user settings to LSP Server via initializationOptions.
    */
-  const clientOptions: LanguageClientOptions = {
-    documentSelector: [
-      { scheme: "file", language: "javascript" },
-      { scheme: "file", language: "typescript" },
-      { scheme: "file", language: "javascriptreact" },
-      { scheme: "file", language: "typescriptreact" },
-      { scheme: "file", language: "python" },
-      { scheme: "file", language: "php" },
-      { scheme: "file", language: "java" },
-      { scheme: "file", language: "go" },
-      { scheme: "file", language: "c" },
-      { scheme: "file", language: "cpp" },
-    ],
-    outputChannel: outputChannel,
-    revealOutputChannelOn: RevealOutputChannelOn.Error,
-    initializationOptions: {
+  const clientOptions = createLanguageClientOptions(
+    outputChannel,
+    {
       severity_minimum: config.get<string>("severity.minimum", "Low"),
       exclude_patterns:
         config.get<string[]>("scan.exclude")
@@ -829,12 +882,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       scan_on_change: config.get<boolean>("scanOnChange", true),
       experimental_cross_file: config.get<boolean>("experimental.crossFileAnalysis", false),
     },
-    synchronize: {
-      fileEvents: workspace.createFileSystemWatcher(
-        "**/*.{js,jsx,ts,tsx,py,php,phtml,java,go,c,cpp,cc,cxx,h,hpp,hxx}"
-      ),
-    },
-  };
+  );
 
   // Create LanguageClient and start
   client = new LanguageClient(
@@ -845,7 +893,8 @@ export async function activate(context: ExtensionContext): Promise<void> {
   );
 
   const lspStartStartedAt = Date.now();
-  client.start().then(
+  clientReadyPromise = client.start();
+  clientReadyPromise.then(
     () => {
       outputChannel.appendLine(`[Aegis] LSP Server connected (${Date.now() - lspStartStartedAt}ms).`);
       updateStatusBar("ready");
@@ -853,14 +902,18 @@ export async function activate(context: ExtensionContext): Promise<void> {
       window.showInformationMessage("Aegis AI Security Scanner is now active.");
 
       // ── Listen for custom LSP notification: scan start ───────────────────────────────
-      client!.onNotification(NOTIFICATION_SCAN_START, () => {
+      client!.onNotification(NOTIFICATION_SCAN_START, (params: { uri?: string }) => {
+        scanFailures.clearForScan(params?.uri);
+        refreshFindingsFailureMessage();
         updateStatusBar("scanning");
       });
 
       // ── Listen for custom LSP notification: scan end ─────────────────────────────────
       client!.onNotification(
         NOTIFICATION_SCAN_END,
-        (params: { issueCount?: number }) => {
+        (params: { uri?: string; issueCount?: number }) => {
+          scanFailures.clearForScan(params?.uri);
+          refreshFindingsFailureMessage();
           if (typeof params?.issueCount === "number") {
             if (params.issueCount > 0) {
               updateStatusBar("issues", params.issueCount);
@@ -878,9 +931,11 @@ export async function activate(context: ExtensionContext): Promise<void> {
       client!.onNotification(
         NOTIFICATION_SCAN_ERROR,
         (params: { uri?: string; message?: string }) => {
-          updateStatusBar("error");
+          const failureMessage = scanFailures.record(params ?? {});
+          refreshFindingsFailureMessage();
+          updateStatusBar("error", undefined, failureMessage);
           outputChannel.appendLine(
-            `[Aegis] Scan error: ${params?.message ?? "unknown"} (${params?.uri ?? ""})`
+            `[Aegis] Scan error: ${failureMessage} (${params?.uri ?? ""})`
           );
         }
       );
@@ -888,24 +943,15 @@ export async function activate(context: ExtensionContext): Promise<void> {
       // ── Listen for custom LSP notification: workspace scan progress ──────────────
       client!.onNotification(
         NOTIFICATION_SCAN_PROGRESS,
-        (params: { current?: number; total?: number; uri?: string }) => {
-          const cur = params?.current ?? 0;
-          const tot = params?.total ?? 0;
-          if (workspaceProgressReporter && tot > 0) {
-            workspaceProgressReporter.report({
-              message: `Scanning ${cur}/${tot}`,
-              increment: tot > 0 ? (100 / tot) : 0,
-            });
-          }
-          if (cur === tot && workspaceScanResolve) {
-            workspaceScanResolve();
-          }
-        }
+        (params: { scanId?: string; current?: number; total?: number; uri?: string }) => {
+          workspaceScanProgress.report(params ?? {});
+        },
       );
 
       // ── Refresh status bar when active editor changes ──────────────────────
       context.subscriptions.push(
         window.onDidChangeActiveTextEditor(() => {
+          refreshFindingsFailureMessage();
           refreshStatusBarFromDiagnostics();
         })
       );

@@ -1,0 +1,2441 @@
+{
+  "target": "django-3.2",
+  "date": "2026-07-12",
+  "metrics": {
+    "tp": 0,
+    "fp": 136,
+    "fn": 1,
+    "tn": 7,
+    "recall": 0.0,
+    "precision": 0.0,
+    "fpr": 0.951,
+    "f1": 0.0
+  },
+  "by_category": {
+    "PATH_TRAVERSAL": {
+      "tp": 0,
+      "tn": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    "SQL_INJECTION": {
+      "tp": 0,
+      "tn": 2,
+      "fp": 7,
+      "fn": 0
+    },
+    "HARDCODED_CREDENTIALS": {
+      "tp": 0,
+      "tn": 1,
+      "fp": 19,
+      "fn": 0
+    },
+    "XSS_RISK": {
+      "tp": 0,
+      "tn": 4,
+      "fp": 72,
+      "fn": 0
+    },
+    "RCE_COMMAND_EXEC": {
+      "tp": 0,
+      "tn": 0,
+      "fp": 28,
+      "fn": 0
+    },
+    "NOSQL_INJECTION": {
+      "tp": 0,
+      "tn": 0,
+      "fp": 5,
+      "fn": 0
+    },
+    "OPEN_REDIRECT": {
+      "tp": 0,
+      "tn": 0,
+      "fp": 3,
+      "fn": 0
+    },
+    "DESERIALIZATION": {
+      "tp": 0,
+      "tn": 0,
+      "fp": 2,
+      "fn": 0
+    }
+  },
+  "by_language": {},
+  "by_language_category": {},
+  "details": [
+    {
+      "verdict": "FN",
+      "ground_truth_index": 12,
+      "expected": {
+        "file": "files/storage.py",
+        "line": 76,
+        "type": "PATH_TRAVERSAL",
+        "cve": "CVE-2021-31542",
+        "reference": "https://www.djangoproject.com/weblog/2021/may/04/security-releases/",
+        "severity": "Low",
+        "is_true_positive": true,
+        "expected_pattern": "dir_name, file_name = os.path.split(name)",
+        "comment": "CVE-2021-31542: Django 3.2 的 MultiPartParser、UploadedFile 与 FieldFile 对恶意上传文件名的路径清理不足；官方定级 Low，并在 3.2.1 修复。该条定位到 3.2 storage.py 中后续补入路径校验的入口。"
+      },
+      "finding": null
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": 0,
+      "expected": {
+        "file": "cache/backends/db.py",
+        "line": 120,
+        "type": "SQL_INJECTION",
+        "cve": null,
+        "severity": "High",
+        "is_true_positive": false,
+        "false_positive_reason": "表名来自 Django 内部配置（settings.CACHES['LOCATION']），非用户输入。Django ORM 内部构造，表名在启动时确定，运行期不可被外部控制。",
+        "comment": "误报：正则规则无法区分受控配置值与用户输入，需要上下文感知（框架配置 vs HTTP 请求上下文）。"
+      },
+      "finding": {
+        "type": "SQL_INJECTION",
+        "rule_id": "dsl.python.sql-injection-format",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 120,
+        "column": 0,
+        "language": "python",
+        "details": "检测到使用字符串格式化构造 SQL 语句，存在注入风险。",
+        "file": "django\\core\\cache\\backends\\db.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": 1,
+      "expected": {
+        "file": "cache/backends/db.py",
+        "line": 261,
+        "type": "SQL_INJECTION",
+        "cve": null,
+        "severity": "High",
+        "is_true_positive": false,
+        "false_positive_reason": "同 L120：表名来自内部配置，非用户可控输入。_cull() 方法中表名由 settings 决定。",
+        "comment": "误报：框架内部受控 SQL 构造。"
+      },
+      "finding": {
+        "type": "SQL_INJECTION",
+        "rule_id": "dsl.python.sql-injection-format",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 263,
+        "column": 0,
+        "language": "python",
+        "details": "检测到使用字符串格式化构造 SQL 语句，存在注入风险。",
+        "file": "django\\core\\cache\\backends\\db.py"
+      }
+    },
+    {
+      "verdict": "TN",
+      "ground_truth_index": 2,
+      "expected": {
+        "file": "cache/backends/db.py",
+        "line": 263,
+        "type": "SQL_INJECTION",
+        "cve": null,
+        "severity": "High",
+        "is_true_positive": false,
+        "false_positive_reason": "同 L120，_cull() 内部计数查询，表名来自配置。",
+        "comment": "误报：内部受控操作。"
+      },
+      "finding": null
+    },
+    {
+      "verdict": "TN",
+      "ground_truth_index": 3,
+      "expected": {
+        "file": "cache/backends/db.py",
+        "line": 282,
+        "type": "SQL_INJECTION",
+        "cve": null,
+        "severity": "High",
+        "is_true_positive": false,
+        "false_positive_reason": "清除缓存表操作，表名来自 Django settings，非 HTTP 请求参数。",
+        "comment": "误报：clear() 方法内部操作，完全受框架控制。"
+      },
+      "finding": null
+    },
+    {
+      "verdict": "TN",
+      "ground_truth_index": 4,
+      "expected": {
+        "file": "checks/security/base.py",
+        "line": 12,
+        "type": "HARDCODED_CREDENTIALS",
+        "cve": null,
+        "severity": "High",
+        "is_true_positive": false,
+        "false_positive_reason": "SECRET_KEY_INSECURE_PREFIX = 'django-insecure-' 是 Django 安全检查模块中的常量前缀字符串，用于检测开发者是否使用了默认不安全的 SECRET_KEY。这是安全工具自身代码，不是凭据泄露。",
+        "comment": "误报：安全检查工具代码中的常量字符串被误判为硬编码凭据。引擎需要识别'安全工具上下文'。"
+      },
+      "finding": null
+    },
+    {
+      "verdict": "TN",
+      "ground_truth_index": 5,
+      "expected": {
+        "file": "files/uploadhandler.py",
+        "line": 150,
+        "type": "XSS_RISK",
+        "cve": null,
+        "severity": "High",
+        "is_true_positive": false,
+        "false_positive_reason": "self.file.write(raw_data) 是文件写操作（写入临时上传文件），非 HTTP 响应写入。XSS 规则错误地将文件 IO write() 误判为 response.write()。",
+        "comment": "误报：规则混淆了文件 IO write() 与 HTTP response write()，需要区分写入目标（文件对象 vs 响应对象）。"
+      },
+      "finding": null
+    },
+    {
+      "verdict": "TN",
+      "ground_truth_index": 6,
+      "expected": {
+        "file": "files/uploadhandler.py",
+        "line": 190,
+        "type": "XSS_RISK",
+        "cve": null,
+        "severity": "High",
+        "is_true_positive": false,
+        "false_positive_reason": "同 L150：MemoryFileUploadHandler.receive_data_chunk() 中的文件写操作。",
+        "comment": "误报：文件 IO 被误判为 XSS 输出点。"
+      },
+      "finding": null
+    },
+    {
+      "verdict": "TN",
+      "ground_truth_index": 7,
+      "expected": {
+        "file": "handlers/exception.py",
+        "line": 134,
+        "type": "XSS_RISK",
+        "cve": null,
+        "severity": "High",
+        "is_true_positive": false,
+        "false_positive_reason": "signals.got_request_exception.send() 是 Django 信号分发调用，非 HTTP 响应写入或 DOM 操作。XSS 规则错误匹配了 .send() 方法。",
+        "comment": "误报：信号框架 API .send() 被误判为 XSS 输出。需要 type-aware 分析区分信号对象与响应对象。"
+      },
+      "finding": null
+    },
+    {
+      "verdict": "TN",
+      "ground_truth_index": 8,
+      "expected": {
+        "file": "handlers/exception.py",
+        "line": 113,
+        "type": "XSS_RISK",
+        "cve": null,
+        "severity": "High",
+        "is_true_positive": false,
+        "false_positive_reason": "同 L134：signals.got_request_exception.send() 信号分发调用。",
+        "comment": "误报：信号调用被误判为 XSS 输出点。"
+      },
+      "finding": null
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": 9,
+      "expected": {
+        "file": "management/commands/shell.py",
+        "line": 87,
+        "type": "RCE_COMMAND_EXEC",
+        "cve": null,
+        "severity": "Low",
+        "is_true_positive": false,
+        "false_positive_reason": "Django management command shell 通过 exec(options['command']) 执行 --command 参数。该参数由系统管理员从命令行传入（需要服务器访问权限），非 HTTP 请求可控。已正确降级为 Low。",
+        "comment": "可接受的 Low 误报：工具命令行 exec，引擎已正确识别为管理脚本上下文并降级。严重性分类正确。"
+      },
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "Low",
+        "confidence": 0.5,
+        "line": 87,
+        "column": 0,
+        "language": "python",
+        "details": "[工具脚本] 发现 exec()，参数含变量，处于框架工具脚本上下文，已降级。",
+        "file": "django\\core\\management\\commands\\shell.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": 10,
+      "expected": {
+        "file": "management/commands/shell.py",
+        "line": 93,
+        "type": "RCE_COMMAND_EXEC",
+        "cve": null,
+        "severity": "Low",
+        "is_true_positive": false,
+        "false_positive_reason": "exec(sys.stdin.read()) 从标准输入读取并执行，需要服务器级别访问权限，非 HTTP 请求路径。已正确降级为 Low。",
+        "comment": "可接受的 Low 误报：CLI 工具设计模式，引擎正确识别并降级。"
+      },
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "Low",
+        "confidence": 0.5,
+        "line": 93,
+        "column": 0,
+        "language": "python",
+        "details": "[工具脚本] 发现 exec()，参数含变量，处于框架工具脚本上下文，已降级。",
+        "file": "django\\core\\management\\commands\\shell.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": 11,
+      "expected": {
+        "file": "management/commands/shell.py",
+        "line": 78,
+        "type": "RCE_COMMAND_EXEC",
+        "cve": null,
+        "severity": "Low",
+        "is_true_positive": false,
+        "false_positive_reason": "exec(compile(pythonrc_code, pythonrc, 'exec')) 执行 PYTHONSTARTUP 环境变量指向的本地脚本，受信任的管理员配置。已正确降级为 Low。",
+        "comment": "可接受的 Low 误报：环境变量驱动的可信脚本执行，引擎已识别环境变量来源并降级。"
+      },
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "Low",
+        "confidence": 0.5,
+        "line": 78,
+        "column": 0,
+        "language": "python",
+        "details": "[工具脚本] 发现 compile()，参数含变量，处于框架工具脚本上下文，已降级。",
+        "file": "django\\core\\management\\commands\\shell.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 24,
+        "column": 0,
+        "language": "python",
+        "details": "发现疑似硬编码凭证变量 'PASSWORD_RESET_TIMEOUT_DAYS_DEPRECATED_MSG'（值长度 90），建议从环境变量（os.environ）或 Vault 等安全配置中读取。",
+        "file": "django\\conf\\__init__.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 145,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\contrib\\admin\\helpers.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 150,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\contrib\\admin\\helpers.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "NOSQL_INJECTION",
+        "rule_id": "NOSQL_INJECTION_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 1138,
+        "column": 0,
+        "language": "python",
+        "details": "pymongo/motor 方法 update() 的查询参数来自用户输入（如 request.json），可能存在 NoSQL 注入（$where/$ne/$regex 等）。建议使用 bson.ObjectId 或白名单字段过滤。",
+        "file": "django\\contrib\\admin\\options.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "NOSQL_INJECTION",
+        "rule_id": "NOSQL_INJECTION_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 1375,
+        "column": 0,
+        "language": "python",
+        "details": "pymongo/motor 方法 update() 的查询参数来自用户输入（如 request.json），可能存在 NoSQL 注入（$where/$ne/$regex 等）。建议使用 bson.ObjectId 或白名单字段过滤。",
+        "file": "django\\contrib\\admin\\options.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "NOSQL_INJECTION",
+        "rule_id": "NOSQL_INJECTION_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 1968,
+        "column": 0,
+        "language": "python",
+        "details": "pymongo/motor 方法 update() 的查询参数来自用户输入（如 request.json），可能存在 NoSQL 注入（$where/$ne/$regex 等）。建议使用 bson.ObjectId 或白名单字段过滤。",
+        "file": "django\\contrib\\admin\\options.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 311,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\contrib\\admin\\options.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 313,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\contrib\\admin\\options.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.javascript.xss-innerhtml",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 17,
+        "column": 0,
+        "language": "javascript",
+        "details": "检测到将用户可控内容直接赋值给 innerHTML，存在 XSS 风险。",
+        "file": "django\\contrib\\admin\\static\\admin\\js\\SelectBox.js"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 261,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\contrib\\admin\\templatetags\\admin_list.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 291,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\contrib\\admin\\templatetags\\admin_list.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 83,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\contrib\\admindocs\\utils.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 239,
+        "column": 0,
+        "language": "python",
+        "details": "发现疑似硬编码凭证变量 'INTERNAL_RESET_SESSION_TOKEN'（值长度 21），建议从环境变量（os.environ）或 Vault 等安全配置中读取。",
+        "file": "django\\contrib\\auth\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "OPEN_REDIRECT",
+        "rule_id": "OPEN_REDIRECT_PY_TAINT",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 62,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 Python 代码中用户可控输入直接用于 redirect/HttpResponseRedirect 跳转目标，可能导致 Open Redirect 漏洞，建议使用域名白名单或固定路径映射。",
+        "file": "django\\contrib\\auth\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 69,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "django\\contrib\\flatpages\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 66,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\contrib\\flatpages\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 67,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\contrib\\flatpages\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "SQL_INJECTION",
+        "rule_id": "dsl.python.sql-injection-format",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 304,
+        "column": 0,
+        "language": "python",
+        "details": "检测到使用字符串格式化构造 SQL 语句，存在注入风险。",
+        "file": "django\\contrib\\gis\\db\\backends\\postgis\\operations.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "SQL_INJECTION",
+        "rule_id": "dsl.python.sql-injection-format",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 152,
+        "column": 0,
+        "language": "python",
+        "details": "检测到使用字符串格式化构造 SQL 语句，存在注入风险。",
+        "file": "django\\contrib\\gis\\db\\backends\\spatialite\\operations.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 53,
+        "column": 0,
+        "language": "python",
+        "details": "发现 eval()，参数含变量，建议确认参数来源是否可控。",
+        "file": "django\\contrib\\gis\\serializers\\geojson.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 56,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\contrib\\humanize\\templatetags\\humanize.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 37,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\contrib\\messages\\storage\\cookie.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "DESERIALIZATION",
+        "rule_id": "DESERIALIZATION_PY_AST",
+        "severity": "Critical",
+        "confidence": 0.5,
+        "line": 17,
+        "column": 0,
+        "language": "python",
+        "details": "pickle.loads() 对不可信数据执行反序列化，可导致任意代码执行（RCE）。建议使用 JSON 替代，或在可信边界内使用 hmac 签名验证。",
+        "file": "django\\contrib\\sessions\\serializers.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 172,
+        "column": 0,
+        "language": "python",
+        "details": "发现 render() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "django\\contrib\\syndication\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 176,
+        "column": 0,
+        "language": "python",
+        "details": "发现 render() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "django\\contrib\\syndication\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "Critical",
+        "confidence": 0.5,
+        "line": 20,
+        "column": 0,
+        "language": "python",
+        "details": "发现 subprocess.run() 调用，参数来自用户输入，存在命令注入风险。",
+        "file": "django\\core\\management\\utils.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "Low",
+        "confidence": 0.5,
+        "line": 26,
+        "column": 0,
+        "language": "python",
+        "details": "[安装脚本] subprocess.run() 调用，参数未检测到用户输入，已降级。",
+        "file": "django\\db\\backends\\base\\client.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "SQL_INJECTION",
+        "rule_id": "SQL_INJECTION_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 179,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 execute() 参数中存在 SQL 字符串拼接且含用户输入，存在 SQL 注入风险，建议使用参数化查询。",
+        "file": "django\\db\\backends\\base\\creation.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 65,
+        "column": 0,
+        "language": "python",
+        "details": "发现 subprocess.Popen() 调用，参数含变量，建议确认是否可控。",
+        "file": "django\\db\\backends\\mysql\\creation.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 66,
+        "column": 0,
+        "language": "python",
+        "details": "发现 subprocess.Popen() 调用，参数含变量，建议确认是否可控。",
+        "file": "django\\db\\backends\\mysql\\creation.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "SQL_INJECTION",
+        "rule_id": "dsl.python.sql-injection-format",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 122,
+        "column": 0,
+        "language": "python",
+        "details": "检测到使用字符串格式化构造 SQL 语句，存在注入风险。",
+        "file": "django\\db\\backends\\mysql\\introspection.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 242,
+        "column": 0,
+        "language": "python",
+        "details": "发现疑似硬编码凭证变量 'set_password'（值长度 48），建议从环境变量（os.environ）或 Vault 等安全配置中读取。",
+        "file": "django\\db\\backends\\oracle\\creation.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "SQL_INJECTION",
+        "rule_id": "dsl.python.sql-injection-format",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 86,
+        "column": 0,
+        "language": "python",
+        "details": "检测到使用字符串格式化构造 SQL 语句，存在注入风险。",
+        "file": "django\\db\\backends\\postgresql\\introspection.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "Critical",
+        "confidence": 0.5,
+        "line": 139,
+        "column": 0,
+        "language": "python",
+        "details": "发现 eval()，参数来自用户输入，存在代码注入风险。",
+        "file": "django\\db\\migrations\\questioner.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "DESERIALIZATION",
+        "rule_id": "DESERIALIZATION_PY_AST",
+        "severity": "Critical",
+        "confidence": 0.5,
+        "line": 139,
+        "column": 0,
+        "language": "python",
+        "details": "eval() 执行用户输入内容，等同于任意代码执行。",
+        "file": "django\\db\\migrations\\questioner.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 168,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\forms\\boundfield.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 266,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\forms\\forms.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 447,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\forms\\formsets.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 452,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\forms\\formsets.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 457,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\forms\\formsets.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 25,
+        "column": 0,
+        "language": "python",
+        "details": "发现 render() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "django\\forms\\renderers.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 26,
+        "column": 0,
+        "language": "python",
+        "details": "发现疑似硬编码凭证变量 'REASON_BAD_TOKEN'（值长度 32），建议从环境变量（os.environ）或 Vault 等安全配置中读取。",
+        "file": "django\\middleware\\csrf.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 690,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\template\\base.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 700,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\template\\base.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 782,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\template\\base.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 803,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\template\\base.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 942,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\template\\base.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 203,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\template\\defaultfilters.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 401,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\template\\defaultfilters.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 457,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\template\\defaultfilters.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 467,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\template\\defaultfilters.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 549,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\template\\defaultfilters.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 667,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\template\\defaultfilters.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 42,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\template\\defaulttags.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 218,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\template\\defaulttags.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 62,
+        "column": 0,
+        "language": "python",
+        "details": "发现 render() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "django\\template\\loader.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 76,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\template\\loader_tags.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "dsl.python.hardcoded-password",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 161,
+        "column": 0,
+        "language": "python",
+        "details": "检测到疑似硬编码密码，请改为从安全配置或环境变量加载。",
+        "file": "django\\template\\smartif.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "dsl.python.hardcoded-password",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 164,
+        "column": 0,
+        "language": "python",
+        "details": "检测到疑似硬编码密码，请改为从安全配置或环境变量加载。",
+        "file": "django\\template\\smartif.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 92,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\templatetags\\i18n.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 258,
+        "column": 0,
+        "language": "python",
+        "details": "发现 subprocess.run() 调用，参数含变量，建议确认是否可控。",
+        "file": "django\\utils\\autoreload.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 43,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\utils\\html.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 68,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\utils\\html.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 88,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\utils\\html.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 132,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\utils\\html.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 342,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\utils\\html.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 346,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\utils\\html.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 376,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\utils\\html.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 26,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\utils\\numberformat.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 50,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\utils\\safestring.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "dsl.python.hardcoded-password",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 308,
+        "column": 0,
+        "language": "python",
+        "details": "检测到疑似硬编码密码，请改为从安全配置或环境变量加载。",
+        "file": "django\\utils\\text.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 365,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\utils\\translation\\trans_real.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "dsl.python.xss-marksafe",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 377,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 mark_safe 直接包装用户输入，存在 XSS 风险。",
+        "file": "django\\utils\\translation\\trans_real.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 60,
+        "column": 0,
+        "language": "python",
+        "details": "发现 render() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "django\\views\\defaults.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 147,
+        "column": 0,
+        "language": "python",
+        "details": "发现 render() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "django\\views\\defaults.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "OPEN_REDIRECT",
+        "rule_id": "OPEN_REDIRECT_PY_TAINT",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 56,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 Python 代码中用户可控输入直接用于 redirect/HttpResponseRedirect 跳转目标，可能导致 Open Redirect 漏洞，建议使用域名白名单或固定路径映射。",
+        "file": "django\\views\\i18n.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 317,
+        "column": 0,
+        "language": "python",
+        "details": "发现疑似硬编码凭证变量 'epub_author'（值长度 26），建议从环境变量（os.environ）或 Vault 等安全配置中读取。",
+        "file": "docs\\conf.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "Low",
+        "confidence": 0.5,
+        "line": 76,
+        "column": 0,
+        "language": "python",
+        "details": "[安装脚本] subprocess.run() 调用，参数未检测到用户输入，已降级。",
+        "file": "scripts\\manage_translations.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "Low",
+        "confidence": 0.5,
+        "line": 185,
+        "column": 0,
+        "language": "python",
+        "details": "[工具脚本] 发现 eval()，参数含变量，处于框架工具脚本上下文，已降级。",
+        "file": "scripts\\manage_translations.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "Low",
+        "confidence": 0.5,
+        "line": 124,
+        "column": 0,
+        "language": "python",
+        "details": "[安装脚本] subprocess.run() 调用，参数未检测到用户输入，已降级。",
+        "file": "scripts\\manage_translations.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "Low",
+        "confidence": 0.5,
+        "line": 150,
+        "column": 0,
+        "language": "python",
+        "details": "[安装脚本] subprocess.run() 调用，参数未检测到用户输入，已降级。",
+        "file": "scripts\\manage_translations.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "Low",
+        "confidence": 0.5,
+        "line": 165,
+        "column": 0,
+        "language": "python",
+        "details": "[安装脚本] subprocess.run() 调用，参数未检测到用户输入，已降级。",
+        "file": "scripts\\manage_translations.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "Low",
+        "confidence": 0.5,
+        "line": 166,
+        "column": 0,
+        "language": "python",
+        "details": "[安装脚本] subprocess.run() 调用，参数未检测到用户输入，已降级。",
+        "file": "scripts\\manage_translations.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "Low",
+        "confidence": 0.5,
+        "line": 154,
+        "column": 0,
+        "language": "python",
+        "details": "[安装脚本] subprocess.run() 调用，参数未检测到用户输入，已降级。",
+        "file": "scripts\\manage_translations.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 372,
+        "column": 0,
+        "language": "python",
+        "details": "发现 subprocess.run() 调用，参数含变量，建议确认是否可控。",
+        "file": "tests\\runtests.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 377,
+        "column": 0,
+        "language": "python",
+        "details": "发现 subprocess.run() 调用，参数含变量，建议确认是否可控。",
+        "file": "tests\\runtests.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 419,
+        "column": 0,
+        "language": "python",
+        "details": "发现 subprocess.call() 调用，参数含变量，建议确认是否可控。",
+        "file": "tests\\runtests.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 24,
+        "column": 0,
+        "language": "python",
+        "details": "发现疑似硬编码凭证变量 'SECRET_KEY'（值长度 23），建议从环境变量（os.environ）或 Vault 等安全配置中读取。",
+        "file": "tests\\test_sqlite.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "Low",
+        "confidence": 0.5,
+        "line": 20,
+        "column": 0,
+        "language": "python",
+        "details": "发现 subprocess.run() 调用，参数含变量，建议确认是否可控。",
+        "file": "tests\\admin_scripts\\test_django_admin_py.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 19,
+        "column": 0,
+        "language": "python",
+        "details": "发现疑似硬编码凭证变量 'password_change_template'（值长度 38），建议从环境变量（os.environ）或 Vault 等安全配置中读取。",
+        "file": "tests\\admin_views\\customadmin.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 20,
+        "column": 0,
+        "language": "python",
+        "details": "发现疑似硬编码凭证变量 'password_change_done_template'（值长度 38），建议从环境变量（os.environ）或 Vault 等安全配置中读取。",
+        "file": "tests\\admin_views\\customadmin.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 7,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\admin_views\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 12,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\admin_views\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 7,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\asgi\\urls.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 189,
+        "column": 0,
+        "language": "python",
+        "details": "发现疑似硬编码凭证变量 'password'（值长度 100），建议从环境变量（os.environ）或 Vault 等安全配置中读取。",
+        "file": "tests\\auth_tests\\test_hashers.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 310,
+        "column": 0,
+        "language": "python",
+        "details": "发现疑似硬编码凭证变量 'reset_url_token'（值长度 18），建议从环境变量（os.environ）或 Vault 等安全配置中读取。",
+        "file": "tests\\auth_tests\\test_views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "dsl.python.hardcoded-password",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 344,
+        "column": 0,
+        "language": "python",
+        "details": "检测到疑似硬编码密码，请改为从安全配置或环境变量加载。",
+        "file": "tests\\backends\\tests.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 11,
+        "column": 0,
+        "language": "python",
+        "details": "发现疑似硬编码凭证变量 'test_token'（值长度 64），建议从环境变量（os.environ）或 Vault 等安全配置中读取。",
+        "file": "tests\\csrf_tests\\test_context_processor.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 199,
+        "column": 0,
+        "language": "python",
+        "details": "发现 subprocess.run() 调用，参数含变量，建议确认是否可控。",
+        "file": "tests\\dbshell\\test_mysql.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 130,
+        "column": 0,
+        "language": "python",
+        "details": "发现 subprocess.run() 调用，参数含变量，建议确认是否可控。",
+        "file": "tests\\dbshell\\test_postgresql.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "dsl.python.hardcoded-password",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 15,
+        "column": 0,
+        "language": "python",
+        "details": "检测到疑似硬编码密码，请改为从安全配置或环境变量加载。",
+        "file": "tests\\extra_regress\\tests.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "NOSQL_INJECTION",
+        "rule_id": "NOSQL_INJECTION_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 21,
+        "column": 0,
+        "language": "python",
+        "details": "pymongo/motor 方法 update() 的查询参数来自用户输入（如 request.json），可能存在 NoSQL 注入（$where/$ne/$regex 等）。建议使用 bson.ObjectId 或白名单字段过滤。",
+        "file": "tests\\file_uploads\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "NOSQL_INJECTION",
+        "rule_id": "NOSQL_INJECTION_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 37,
+        "column": 0,
+        "language": "python",
+        "details": "pymongo/motor 方法 update() 的查询参数来自用户输入（如 request.json），可能存在 NoSQL 注入（$where/$ne/$regex 等）。建议使用 bson.ObjectId 或白名单字段过滤。",
+        "file": "tests\\file_uploads\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 77,
+        "column": 0,
+        "language": "python",
+        "details": "发现 JsonResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\file_uploads\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 88,
+        "column": 0,
+        "language": "python",
+        "details": "发现 JsonResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\file_uploads\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 197,
+        "column": 0,
+        "language": "python",
+        "details": "发现 subprocess.run() 调用，参数含变量，建议确认是否可控。",
+        "file": "tests\\i18n\\test_compilation.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 46,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\messages_tests\\urls.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 1767,
+        "column": 0,
+        "language": "python",
+        "details": "发现疑似硬编码凭证变量 'did_you_mean_auth_error'（值长度 71），建议从环境变量（os.environ）或 Vault 等安全配置中读取。",
+        "file": "tests\\migrations\\test_commands.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 205,
+        "column": 0,
+        "language": "python",
+        "details": "发现 exec()，参数含变量，建议确认参数来源是否可控。",
+        "file": "tests\\migrations\\test_writer.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "Low",
+        "confidence": 0.5,
+        "line": 14,
+        "column": 0,
+        "language": "python",
+        "details": "发现 subprocess.run() 调用，参数含变量，建议确认是否可控。",
+        "file": "tests\\postgres_tests\\test_integration.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 15,
+        "column": 0,
+        "language": "python",
+        "details": "发现疑似硬编码凭证变量 'author_link'（值长度 23），建议从环境变量（os.environ）或 Vault 等安全配置中读取。",
+        "file": "tests\\syndication_tests\\feeds.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "HARDCODED_CREDENTIALS_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 37,
+        "column": 0,
+        "language": "python",
+        "details": "发现疑似硬编码凭证变量 'item_author_link'（值长度 23），建议从环境变量（os.environ）或 Vault 等安全配置中读取。",
+        "file": "tests\\syndication_tests\\feeds.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 26,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\test_client\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 68,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\test_client\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 85,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\test_client\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 99,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\test_client\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 122,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\test_client\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 212,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\test_client\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 268,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\test_client\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 277,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\test_client\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 285,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\test_client\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 295,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\test_client\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 335,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\test_client\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 386,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\test_client\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 311,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\test_client\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 320,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\test_client\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 55,
+        "column": 0,
+        "language": "python",
+        "details": "发现 HttpResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\test_client\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "OPEN_REDIRECT",
+        "rule_id": "OPEN_REDIRECT_PY_TAINT",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 145,
+        "column": 0,
+        "language": "python",
+        "details": "检测到 Python 代码中用户可控输入直接用于 redirect/HttpResponseRedirect 跳转目标，可能导致 Open Redirect 漏洞，建议使用域名白名单或固定路径映射。",
+        "file": "tests\\test_client\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "XSS_RISK",
+        "rule_id": "XSS_RISK_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 109,
+        "column": 0,
+        "language": "python",
+        "details": "发现 JsonResponse() 调用参数含疑似用户输入且未经 HTML 转义，存在 XSS 风险。建议使用 html.escape() 或模板自动转义。",
+        "file": "tests\\test_client_regress\\views.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 593,
+        "column": 0,
+        "language": "python",
+        "details": "发现 exec()，参数含变量，建议确认参数来源是否可控。",
+        "file": "tests\\view_tests\\tests\\test_debug.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 630,
+        "column": 0,
+        "language": "python",
+        "details": "发现 exec()，参数含变量，建议确认参数来源是否可控。",
+        "file": "tests\\view_tests\\tests\\test_debug.py"
+      }
+    }
+  ],
+  "scope": {
+    "input_entries": 13,
+    "evaluated_entries": 13,
+    "include_out_of_scope": false,
+    "include_invalid_ground_truth": false,
+    "excluded_entries": [],
+    "invalid_entries": []
+  },
+  "performance": {
+    "scan_duration_seconds": 39.491051,
+    "rss_before_mb": 64.125,
+    "rss_after_mb": 94.777,
+    "rss_delta_mb": 30.652,
+    "process_peak_rss_mb": 141.875
+  },
+  "provenance": {
+    "engine": "new",
+    "reproducible": true,
+    "scanner_revision": "d51bd8b946492fe1799f431b45c1da070a35cbc1",
+    "scanner_dirty": false,
+    "scanner_diff_sha256": null,
+    "target_revision": "b6475d7d7940f3ce575e0b0f2d83e517f899b4cf",
+    "target_subdir": ".",
+    "target_dirty": false,
+    "target_diff_sha256": null,
+    "ground_truth": "scripts/data/ground_truth_django_3.2_core.json",
+    "ground_truth_sha256": "9041cf468016f68899f48701e145e31d1d8b189c9d216c5efdd01373ace829e6",
+    "python_version": "3.11.0",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel"
+  }
+}

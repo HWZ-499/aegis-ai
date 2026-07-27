@@ -4,17 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aegis-ai-core"
-version = "1.4.0"
+version = "1.5.0"
 description = "Local-first SAST engine with AST analysis, taint tracking, and AI-powered fix suggestions"
-readme = "src/README.md"
-license = { text = "MIT" }
-requires-python = ">=3.10"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10,<3.13"
 authors = [{ name = "Aegis AI Team" }]
 keywords = ["security", "sast", "static-analysis", "vulnerability", "ast"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -58,7 +57,9 @@ dev = [
     "pytest-cov>=4.1.0",
     "pytest-asyncio>=0.23.0",
     "pytest-benchmark>=4.0.0",
-    "ruff>=0.4.0",
+    "tomli>=2.0.1; python_version < '3.11'",
+    "psutil>=5.9.0",
+    "ruff==0.15.21",
     "mypy>=1.8.0",
     "pre-commit>=3.6.0",
     "types-PyYAML>=6.0.0",
@@ -68,6 +69,8 @@ dev = [
 Homepage = "https://github.com/HWZ-499/aegis-ai"
 Repository = "https://github.com/HWZ-499/aegis-ai"
 Issues = "https://github.com/HWZ-499/aegis-ai/issues"
+Documentation = "https://github.com/HWZ-499/aegis-ai/tree/main/docs"
+Changelog = "https://github.com/HWZ-499/aegis-ai/blob/main/aegis-ai-core/CHANGELOG.md"
 
 [project.scripts]
 aegis = "src.scanner.cli:main"
@@ -86,6 +89,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+asyncio_default_fixture_loop_scope = "function"
 addopts = "-v --tb=short --strict-markers -m \"not benchmark and not acceptance and not integration\""
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
@@ -104,9 +108,9 @@ filterwarnings = [
 target-version = "py310"
 line-length = 120
 extend-exclude = [
-    "tests/rules/**",
-    "tests/debug_*.py",
-    "tests/test_vulnerable_code.py",
+    "**/tests/rules/**",
+    "**/tests/debug_*.py",
+    "**/tests/test_vulnerable_code.py",
 ]
 
 [tool.ruff.lint]
@@ -149,9 +153,12 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S106", "T201"]
-"scripts/**" = ["T201"]
-"src/analysis/rules/**" = ["F841"]
+"**/tests/**" = ["S101", "S106", "T201"]
+"**/scripts/**" = ["T201"]
+"**/src/analysis/rules/**" = ["F841"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src", "scripts"]
 
 [tool.ruff.format]
 quote-style = "double"

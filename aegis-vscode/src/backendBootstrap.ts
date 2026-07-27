@@ -324,7 +324,7 @@ async function assertSupportedPython(
   if (!isPythonVersionSupported(versionOutput)) {
     const parsed = parsePythonVersion(versionOutput);
     const detected = parsed ? parsed.raw : versionOutput || "unknown";
-    throw new Error(`Python 3.10 or newer is required for Aegis. Detected: ${detected}.`);
+    throw new Error(`Python 3.10 through 3.12 is required for Aegis. Detected: ${detected}.`);
   }
   logMessages.push(`[Aegis] ${versionOutput} found via ${python.label} (${Date.now() - startedAt}ms)`);
 }
@@ -357,7 +357,7 @@ async function resolveSupportedPython(
 
   throw new Error(
     [
-      "Python 3.10 or newer is required for Aegis, but no supported interpreter was found.",
+      "Python 3.10 through 3.12 is required for Aegis, but no supported interpreter was found.",
       `Tried: ${tried.join(", ")}.`,
       lastError ? `Last error: ${lastError}` : "",
       unsupported.length > 0 ? `Probe details: ${unsupported.join("; ")}` : "",

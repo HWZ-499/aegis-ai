@@ -15,7 +15,7 @@ JavaScript/TypeScript SQL 注入 AST 规则（新规则架构）。
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from ...base import (
     AnalysisContext,
@@ -263,7 +263,7 @@ class JavaScriptSQLInjectionAstRule(SecurityRule):
     def _get_node_text(node: Node) -> str | None:
         """提取节点的文本内容。"""
         if hasattr(node, "text"):
-            return node.text.decode("utf-8")
+            return cast(bytes, node.text).decode("utf-8")
         return None
 
     @staticmethod

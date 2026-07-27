@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "baseline_scanner_revision": "d51bd8b946492fe1799f431b45c1da070a35cbc1",
+  "sample_count": 3,
+  "environment": {
+    "python": "3.11.0",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel"
+  },
+  "budget_policy": "Quality counts may not regress. Time uses at least 1 second or 1.5x the observed maximum. Peak RSS uses at least 64 MiB or 1.25x the observed maximum.",
+  "targets": {
+    "DVWA": {
+      "target_revision": "33e364c556e91473a5e979a4db16ee3b393d05ba",
+      "ground_truth_sha256": "ca7b1f6eac6481a18d7e5011670a133e6ccb68fefd446b420af2baee2a0e28cb",
+      "quality": {"min_tp": 23, "max_fp": 29, "max_fn": 0, "min_tn": 4},
+      "observed": {"median_seconds": 2.342, "max_seconds": 2.609, "median_peak_rss_mb": 59.188, "max_peak_rss_mb": 62.762},
+      "performance": {"max_scan_duration_seconds": 4.0, "max_process_peak_rss_mb": 80.0}
+    },
+    "NodeGoat": {
+      "target_revision": "c5cb68a7084e4ae7dcc60e6a98768720a81841e8",
+      "ground_truth_sha256": "dd5a525953802218f83b632cf933b3759d6ebaaa7c7015e5973d894c9538e0a4",
+      "quality": {"min_tp": 12, "max_fp": 2, "max_fn": 0, "min_tn": 0},
+      "observed": {"median_seconds": 0.237, "max_seconds": 0.268, "median_peak_rss_mb": 53.340, "max_peak_rss_mb": 53.582},
+      "performance": {"max_scan_duration_seconds": 1.0, "max_process_peak_rss_mb": 68.0}
+    },
+    "body-parser-1.20.0": {
+      "target_revision": "1f6f58e1f8dc222f2b6cfc7eb3a3bf5145ff2b56",
+      "ground_truth_sha256": "e9be9cff99a7ec83c429eebd9fdc80b100b6966f43656edf65bea76fb153fc55",
+      "quality": {"min_tp": 0, "max_fp": 0, "max_fn": 0, "min_tn": 0},
+      "observed": {"median_seconds": 0.317, "max_seconds": 0.319, "median_peak_rss_mb": 59.902, "max_peak_rss_mb": 59.953},
+      "performance": {"max_scan_duration_seconds": 1.0, "max_process_peak_rss_mb": 75.0}
+    },
+    "express-4.18.1": {
+      "target_revision": "d854c43ea177d1faeea56189249fff8c24a764bd",
+      "ground_truth_sha256": "33f8e3bfc83a0ea0b584f4fb3c48140e36c2c0d6937e736aaf2cc4561e3e5d74",
+      "quality": {"min_tp": 0, "max_fp": 24, "max_fn": 0, "min_tn": 0},
+      "observed": {"median_seconds": 1.500, "max_seconds": 1.502, "median_peak_rss_mb": 70.027, "max_peak_rss_mb": 71.676},
+      "performance": {"max_scan_duration_seconds": 2.3, "max_process_peak_rss_mb": 90.0}
+    },
+    "flask-2.3.2": {
+      "target_revision": "f3b8f570545200c87465d18386f3fc9f2258307a",
+      "ground_truth_sha256": "81777835f755789f376afd2ff76d96ce38cbd4a8b28fb00acaab9502b2906e58",
+      "quality": {"min_tp": 0, "max_fp": 10, "max_fn": 0, "min_tn": 1},
+      "observed": {"median_seconds": 1.210, "max_seconds": 1.211, "median_peak_rss_mb": 71.023, "max_peak_rss_mb": 73.105},
+      "performance": {"max_scan_duration_seconds": 1.9, "max_process_peak_rss_mb": 92.0}
+    },
+    "go-insecure-web-app": {
+      "target_revision": "6209c83a6f5a170d516b79eef2b46fa2fe6cd015",
+      "ground_truth_sha256": "bd5347a5d1995e6ab890cfc5c77bc17212e09b3a588739a39261232ded39d13e",
+      "quality": {"min_tp": 3, "max_fp": 0, "max_fn": 0, "min_tn": 2},
+      "observed": {"median_seconds": 0.068, "max_seconds": 0.070, "median_peak_rss_mb": 49.156, "max_peak_rss_mb": 49.289},
+      "performance": {"max_scan_duration_seconds": 1.0, "max_process_peak_rss_mb": 64.0}
+    },
+    "django-3.2": {
+      "target_revision": "b6475d7d7940f3ce575e0b0f2d83e517f899b4cf",
+      "ground_truth_sha256": "9041cf468016f68899f48701e145e31d1d8b189c9d216c5efdd01373ace829e6",
+      "quality": {"min_tp": 0, "max_fp": 136, "max_fn": 1, "min_tn": 7},
+      "observed": {"median_seconds": 39.362, "max_seconds": 40.142, "median_peak_rss_mb": 141.508, "max_peak_rss_mb": 142.473},
+      "performance": {"max_scan_duration_seconds": 61.0, "max_process_peak_rss_mb": 180.0}
+    },
+    "java-deserialization-demo": {
+      "target_revision": "8bffd34ecb1d5d7a83a9b56c49f578cd4407457c",
+      "ground_truth_sha256": "28863ae2bcc9874730ddc47cdf7909b17d9634683b334e69ec56056bff1f9c42",
+      "quality": {"min_tp": 1, "max_fp": 0, "max_fn": 0, "min_tn": 1},
+      "observed": {"median_seconds": 0.056, "max_seconds": 0.063, "median_peak_rss_mb": 48.945, "max_peak_rss_mb": 49.035},
+      "performance": {"max_scan_duration_seconds": 1.0, "max_process_peak_rss_mb": 64.0}
+    }
+  }
+}

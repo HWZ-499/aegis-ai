@@ -172,8 +172,11 @@ class IncrementalScanner:
         Returns:
             扫描结果字典
         """
-        self.scanner._reset_scan_state()
+        with self.scanner.scan_session():
+            return self._scan_incremental_impl(verbose)
 
+    def _scan_incremental_impl(self, verbose: bool = False) -> dict[str, list[dict]]:
+        """Execute an incremental scan inside the scanner lifecycle."""
         # 获取修改的文件
         changed_files = self.get_changed_files()
 

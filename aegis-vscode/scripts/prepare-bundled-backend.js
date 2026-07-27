@@ -98,12 +98,14 @@ function writeBackendManifest() {
 
 function main() {
   assertExists(path.join(coreRoot, "pyproject.toml"), "aegis-ai-core pyproject.toml");
+  assertExists(path.join(coreRoot, "README.md"), "aegis-ai-core package README");
   assertExists(path.join(coreRoot, "src", "lsp", "__main__.py"), "Aegis LSP entry point");
 
   fs.rmSync(targetRoot, { recursive: true, force: true });
   fs.mkdirSync(targetRoot, { recursive: true });
 
   fs.copyFileSync(path.join(coreRoot, "pyproject.toml"), path.join(targetRoot, "pyproject.toml"));
+  fs.copyFileSync(path.join(coreRoot, "README.md"), path.join(targetRoot, "README.md"));
   copyRecursive(path.join(coreRoot, "src"), path.join(targetRoot, "src"));
   writeBackendManifest();
 

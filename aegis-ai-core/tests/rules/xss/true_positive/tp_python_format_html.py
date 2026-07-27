@@ -12,4 +12,3 @@ def mark_safe(value: str) -> str:
 def vulnerable_xss(user_input: str) -> str:
     # 用户输入未经任何转义直接传给 mark_safe
     return mark_safe(user_input)
-

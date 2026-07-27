@@ -18,8 +18,9 @@
 
 <p align="center">
   <a href="https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml"><img alt="Security Scan" src="https://github.com/HWZ-499/aegis-ai/actions/workflows/security-scan.yml/badge.svg"></a>
-  <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-2563eb">
-  <img alt="VS Code 0.6.1" src="https://img.shields.io/badge/VS%20Code-0.6.1-16a34a">
+  <img alt="Python 3.10-3.12" src="https://img.shields.io/badge/Python-3.10--3.12-2563eb">
+  <img alt="Aegis Core 1.5.0" src="https://img.shields.io/badge/Core-1.5.0-7c3aed">
+  <img alt="VS Code 0.6.7" src="https://img.shields.io/badge/VS%20Code-0.6.7-16a34a">
   <img alt="License MIT" src="https://img.shields.io/badge/License-MIT-111827">
 </p>
 
@@ -41,7 +42,7 @@ Aegis AI catches common application security issues while you write code. It run
 |---|---|
 | JavaScript / TypeScript | AST rules, taint-aware checks, IDE and CLI support |
 | Python | AST rules, framework-aware sources and sinks, IDE and CLI support |
-| PHP | AST rules plus focused supplemental checks for legacy PHP patterns |
+| PHP | Tree-sitter AST rules and taint-aware checks |
 | Java / Go | Core multi-language rule support |
 | C / C++ | Basic scan path support; not yet full AST or taint coverage |
 
@@ -89,16 +90,14 @@ python -m src.scanner.cli C:\path\to\project --format sarif --output results.sar
 
 ## Quality Signals
 
-Current tracked benchmark summary:
+Latest reproducible real-project baseline:
 
-| Target | Language | Recall | Precision | F1 |
-|---|---:|---:|---:|---:|
-| NodeGoat | JavaScript | 100.0% | 100.0% | 1.00 |
-| django-3.2-core | Python | 92.3% | 92.3% | 0.92 |
-| DVWA | PHP | 100.0% | 57.1% | 0.73 |
-| flask-2.3.2 | Python | 66.7% | 50.0% | 0.57 |
+| Target | Snapshot | Language | Recall | Precision | F1 |
+|---|---|---:|---:|---:|---:|
+| DVWA | 2026-07-12 | PHP | 100.0% | 44.2% | 0.61 |
+| NodeGoat | 2026-07-12 | JavaScript | 100.0% | 85.7% | 0.92 |
 
-See [Detection Quality](docs/technical/DETECTION_QUALITY.md) for the evaluation workflow and regression process.
+These clean-worktree reports record scanner/target revisions, dirty state, ground-truth SHA-256, runtime environment, scan duration, peak RSS, and auditable TP/FP/FN/TN details. Historical reports under `aegis-ai-core/scripts/reports/` are not comparable unless rerun with the same provenance contract. See [Detection Quality](docs/technical/DETECTION_QUALITY.md) for the evaluation workflow and regression process.
 
 ## Repository
 
@@ -123,6 +122,13 @@ npm run check
 ```
 
 Rule behavior changes should include focused true-positive or false-positive fixtures under `aegis-ai-core/tests/rules/`.
+
+## Community
+
+- [Contributing guide](CONTRIBUTING.md)
+- [YAML DSL rule authoring](docs/technical/DSL_RULE_AUTHORING.md)
+- [Community rule template](aegis-ai-core/templates/rules/community-rule.yaml)
+- [Security policy](SECURITY.md)
 
 ## License
 

@@ -3,7 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.analysis.analyzers.javascript_analyzer import JavaScriptAnalyzer
-from src.scanner.benchmark import evaluate_project_against_ground_truth, run_benchmark
+from src.scanner.benchmark import (
+    BenchmarkResult,
+    QualityThresholds,
+    _expected_ground_truth_lines,
+    evaluate_project_against_ground_truth,
+    format_report_json,
+    format_report_md,
+    quality_gate_violations,
+    run_benchmark,
+)
 from src.scanner.benchmark_cases import BENCH_CASES_TP, BenchCase
 
 
@@ -27,13 +36,14 @@ def test_run_benchmark_dispatches_typescript_case_with_ts_context(monkeypatch) -
     """
     captured: dict[str, object] = {}
 
-    def fake_analyze_javascript(
+    def fake_analyze_source(
         code: str,
         file_path: Path | str,
-        language: str = "javascript",
+        language: str | None = None,
         include_dsl: bool = True,
         extra_rule_dirs: list[Path] | None = None,
         rules_allowed_root: Path | None = None,
+        dsl_rule_definitions=None,
     ) -> list[dict]:
         captured["code"] = code
         captured["file_path"] = str(file_path)
@@ -42,9 +52,9 @@ def test_run_benchmark_dispatches_typescript_case_with_ts_context(monkeypatch) -
             return [{"type": "SQL_INJECTION"}]
         return []
 
-    import src.analysis.rule_engine as rule_engine_module
+    import src.scanner.benchmark as benchmark_module
 
-    monkeypatch.setattr(rule_engine_module, "analyze_javascript", fake_analyze_javascript)
+    monkeypatch.setattr(benchmark_module, "analyze_source", fake_analyze_source)
 
     case = BenchCase(
         id="TP-TS-SQL-01",
@@ -62,6 +72,80 @@ def test_run_benchmark_dispatches_typescript_case_with_ts_context(monkeypatch) -
     assert result.fn == 0
     assert captured["file_path"] == "benchmark.ts"
     assert captured["language"] == "typescript"
+
+
+def test_benchmark_result_records_language_category_matrix() -> None:
+    cases = [
+        BenchCase(
+            id="TP-PY-DESER",
+            category="DESERIALIZATION",
+            pattern="pickle",
+            description="Python pickle",
+            code="import pickle\npickle.loads(data)\n",
+            expect_finding=True,
+            language="python",
+        ),
+        BenchCase(
+            id="TN-JS-XSS",
+            category="XSS_RISK",
+            pattern="text_content",
+            description="Safe DOM write",
+            code="element.textContent = userInput;",
+            expect_finding=False,
+            language="javascript",
+        ),
+    ]
+
+    result = run_benchmark(cases)
+    report = format_report_json(result)
+
+    assert result.by_language["python"]["tp"] == 1
+    assert result.by_language["javascript"]["tn"] == 1
+    assert result.by_language_category["python"]["DESERIALIZATION"]["tp"] == 1
+    assert report["by_language_category"] == result.by_language_category
+
+
+def test_quality_gate_reports_overall_and_language_regressions() -> None:
+    result = BenchmarkResult(tp=8, fp=2, fn=2, tn=8)
+    result.by_language = {
+        "javascript": {"tp": 8, "tn": 8, "fp": 2, "fn": 2},
+    }
+    thresholds = QualityThresholds(
+        min_recall=0.9,
+        min_precision=0.9,
+        min_f1=0.9,
+        max_fpr=0.1,
+    )
+
+    violations = quality_gate_violations(result, thresholds, per_language=True)
+
+    assert any(item.startswith("overall recall=") for item in violations)
+    assert any(item.startswith("language:javascript precision=") for item in violations)
+    assert any(item.startswith("language:javascript fpr=") for item in violations)
+
+
+def test_quality_gate_skips_undefined_positive_metrics_for_negative_only_scope() -> None:
+    result = BenchmarkResult(tn=3)
+    result.by_category = {
+        "XSS_RISK": {"tp": 0, "tn": 3, "fp": 0, "fn": 0},
+    }
+    thresholds = QualityThresholds(
+        min_recall=1.0,
+        min_precision=1.0,
+        min_f1=1.0,
+        max_fpr=0.0,
+    )
+
+    assert quality_gate_violations(result, thresholds, per_category=True) == []
+
+
+def test_expected_ground_truth_lines_ignores_invalid_values_and_dedupes() -> None:
+    assert _expected_ground_truth_lines(
+        {
+            "line_candidates": ["20", "bad", -1, True, 20],
+            "line": "47",
+        }
+    ) == [20, 47]
 
 
 def test_javascript_analyzer_uses_typescript_parser_for_typescript() -> None:
@@ -159,3 +243,64 @@ def test_evaluate_project_matches_line_candidates(monkeypatch, tmp_path: Path) -
     result = evaluate_project_against_ground_truth(project_dir, ground_truth, engine="new")
     assert result.tp == 1
     assert result.fn == 0
+    assert result.details == [
+        {
+            "verdict": "TP",
+            "ground_truth_index": 0,
+            "expected": ground_truth[0],
+            "finding": {
+                "type": "XSS_RISK",
+                "line": 20,
+                "file": "vulnerabilities/sqli/source/low.php",
+            },
+        }
+    ]
+
+
+def test_evaluate_project_reports_unmatched_findings_for_fp_review(monkeypatch, tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    class FakeScanner:
+        def __init__(self, project_path: str, **kwargs) -> None:
+            pass
+
+        def scan_project(self, verbose: bool = False):
+            return {
+                "src/demo.py": [
+                    {
+                        "type": "RCE_COMMAND_EXEC",
+                        "rule_id": "PY_RCE",
+                        "severity": "High",
+                        "line": 8,
+                        "details": "user data reaches exec",
+                        "file_path": "ignored-absolute-path",
+                    }
+                ]
+            }
+
+    import src.scanner.project_scanner as project_scanner_module
+
+    monkeypatch.setattr(project_scanner_module, "ProjectScanner", FakeScanner)
+
+    result = evaluate_project_against_ground_truth(project_dir, [], engine="new")
+
+    assert result.fp == 1
+    assert result.details == [
+        {
+            "verdict": "FP",
+            "ground_truth_index": None,
+            "expected": None,
+            "finding": {
+                "type": "RCE_COMMAND_EXEC",
+                "rule_id": "PY_RCE",
+                "severity": "High",
+                "line": 8,
+                "details": "user data reaches exec",
+                "file": "src/demo.py",
+            },
+        }
+    ]
+    report = format_report_md(result, target_name="demo")
+    assert "| # | 判定 | 漏洞类型 | 位置 | 规则 | 说明 |" in report
+    assert "| 1 | FP | RCE_COMMAND_EXEC | src/demo.py:8 | PY_RCE | user data reaches exec |" in report

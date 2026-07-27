@@ -1,10 +1,10 @@
-# Publish VS Code extension .vsix on version tag
+# Package the VS Code extension on a component-scoped version tag
 name: Publish Extension
 
 on:
   push:
     tags:
-      - "v*"
+      - "vscode-v*"
 
 jobs:
   package:
@@ -20,6 +20,9 @@ jobs:
       - name: Release consistency check
         run: python aegis-ai-core/scripts/check_release_consistency.py
 
+      - name: Release tag matches extension version
+        run: python aegis-ai-core/scripts/check_release_tag.py vscode "${GITHUB_REF_NAME}"
+
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
@@ -31,10 +34,20 @@ jobs:
           cd aegis-vscode
           npm ci
 
+      - name: Audit all dependencies
+        run: |
+          cd aegis-vscode
+          npm audit --audit-level=low
+
       - name: Type check
         run: |
           cd aegis-vscode
           npm run check
+
+      - name: Extension tests
+        run: |
+          cd aegis-vscode
+          xvfb-run -a npm test
 
       - name: Compile
         run: |
@@ -46,8 +59,18 @@ jobs:
           cd aegis-vscode
           npx vsce package --no-dependencies
 
+      - name: Check VSIX contents
+        run: python aegis-ai-core/scripts/check_distribution.py aegis-vscode/*.vsix
+
       - name: Upload .vsix artifact
         uses: actions/upload-artifact@v4
         with:
           name: aegis-ai-security-vsix
           path: aegis-vscode/*.vsix
+
+      - name: Publish to VS Code Marketplace
+        run: |
+          cd aegis-vscode
+          npx vsce publish --packagePath *.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}

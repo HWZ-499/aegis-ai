@@ -19,7 +19,7 @@ Python XSS 风险 AST 规则（污点感知版）。
 from __future__ import annotations
 
 import ast
-from typing import Any
+from typing import Any, cast
 
 from ...base import AnalysisContext, SecurityRule
 
@@ -139,7 +139,7 @@ def _collect_import_aliases(tree: ast.AST) -> tuple[dict[str, str], dict[str, st
 def _resolve_name_qualname(name: str, context: AnalysisContext | None = None) -> str:
     if context is None:
         return name
-    module_aliases = context.extras.get("python_xss_module_aliases", {})
+    module_aliases = cast(dict[str, str], context.extras.get("python_xss_module_aliases", {}))
     return module_aliases.get(name, name)
 
 
@@ -148,7 +148,7 @@ def _resolve_call_qualname(func: ast.AST, context: AnalysisContext | None = None
     if isinstance(func, ast.Name):
         function_aliases = {}
         if context is not None:
-            function_aliases = context.extras.get("python_xss_function_aliases", {})
+            function_aliases = cast(dict[str, str], context.extras.get("python_xss_function_aliases", {}))
         return function_aliases.get(func.id, func.id)
 
     if isinstance(func, ast.Attribute):

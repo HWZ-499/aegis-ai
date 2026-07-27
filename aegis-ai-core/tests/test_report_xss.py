@@ -214,6 +214,91 @@ class TestSARIFReport:
         assert invocation["executionSuccessful"] is False
         assert invocation["toolExecutionNotifications"][0]["message"]["text"] == "app.py: parser unavailable"
 
+    def test_sarif_code_flow_is_structured_and_normalized(self, generator) -> None:
+        """Code Flow must use the same rule descriptor and valid SARIF locations."""
+        import json
+
+        results = {
+            r"src\app.py": [
+                {
+                    "line": 0,
+                    "column": 0,
+                    "end_line": 0,
+                    "end_column": 0,
+                    "type": "SQL_INJECTION",
+                    "rule_id": "python.sql-injection.taint",
+                    "severity": "High",
+                    "details": "tainted query",
+                    "cwe_id": "CWE-89",
+                    "taint_analysis": {
+                        "full_path": {
+                            "nodes": [
+                                {
+                                    "nodeType": "SOURCE",
+                                    "name": "request.args",
+                                    "filePath": r"src\app.py",
+                                    "line": 0,
+                                    "column": 0,
+                                },
+                                {
+                                    "nodeType": "SINK",
+                                    "name": "cursor.execute",
+                                    "filePath": r"C:\repo\src\db.py",
+                                    "line": 12,
+                                    "column": 4,
+                                },
+                            ]
+                        }
+                    },
+                }
+            ]
+        }
+        output = generator.generate_sarif(results, {"scanner_version": "1.4.0"})
+        data = json.loads(output)
+        run = data["runs"][0]
+        result = run["results"][0]
+
+        assert result["ruleId"] == "python.sql-injection.taint"
+        assert run["tool"]["driver"]["rules"][0]["id"] == result["ruleId"]
+        assert run["tool"]["driver"]["rules"][0]["properties"]["vulnerabilityType"] == "SQL_INJECTION"
+        assert result["locations"][0]["physicalLocation"] == {
+            "artifactLocation": {"uri": "src/app.py", "uriBaseId": "%SRCROOT%"},
+            "region": {
+                "startLine": 1,
+                "startColumn": 1,
+                "endLine": 1,
+                "endColumn": 1,
+            },
+        }
+
+        thread_locations = result["codeFlows"][0]["threadFlows"][0]["locations"]
+        assert thread_locations[0]["location"]["physicalLocation"] == {
+            "artifactLocation": {"uri": "src/app.py", "uriBaseId": "%SRCROOT%"},
+            "region": {"startLine": 1, "startColumn": 1},
+        }
+        assert thread_locations[1]["location"]["physicalLocation"] == {
+            "artifactLocation": {"uri": "file:///C:/repo/src/db.py"},
+            "region": {"startLine": 12, "startColumn": 4},
+        }
+
+    def test_sarif_skips_invalid_code_flow_nodes(self, generator) -> None:
+        """Malformed path nodes must not create an invalid empty Code Flow."""
+        import json
+
+        results = {
+            "app.py": [
+                {
+                    "line": 1,
+                    "type": "RCE_COMMAND_EXEC",
+                    "severity": "Critical",
+                    "taint_analysis": {"full_path": {"nodes": [None, "invalid"]}},
+                }
+            ]
+        }
+        result = json.loads(generator.generate_sarif(results, {}))["runs"][0]["results"][0]
+
+        assert "codeFlows" not in result
+
 
 def test_rule_engine_analyzer_failure_is_not_silent(monkeypatch: pytest.MonkeyPatch) -> None:
     """Analyzer failures must propagate so callers can report partial scans."""

@@ -1,0 +1,90 @@
+{
+  "target": "java-deserialization-demo",
+  "date": "2026-07-12",
+  "metrics": {
+    "tp": 1,
+    "fp": 0,
+    "fn": 0,
+    "tn": 1,
+    "recall": 1.0,
+    "precision": 1.0,
+    "fpr": 0.0,
+    "f1": 1.0
+  },
+  "by_category": {
+    "DESERIALIZATION": {
+      "tp": 1,
+      "tn": 1,
+      "fp": 0,
+      "fn": 0
+    }
+  },
+  "by_language": {},
+  "by_language_category": {},
+  "details": [
+    {
+      "verdict": "TP",
+      "ground_truth_index": 0,
+      "expected": {
+        "file": "src/com/example/vulnerable/VulnerableServer.java",
+        "line": 20,
+        "type": "DESERIALIZATION",
+        "is_true_positive": true
+      },
+      "finding": {
+        "type": "DESERIALIZATION",
+        "rule_id": "DESERIALIZATION_JAVA_TAINT",
+        "severity": "High",
+        "confidence": 0.5,
+        "line": 20,
+        "column": 0,
+        "end_line": 20,
+        "language": "java",
+        "details": "检测到 readObject() 调用中存在不安全的反序列化操作，可能导致任意代码执行，建议改用安全数据格式或加入类型白名单校验。",
+        "file": "src\\com\\example\\vulnerable\\VulnerableServer.java"
+      }
+    },
+    {
+      "verdict": "TN",
+      "ground_truth_index": 1,
+      "expected": {
+        "file": "src/com/example/secure/SecureServer.java",
+        "line": 50,
+        "type": "DESERIALIZATION",
+        "is_true_positive": false
+      },
+      "finding": null
+    }
+  ],
+  "scope": {
+    "input_entries": 2,
+    "evaluated_entries": 2,
+    "include_out_of_scope": false,
+    "include_invalid_ground_truth": false,
+    "excluded_entries": [],
+    "invalid_entries": []
+  },
+  "performance": {
+    "scan_duration_seconds": 0.066732,
+    "rss_before_mb": 44.66,
+    "rss_after_mb": 48.602,
+    "rss_delta_mb": 3.941,
+    "process_peak_rss_mb": 48.797
+  },
+  "provenance": {
+    "engine": "new",
+    "reproducible": true,
+    "scanner_revision": "d51bd8b946492fe1799f431b45c1da070a35cbc1",
+    "scanner_dirty": false,
+    "scanner_diff_sha256": null,
+    "target_revision": "8bffd34ecb1d5d7a83a9b56c49f578cd4407457c",
+    "target_subdir": "java-deserialization-demo",
+    "target_dirty": false,
+    "target_diff_sha256": null,
+    "ground_truth": "scripts/data/ground_truth_java_deserialization_demo.json",
+    "ground_truth_sha256": "28863ae2bcc9874730ddc47cdf7909b17d9634683b334e69ec56056bff1f9c42",
+    "python_version": "3.11.0",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel"
+  }
+}

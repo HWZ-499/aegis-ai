@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from src.analysis.dsl import load_dsl_rule_definitions
 from src.scanner.project_scanner import ProjectScanner
 
 
@@ -57,6 +58,17 @@ def test_default_scan_still_skips_dependency_and_build_directories(tmp_path: Pat
     assert "node_modules/pkg/index.js" not in discovered_rel
     assert "dist/app.js" not in discovered_rel
     assert "build/main.py" not in discovered_rel
+
+
+def test_source_reader_preserves_universal_newlines_and_ignores_invalid_utf8(tmp_path: Path) -> None:
+    source_file = tmp_path / "mixed.py"
+    source_file.write_bytes(
+        b"first" + bytes([13, 10]) + b"second" + bytes([13]) + b"third" + bytes([10]) + b"invalid:" + bytes([255, 10])
+    )
+
+    source = ProjectScanner._read_source_file(source_file)
+
+    assert source == "first\nsecond\nthird\ninvalid:\n"
 
 
 def test_scan_project_applies_extra_php_dsl_rules(tmp_path: Path) -> None:
@@ -184,6 +196,11 @@ def test_scan_project_resets_state_and_returns_stable_snapshots(tmp_path: Path) 
     assert second_stats["total_issues"] == 1
 
 
+def test_project_scanner_rejects_removed_legacy_engine(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="legacy scan engine has been removed"):
+        ProjectScanner(str(tmp_path), engine="legacy")
+
+
 def test_scan_project_reports_partial_scan_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Analyzer failures must be visible in scan stats, not reported as a clean scan."""
     file_path = tmp_path / "app.py"
@@ -192,7 +209,7 @@ def test_scan_project_reports_partial_scan_errors(tmp_path: Path, monkeypatch: p
     def fail_analyzer(*args, **kwargs):
         raise RuntimeError("parser unavailable")
 
-    monkeypatch.setattr("src.scanner.project_scanner.analyze_python_new", fail_analyzer)
+    monkeypatch.setattr("src.scanner.project_scanner.analyze_source", fail_analyzer)
 
     scanner = ProjectScanner(str(tmp_path), use_cache=False, use_parallel=False)
     results = scanner.scan_project()
@@ -210,3 +227,100 @@ def test_scan_project_reports_partial_scan_errors(tmp_path: Path, monkeypatch: p
             "message": "parser unavailable",
         }
     ]
+
+
+def test_parallel_scan_reports_each_worker_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Parallel worker failures must all be retained in the scan summary."""
+    for name in ("first.py", "second.py"):
+        (tmp_path / name).write_text("print('ok')\n", encoding="utf-8")
+
+    def fail_analyzer(*args, **kwargs):
+        raise RuntimeError("parser unavailable")
+
+    monkeypatch.setattr("src.scanner.project_scanner.analyze_source", fail_analyzer)
+
+    scanner = ProjectScanner(
+        str(tmp_path),
+        use_cache=False,
+        use_parallel=True,
+        max_workers=2,
+    )
+    results = scanner.scan_project()
+    stats = scanner.get_stats()
+
+    assert results == {}
+    assert stats["scanned_files"] == 2
+    assert stats["partial"] is True
+    assert stats["error_count"] == 2
+    assert sorted(error["file"] for error in stats["errors"]) == ["first.py", "second.py"]
+
+
+def test_project_scan_loads_dsl_definitions_once_for_all_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for index in range(3):
+        (tmp_path / f"app_{index}.py").write_text("print('ok')\n", encoding="utf-8")
+
+    load_calls = 0
+
+    def counted_loader(*args, **kwargs):
+        nonlocal load_calls
+        load_calls += 1
+        return load_dsl_rule_definitions(*args, **kwargs)
+
+    monkeypatch.setattr("src.scanner.project_scanner.load_dsl_rule_definitions", counted_loader)
+
+    scanner = ProjectScanner(str(tmp_path), use_cache=False, use_parallel=True, max_workers=2)
+    scanner.scan_project()
+
+    assert load_calls == 1
+    assert scanner._dsl_rule_definitions is None
+
+
+def test_scan_session_releases_transient_state_but_keeps_persistent_cache(tmp_path: Path) -> None:
+    source_file = tmp_path / "app.py"
+    source_file.write_text("print('ok')\n", encoding="utf-8")
+    scanner = ProjectScanner(str(tmp_path), use_cache=True, use_parallel=False)
+    assert scanner.optimizer is not None
+    assert scanner.optimizer.cache is not None
+    persistent_cache = scanner.optimizer.cache
+    persistent_cache.save_result(source_file, [{"type": "TEST"}], rules_version_hash="rules-v1")
+
+    with pytest.raises(RuntimeError, match="stop scan"):
+        with scanner.scan_session():
+            assert scanner._dsl_rule_definitions is not None
+            scanner._source_snapshot[source_file.resolve()] = "print('ok')\n"
+            raise RuntimeError("stop scan")
+
+    assert scanner._source_snapshot == {}
+    assert scanner._dsl_rule_definitions is None
+    assert scanner.optimizer.cache is persistent_cache
+    assert persistent_cache.get_cached_result(source_file, rules_version_hash="rules-v1") == [{"type": "TEST"}]
+    assert scanner.get_stats()["scan_time"] is not None
+
+
+def test_project_scan_cleans_session_when_cross_file_analysis_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_file = tmp_path / "app.py"
+    source_file.write_text("print('ok')\n", encoding="utf-8")
+    scanner = ProjectScanner(
+        str(tmp_path),
+        use_cache=False,
+        use_parallel=False,
+        use_cross_file=True,
+    )
+
+    def fail_cross_file(*args, **kwargs):
+        scanner._source_snapshot[source_file.resolve()] = "temporary"
+        raise RuntimeError("cross-file failed")
+
+    monkeypatch.setattr(scanner, "_merge_cross_file_findings", fail_cross_file)
+
+    with pytest.raises(RuntimeError, match="cross-file failed"):
+        scanner.scan_project()
+
+    assert scanner._source_snapshot == {}
+    assert scanner._dsl_rule_definitions is None

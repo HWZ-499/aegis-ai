@@ -18,6 +18,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
 
 # Aegis 运行时缓存（扫描 AST 缓存，不进版本控制）
 aegis-ai-core/src/.aegis-cache/
@@ -63,6 +64,10 @@ aegis-ai-core/cve_crawler.log
 
 # 调试脚本输出
 aegis-ai-core/debug-*.log
+
+# 课程报告与本地交付物（不属于产品源码）
+tmp/
+deliverables/
 
 # 真实世界测试靶场（嵌套 git 仓库，不作为 submodule）
 aegis-ai-core/real_world_targets/

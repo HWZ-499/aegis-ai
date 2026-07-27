@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
@@ -144,12 +145,14 @@ class OpenAICompatibleProvider:
             )
             response = client.chat.completions.create(
                 model=model,
-                messages=request.messages,
+                # Provider-neutral message dictionaries are runtime-compatible with
+                # every supported OpenAI SDK, whose generated union types vary by version.
+                messages=cast(Any, request.messages),
                 temperature=request.temperature,
                 max_tokens=request.max_tokens,
                 timeout=request.timeout,
             )
-        except Exception as exc:
+        except Exception as exc:  # Boundary: optional SDK versions expose different exception classes.
             raise self._classify_error(exc) from exc
 
         content = response.choices[0].message.content or ""
@@ -179,7 +182,7 @@ class LLMGateway:
 
     def __init__(
         self,
-        providers: list[LLMProvider] | None = None,
+        providers: Iterable[LLMProvider] | None = None,
         fallback_order: list[str] | None = None,
     ) -> None:
         self._providers: dict[str, LLMProvider] = {}
@@ -242,7 +245,7 @@ class LLMGateway:
                 continue
             try:
                 return provider.generate(request)
-            except Exception as exc:
+            except Exception as exc:  # Boundary: third-party provider plugins must not block fallback.
                 if isinstance(exc, LLMProviderError):
                     message = f"{name}({exc.error_code}): {exc}"
                 else:

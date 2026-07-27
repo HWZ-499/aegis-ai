@@ -1,16 +1,17 @@
-# Publish aegis-ai-core to PyPI on version tag (Trusted Publishing)
+# Publish aegis-ai-core to PyPI on a component-scoped version tag (Trusted Publishing)
 name: Publish to PyPI
 
 on:
   push:
     tags:
-      - "v*"
+      - "core-v*"
 
 jobs:
   publish:
     name: Build and publish to PyPI
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v6
@@ -21,6 +22,9 @@ jobs:
 
       - name: Release consistency check
         run: python aegis-ai-core/scripts/check_release_consistency.py
+
+      - name: Release tag matches core version
+        run: python aegis-ai-core/scripts/check_release_tag.py core "${GITHUB_REF_NAME}"
 
       - name: Install build tools
         run: pip install build twine
@@ -33,7 +37,47 @@ jobs:
       - name: Check distribution
         run: |
           cd aegis-ai-core
+          python scripts/check_distribution.py dist/*
           twine check dist/*
+
+      - name: Smoke test installed wheel
+        shell: bash
+        run: |
+          python -m venv "${RUNNER_TEMP}/aegis-wheel-smoke"
+          "${RUNNER_TEMP}/aegis-wheel-smoke/bin/python" -m pip install aegis-ai-core/dist/*.whl
+          "${RUNNER_TEMP}/aegis-wheel-smoke/bin/python" - <<'PY'
+          import importlib
+          import importlib.metadata
+          import tomllib
+          from pathlib import Path
+
+          expected_version = tomllib.loads(
+              Path("aegis-ai-core/pyproject.toml").read_text(encoding="utf-8")
+          )["project"]["version"]
+          distribution = importlib.metadata.distribution("aegis-ai-core")
+          if distribution.version != expected_version:
+              raise SystemExit(
+                  f"Installed core version {distribution.version!r} does not match {expected_version!r}"
+              )
+
+          expected_scripts = {
+              "aegis": "src.scanner.cli:main",
+              "aegis-lsp": "src.lsp.__main__:main",
+              "aegis-scan": "src.scanner.cli:main",
+          }
+          actual_scripts = {
+              entry.name: entry.value
+              for entry in distribution.entry_points
+              if entry.group == "console_scripts"
+          }
+          if {name: actual_scripts.get(name) for name in expected_scripts} != expected_scripts:
+              raise SystemExit(f"Installed console scripts are invalid: {actual_scripts}")
+
+          importlib.import_module("src.scanner.cli")
+          importlib.import_module("src.lsp.__main__")
+          PY
+          "${RUNNER_TEMP}/aegis-wheel-smoke/bin/aegis" --help
+          "${RUNNER_TEMP}/aegis-wheel-smoke/bin/aegis-scan" --help
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

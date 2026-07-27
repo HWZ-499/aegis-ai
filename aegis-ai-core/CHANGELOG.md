@@ -1,0 +1,39 @@
+# Aegis Core changelog
+
+All notable Core changes are recorded here. Releases follow the
+[maintenance policy](../docs/MAINTENANCE.md).
+
+## 1.5.0 — prepared for release
+
+### Added
+
+- A canonical `analyze_source()` dispatch path shared by CLI, LSP, project
+  scanning, benchmarks, and compatibility adapters.
+- Clean-provenance real-project reports and machine-enforced accuracy, duration,
+  and peak-memory thresholds.
+- Python 3.10–3.12 compatibility gates and wheel/sdist content, metadata,
+  version, entry-point, and isolated-install checks.
+- A validated community YAML rule template and language-aware `aegis rules init`
+  skeleton checks.
+
+### Changed
+
+- Multi-language compatibility calls now delegate to the maintained rule engine;
+  unsupported languages return no generic regex findings.
+- Core packaging uses stable version 1.5.0 and component tag `core-v1.5.0`.
+- Python 3.10 development installs use the `tomli` compatibility parser, and
+  pytest fixes the async fixture loop scope instead of relying on a changing
+  plugin default.
+- Ruff and its pre-commit hook use the same pinned formatter version so clean
+  commits do not change status as the global tool resolver advances.
+- The PyPI Trusted Publisher step now consumes the same wheel that passed an
+  isolated installation, import, metadata, and CLI smoke test.
+
+### Removed
+
+- Deprecated `ast_analyzer`, `security_rules`, `rule_based_audit`, old PHP
+  `Php*Rule` exports, and the disconnected regex `RuleConfig` utility.
+
+See the [Aegis 1.5 migration guide](../docs/technical/V1_5_MIGRATION.md) for
+replacements. PyPI publication is an O9 distribution step; this entry records
+the stable source checkpoint.

@@ -6,8 +6,10 @@
 import html
 import json
 import logging
+import re
 from datetime import datetime
 from typing import Any
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,30 @@ def _scan_error_count(stats: dict) -> int:
 
 def _scan_is_partial(stats: dict) -> bool:
     return bool(stats.get("partial", False) or _scan_error_count(stats) > 0 or _scan_errors(stats))
+
+
+def _sarif_position(value: Any, default: int = 1) -> int:
+    """Return a positive SARIF line/column value."""
+    try:
+        position = int(value)
+    except (TypeError, ValueError):
+        return default
+    return position if position >= 1 else default
+
+
+def _sarif_artifact_location(file_path: Any) -> dict[str, str]:
+    """Build a portable SARIF artifact location from relative or absolute paths."""
+    normalized = str(file_path or "<unknown>").replace("\\", "/")
+    if re.match(r"^[A-Za-z]:/", normalized):
+        return {"uri": f"file:///{quote(normalized, safe='/:')}"}
+    if normalized.startswith("/"):
+        return {"uri": f"file://{quote(normalized, safe='/:')}"}
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return {
+        "uri": quote(normalized, safe="/:@"),
+        "uriBaseId": "%SRCROOT%",
+    }
 
 
 class ReportGenerator:
@@ -516,8 +542,7 @@ class ReportGenerator:
                     {
                         "physicalLocation": {
                             "artifactLocation": {
-                                "uri": error.get("file", "<unknown>"),
-                                "uriBaseId": "%SRCROOT%",
+                                **_sarif_artifact_location(error.get("file", "<unknown>")),
                             }
                         }
                     }
@@ -572,7 +597,8 @@ class ReportGenerator:
 
         for file_path, findings in results.items():
             for finding in findings:
-                rule_id = finding.get("type", "UNKNOWN")
+                vulnerability_type = str(finding.get("type") or "UNKNOWN")
+                rule_id = str(finding.get("rule_id") or vulnerability_type)
 
                 # Collect rule descriptor (deduped)
                 if rule_id not in rules_map:
@@ -580,7 +606,7 @@ class ReportGenerator:
                     help_text = finding.get("fix_suggestion") or finding.get("remediation") or ""
                     rule_desc: dict[str, Any] = {
                         "id": rule_id,
-                        "shortDescription": {"text": rule_id.replace("_", " ").title()},
+                        "shortDescription": {"text": vulnerability_type.replace("_", " ").title()},
                     }
                     if help_text:
                         rule_desc["help"] = {"text": help_text, "markdown": help_text}
@@ -590,12 +616,15 @@ class ReportGenerator:
                         rule_desc["helpUri"] = _cwe_uri.format(cwe_num)
                     else:
                         rule_desc["properties"] = {"tags": ["security"]}
+                    rule_desc["properties"]["vulnerabilityType"] = vulnerability_type
                     rules_map[rule_id] = rule_desc
 
-                start_line = finding.get("line", 1)
-                start_col = finding.get("column", 1) or 1
-                end_line = finding.get("end_line") or start_line
-                end_col = finding.get("end_column") or start_col
+                start_line = _sarif_position(finding.get("line"))
+                start_col = _sarif_position(finding.get("column"))
+                end_line = max(start_line, _sarif_position(finding.get("end_line"), start_line))
+                end_col = _sarif_position(finding.get("end_column"), start_col)
+                if end_line == start_line:
+                    end_col = max(start_col, end_col)
 
                 sarif_result: dict[str, Any] = {
                     "ruleId": rule_id,
@@ -604,7 +633,7 @@ class ReportGenerator:
                     "locations": [
                         {
                             "physicalLocation": {
-                                "artifactLocation": {"uri": file_path, "uriBaseId": "%SRCROOT%"},
+                                "artifactLocation": _sarif_artifact_location(file_path),
                                 "region": {
                                     "startLine": start_line,
                                     "startColumn": start_col,
@@ -624,16 +653,16 @@ class ReportGenerator:
                     if nodes:
                         locations = []
                         for node in nodes:
+                            if not isinstance(node, dict):
+                                continue
+                            node_file = node.get("filePath") or file_path
                             loc = {
                                 "location": {
                                     "physicalLocation": {
-                                        "artifactLocation": {
-                                            "uri": node.get("filePath", file_path),
-                                            "uriBaseId": "%SRCROOT%",
-                                        },
+                                        "artifactLocation": _sarif_artifact_location(node_file),
                                         "region": {
-                                            "startLine": node.get("line", 1),
-                                            "startColumn": node.get("column", 1) or 1,
+                                            "startLine": _sarif_position(node.get("line")),
+                                            "startColumn": _sarif_position(node.get("column")),
                                         },
                                     },
                                     "message": {
@@ -642,7 +671,8 @@ class ReportGenerator:
                                 }
                             }
                             locations.append(loc)
-                        sarif_result["codeFlows"] = [{"threadFlows": [{"locations": locations}]}]
+                        if locations:
+                            sarif_result["codeFlows"] = [{"threadFlows": [{"locations": locations}]}]
 
                 sarif_results.append(sarif_result)
 

@@ -1,0 +1,257 @@
+{
+  "target": "flask-2.3.2",
+  "date": "2026-07-12",
+  "metrics": {
+    "tp": 0,
+    "fp": 10,
+    "fn": 0,
+    "tn": 1,
+    "recall": 0.0,
+    "precision": 0.0,
+    "fpr": 0.9091,
+    "f1": 0.0
+  },
+  "by_category": {
+    "RCE_COMMAND_EXEC": {
+      "tp": 0,
+      "tn": 1,
+      "fp": 2,
+      "fn": 0
+    },
+    "HARDCODED_CREDENTIALS": {
+      "tp": 0,
+      "tn": 0,
+      "fp": 7,
+      "fn": 0
+    },
+    "DESERIALIZATION": {
+      "tp": 0,
+      "tn": 0,
+      "fp": 1,
+      "fn": 0
+    }
+  },
+  "by_language": {},
+  "by_language_category": {},
+  "details": [
+    {
+      "verdict": "FP",
+      "ground_truth_index": 0,
+      "expected": {
+        "file": "cli.py",
+        "line": 963,
+        "type": "RCE_COMMAND_EXEC",
+        "severity": "Critical",
+        "is_true_positive": false,
+        "false_positive_reason": "Flask Shell REPL 加载 PYTHONSTARTUP 环境变量指向的受信任脚本，非用户可控输入。eval() 的参数来自本地文件系统文件，不存在远程代码注入风险。",
+        "comment": "误报：框架内部受控 eval 调用，输入来源为本地受信任文件而非网络请求。"
+      },
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "Low",
+        "confidence": 0.5,
+        "line": 963,
+        "column": 0,
+        "language": "python",
+        "details": "[工具脚本] 发现 compile()，参数含变量，处于框架工具脚本上下文，已降级。",
+        "file": "src\\flask\\cli.py"
+      }
+    },
+    {
+      "verdict": "TN",
+      "ground_truth_index": 1,
+      "expected": {
+        "file": "config.py",
+        "line": 187,
+        "type": "RCE_COMMAND_EXEC",
+        "severity": "Critical",
+        "is_true_positive": false,
+        "false_positive_reason": "Flask from_pyfile() 动态加载配置文件。exec() 的参数来自开发者控制的配置文件路径，filename 由调用方传入且不来自 HTTP 请求上下文。",
+        "comment": "误报：框架设计上的合法 exec 用法，需要上下文感知（source tracking）才能区分。这正是污点分析 Source→Sink 追踪能力的改进方向。"
+      },
+      "finding": null
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "dsl.python.hardcoded-password",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 11,
+        "column": 0,
+        "language": "python",
+        "details": "检测到疑似硬编码密码，请改为从安全配置或环境变量加载。",
+        "file": "examples\\tutorial\\flaskr\\__init__.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "DESERIALIZATION",
+        "rule_id": "DESERIALIZATION_PY_AST",
+        "severity": "Critical",
+        "confidence": 0.5,
+        "line": 963,
+        "column": 0,
+        "language": "python",
+        "details": "eval() 执行用户输入内容，等同于任意代码执行。",
+        "file": "src\\flask\\cli.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "RCE_COMMAND_EXEC",
+        "rule_id": "RCE_COMMAND_EXEC_PY_AST",
+        "severity": "Low",
+        "confidence": 0.5,
+        "line": 183,
+        "column": 0,
+        "language": "python",
+        "details": "发现 subprocess.check_call() 调用，参数含变量，建议确认是否可控。",
+        "file": "tests\\conftest.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "dsl.python.hardcoded-password",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 51,
+        "column": 0,
+        "language": "python",
+        "details": "检测到疑似硬编码密码，请改为从安全配置或环境变量加载。",
+        "file": "tests\\conftest.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "dsl.python.hardcoded-password",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 11,
+        "column": 0,
+        "language": "python",
+        "details": "检测到疑似硬编码密码，请改为从安全配置或环境变量加载。",
+        "file": "tests\\test_config.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "dsl.python.hardcoded-password",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 121,
+        "column": 0,
+        "language": "python",
+        "details": "检测到疑似硬编码密码，请改为从安全配置或环境变量加载。",
+        "file": "tests\\test_config.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "dsl.python.hardcoded-password",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 125,
+        "column": 0,
+        "language": "python",
+        "details": "检测到疑似硬编码密码，请改为从安全配置或环境变量加载。",
+        "file": "tests\\test_config.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "dsl.python.hardcoded-password",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 138,
+        "column": 0,
+        "language": "python",
+        "details": "检测到疑似硬编码密码，请改为从安全配置或环境变量加载。",
+        "file": "tests\\test_config.py"
+      }
+    },
+    {
+      "verdict": "FP",
+      "ground_truth_index": null,
+      "expected": null,
+      "finding": {
+        "type": "HARDCODED_CREDENTIALS",
+        "rule_id": "dsl.python.hardcoded-password",
+        "severity": "Medium",
+        "confidence": 0.5,
+        "line": 243,
+        "column": 0,
+        "language": "python",
+        "details": "检测到疑似硬编码密码，请改为从安全配置或环境变量加载。",
+        "file": "tests\\test_reqctx.py"
+      }
+    }
+  ],
+  "scope": {
+    "input_entries": 3,
+    "evaluated_entries": 2,
+    "include_out_of_scope": false,
+    "include_invalid_ground_truth": false,
+    "excluded_entries": [
+      {
+        "file": "sessions.py",
+        "type": "SESSION_COOKIE_DISCLOSURE",
+        "reason": "CVE-2023-30861 concerns a missing Vary: Cookie header in versions before 2.3.1; Flask 2.3.2 is patched and Aegis does not advertise cache/session-disclosure coverage."
+      }
+    ],
+    "invalid_entries": []
+  },
+  "performance": {
+    "scan_duration_seconds": 1.194041,
+    "rss_before_mb": 44.879,
+    "rss_after_mb": 59.227,
+    "rss_delta_mb": 14.348,
+    "process_peak_rss_mb": 69.578
+  },
+  "provenance": {
+    "engine": "new",
+    "reproducible": true,
+    "scanner_revision": "d51bd8b946492fe1799f431b45c1da070a35cbc1",
+    "scanner_dirty": false,
+    "scanner_diff_sha256": null,
+    "target_revision": "f3b8f570545200c87465d18386f3fc9f2258307a",
+    "target_subdir": ".",
+    "target_dirty": false,
+    "target_diff_sha256": null,
+    "ground_truth": "scripts/data/ground_truth_flask_2.3.2.json",
+    "ground_truth_sha256": "81777835f755789f376afd2ff76d96ce38cbd4a8b28fb00acaab9502b2906e58",
+    "python_version": "3.11.0",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel"
+  }
+}

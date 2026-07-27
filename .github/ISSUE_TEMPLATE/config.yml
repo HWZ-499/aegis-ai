@@ -1,8 +1,11 @@
 blank_issues_enabled: true
 contact_links:
   - name: 文档与路线图
-    url: https://github.com/aegis-ai/aegis-ai/blob/main/ROADMAP.md
+    url: https://github.com/HWZ-499/aegis-ai/blob/main/docs/OPTIMIZATION_ROADMAP.md
     about: 查看项目路线图与技术债务
   - name: 贡献指南
-    url: https://github.com/aegis-ai/aegis-ai/blob/main/CONTRIBUTING.md
+    url: https://github.com/HWZ-499/aegis-ai/blob/main/CONTRIBUTING.md
     about: 如何参与贡献、添加规则、提交 PR
+  - name: 安全漏洞报告
+    url: https://github.com/HWZ-499/aegis-ai/security/policy
+    about: 请勿公开披露漏洞细节；先阅读安全报告流程

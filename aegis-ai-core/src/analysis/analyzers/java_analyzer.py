@@ -11,21 +11,24 @@ java_analyzer.py - Java 专用分析器（统一污点系统版）
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from pathlib import Path
 
 from ..base import AnalysisContext, SecurityRule
+from ..tree_sitter_runtime import get_thread_parser
+from .runtime import log_analysis_degradation
+
+logger = logging.getLogger(__name__)
 
 # Tree-sitter 导入
 try:
     from tree_sitter import Node, Parser
-    from tree_sitter_languages import get_language
 
     _TREE_SITTER_AVAILABLE = True
 except ImportError:
     Parser = None  # type: ignore[misc,assignment]
     Node = None  # type: ignore[misc,assignment]
-    get_language = None  # type: ignore[misc,assignment]
     _TREE_SITTER_AVAILABLE = False
 
 
@@ -45,12 +48,7 @@ class JavaAnalyzer:
         # 初始化 Tree-sitter parser（Java 语言）
         self._parser: Parser | None = None
         if _TREE_SITTER_AVAILABLE:
-            try:
-                java_lang = get_language("java")
-                self._parser = Parser()
-                self._parser.set_language(java_lang)
-            except (ImportError, RuntimeError, OSError):
-                self._parser = None
+            self._parser = get_thread_parser("java")
 
     def analyze(self, code: str, file_path: Path) -> list[dict]:
         """
@@ -70,33 +68,59 @@ class JavaAnalyzer:
         )
         context.extras["source"] = code
 
-        # 2. 构建统一污点图（Tree-sitter Java AST）
+        # 2. 解析一次 Tree-sitter AST，供污点分析和规则遍历复用
+        ts_tree = None
         if self._parser:
+            try:
+                ts_tree = self._parser.parse(bytes(code, "utf8"))
+            except (RuntimeError, ValueError) as e:
+                log_analysis_degradation(
+                    logger,
+                    language="java",
+                    stage="parse",
+                    file_path=file_path,
+                    error=e,
+                )
+                ts_tree = None
+
+        # 3. 构建统一污点图（Tree-sitter Java AST）
+        if ts_tree is not None:
             try:
                 from ..taint import TaintAnalyzer
 
-                taint_analyzer = TaintAnalyzer(language="java")
-                ts_tree = self._parser.parse(bytes(code, "utf8"))
+                taint_analyzer = TaintAnalyzer(language="java", initialize_parser=False)
                 taint_analyzer.analyze_tree(ts_tree.root_node, str(file_path), code)
                 context.taint_graph = taint_analyzer.get_graph()
                 context.dataflow_tracker = None
-            except (ImportError, RuntimeError, ValueError):
+            except (ImportError, RuntimeError, ValueError) as e:
+                log_analysis_degradation(
+                    logger,
+                    language="java",
+                    stage="taint",
+                    file_path=file_path,
+                    error=e,
+                )
                 context.taint_graph = None
 
-        # 3. before_file 钩子
+        # 4. before_file 钩子
         for rule in self.rules:
             rule.before_file(context)
 
-        # 4. 遍历 Tree-sitter AST（若可用）
-        if self._parser:
+        # 5. 遍历已解析的 Tree-sitter AST（若可用）
+        if ts_tree is not None:
             try:
-                ts_tree = self._parser.parse(bytes(code, "utf8"))
                 self._traverse_tree(ts_tree.root_node, context)
-            except (RuntimeError, ValueError):
+            except (RuntimeError, ValueError) as e:
+                log_analysis_degradation(
+                    logger,
+                    language="java",
+                    stage="traverse",
+                    file_path=file_path,
+                    error=e,
+                )
                 # AST 失败不应影响行级/模式规则
-                pass
 
-        # 5. after_file 钩子
+        # 6. after_file 钩子
         for rule in self.rules:
             rule.after_file(context)
 

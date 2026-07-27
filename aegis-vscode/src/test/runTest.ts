@@ -12,7 +12,8 @@ async function main(): Promise<void> {
   try {
     const extensionDevelopmentPath = path.resolve(__dirname, "../..");
     const extensionTestsPath = path.resolve(__dirname, "./suite/index");
-    const vscodeExecutablePath = await downloadAndUnzipVSCode("stable");
+    const vscodeVersion = process.env.AEGIS_VSCODE_TEST_VERSION?.trim() || "stable";
+    const vscodeExecutablePath = await downloadAndUnzipVSCode(vscodeVersion);
     const testRoot = path.join(extensionDevelopmentPath, ".vscode-test");
     fs.mkdirSync(testRoot, { recursive: true });
     const userDataDir = fs.mkdtempSync(path.join(testRoot, "user-data-"));

@@ -1,0 +1,30 @@
+# Copy this file into <project>/.aegis/rules/ and replace the example fields.
+# Keep at least one positive and one negative embedded test.
+id: community.python.insecure-yaml-load
+language: python
+severity: HIGH
+message: "Untrusted request data is passed to yaml.load; use yaml.safe_load instead."
+vuln_type: DESERIALIZATION
+patterns:
+  - pattern: yaml.load($PAYLOAD)
+    metavariables:
+      PAYLOAD:
+        regex: '(?i)\brequest\.(?:data|json|form|args|GET|POST)\b'
+    where:
+      file_not_regex: '(?i)(?:^|[/\\])(?:tests?|fixtures?)(?:[/\\]|$)'
+tests:
+  - name: detects request payload passed to yaml.load
+    code: |
+      yaml.load(request.data)
+    file_path: app/imports.py
+    expect_findings: 1
+  - name: skips yaml.safe_load
+    code: |
+      yaml.safe_load(request.data)
+    file_path: app/imports.py
+    expect_findings: 0
+  - name: skips local configuration input
+    code: |
+      yaml.load(config_text)
+    file_path: app/config.py
+    expect_findings: 0

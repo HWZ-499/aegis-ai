@@ -11,4 +11,3 @@ def run_cmd():
     cmd = request.args.get("cmd")
     # 用户可控参数直接拼接进 shell 命令
     subprocess.run("sh -c '" + cmd + "'", shell=True)
-

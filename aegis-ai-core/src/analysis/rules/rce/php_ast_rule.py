@@ -6,7 +6,7 @@ import re
 from typing import Any
 
 from ...base import AnalysisContext, SecurityRule, tree_sitter_node_to_range
-from ...base.user_input_detector import _subtree_contains_php_user_input
+from ...base.user_input_detector import _subtree_contains_unsafe_php_user_input
 
 try:
     from tree_sitter import Node
@@ -35,6 +35,19 @@ class PhpRCEAstRule(SecurityRule):
         }
     )
     COMMAND_EXEC_FUNCS = DANGEROUS_FUNCS - {"eval", "assert", "preg_replace"}
+    COMMAND_SANITIZERS = frozenset(
+        {
+            "escapeshellarg",
+            "escapeshellcmd",
+            "intval",
+            "floatval",
+            "abs",
+            "ctype_digit",
+            "ctype_alpha",
+            "ctype_alnum",
+        }
+    )
+    DYNAMIC_DISPATCH_FUNCS = frozenset({"call_user_func", "call_user_func_array"})
 
     def __init__(self) -> None:
         super().__init__(rule_id="RCE_PHP_AST", severity="Critical", languages=["php"])
@@ -47,11 +60,19 @@ class PhpRCEAstRule(SecurityRule):
         if not _TS or not isinstance(node, Node):
             return
 
+        if node.type == "shell_command_expression":
+            self._check_shell_command(node, context)
+            return
         if node.type != "function_call_expression":
             return
 
         func_name = self._get_func_name(node)
-        if not func_name or func_name not in self.DANGEROUS_FUNCS:
+        if not func_name:
+            return
+        if func_name in self.DYNAMIC_DISPATCH_FUNCS:
+            self._check_dynamic_dispatch(node, context, func_name)
+            return
+        if func_name not in self.DANGEROUS_FUNCS:
             return
         if func_name == "preg_replace" and not self._preg_replace_uses_eval_modifier(node):
             return
@@ -69,7 +90,7 @@ class PhpRCEAstRule(SecurityRule):
                         if inner.type in ("string", "encapsed_string"):
                             if not self._has_variable(inner):
                                 continue
-                        if _subtree_contains_php_user_input(arg, context):
+                        if self._contains_unsafe_user_input(arg, context):
                             if func_name in self.COMMAND_EXEC_FUNCS and self._is_numeric_ip_rebuild_guarded_arg(
                                 arg,
                                 context,
@@ -90,6 +111,58 @@ class PhpRCEAstRule(SecurityRule):
                                     continue
                                 self._report(node, context, line, func_name)
                                 return
+
+    def _check_shell_command(self, node: Any, context: AnalysisContext) -> None:
+        line = node.start_point[0] + 1
+        if line in self._reported or not self._contains_unsafe_user_input(node, context):
+            return
+        if self._is_numeric_ip_rebuild_guarded_arg(node, context, line):
+            return
+        self._report(node, context, line, "backtick shell command")
+
+    def _check_dynamic_dispatch(self, node: Any, context: AnalysisContext, dispatcher: str) -> None:
+        arguments = self._argument_nodes(node)
+        if len(arguments) < 2:
+            return
+
+        target = self._static_string_value(self._unwrap(arguments[0]))
+        if target is None or target.lower().lstrip("\\") not in self.DANGEROUS_FUNCS:
+            return
+
+        line = node.start_point[0] + 1
+        for argument in arguments[1:]:
+            if not self._contains_unsafe_user_input(argument, context):
+                continue
+            if target in self.COMMAND_EXEC_FUNCS and self._is_numeric_ip_rebuild_guarded_arg(
+                argument,
+                context,
+                line,
+            ):
+                continue
+            self._report(node, context, line, f"{dispatcher}({target})")
+            return
+
+    def _contains_unsafe_user_input(self, node: Any, context: AnalysisContext) -> bool:
+        return _subtree_contains_unsafe_php_user_input(
+            node,
+            context,
+            sanitizers=self.COMMAND_SANITIZERS,
+        )
+
+    @staticmethod
+    def _argument_nodes(node: Any) -> list[Any]:
+        for child in getattr(node, "children", []):
+            if getattr(child, "type", "") == "arguments":
+                return [arg for arg in getattr(child, "children", []) if getattr(arg, "type", "") == "argument"]
+        return []
+
+    def _static_string_value(self, node: Any) -> str | None:
+        if getattr(node, "type", "") not in {"string", "encapsed_string"}:
+            return None
+        value = self._text(node).strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            return value[1:-1]
+        return None
 
     def _report(self, node: Any, context: AnalysisContext, line: int, func: str) -> None:
         self._reported.add(line)
@@ -207,7 +280,7 @@ class PhpRCEAstRule(SecurityRule):
 
     @staticmethod
     def _extract_ip_rebuild_array_var(expr: str) -> str | None:
-        matches = re.findall(r"\$([A-Za-z_]\w*)\s*\[\s*([0-3])\s*\]", expr)
+        matches: list[tuple[str, str]] = re.findall(r"\$([A-Za-z_]\w*)\s*\[\s*([0-3])\s*\]", expr)
         if not matches:
             return None
         array_names = {name for name, _ in matches}
@@ -292,7 +365,11 @@ class PhpRCEAstRule(SecurityRule):
     def _get_func_name(node: Any) -> str | None:
         for c in node.children:
             if c.type == "name":
-                return c.text.decode("utf-8") if hasattr(c, "text") else None
+                raw = getattr(c, "text", None)
+                if isinstance(raw, bytes):
+                    return raw.decode("utf-8")
+                if isinstance(raw, str):
+                    return raw
         return None
 
     @staticmethod

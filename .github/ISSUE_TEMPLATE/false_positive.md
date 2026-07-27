@@ -46,8 +46,8 @@ assignees: ''
 
 | 项目 | 内容 |
 |------|------|
-| Aegis AI 版本 | v1.x |
-| 扫描语言 | JavaScript / TypeScript / Python / PHP |
+| Aegis AI 版本 | Core 1.5.x / VS Code 0.6.x |
+| 扫描语言 | JavaScript / TypeScript / Python / PHP / Java / Go / C/C++ |
 | 框架 | Express / Django / Flask / 无 |
 
 ## 期望行为

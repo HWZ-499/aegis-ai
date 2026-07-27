@@ -92,6 +92,17 @@ suite("Extension Test Suite", () => {
     );
   });
 
+  test("workspace scan command completes when no supported files are present", async function () {
+    this.timeout(30000);
+
+    await Promise.race([
+      vscode.commands.executeCommand("aegisAI.scanWorkspace"),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("Workspace scan command did not complete")), 15000);
+      }),
+    ]);
+  });
+
   test("Aegis updates finding positions after save and preserves them after reopen", async function () {
     this.timeout(90000);
 

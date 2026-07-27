@@ -1,8 +1,4 @@
-"""Layered mypy gate for CI.
-
-This keeps release-blocking type checks focused on maintained surfaces while
-still producing a visibility report for older modules with known type debt.
-"""
+"""Repository-wide mypy gate for CI."""
 
 from __future__ import annotations
 
@@ -12,33 +8,7 @@ import sys
 from pathlib import Path
 
 TYPECHECK_GROUPS: dict[str, list[str]] = {
-    "ci": [
-        "src/lsp/",
-        "src/analysis/base/",
-        "src/analysis/dependency_tracker.py",
-        "src/analysis/rule_engine.py",
-        "src/analysis/incremental_analyzer.py",
-        "src/core/models.py",
-        "src/scanner/cli.py",
-        "src/scanner/project_scanner.py",
-        "src/scanner/baseline.py",
-        "src/scanner/ai_analyzer.py",
-        "src/scanner/report_generator.py",
-    ],
-    "legacy-report": [
-        "src/analysis/security_rules.py",
-        "src/analysis/multi_language_ast.py",
-        "src/analysis/cfg/dominator_tree.py",
-        "src/analysis/taint/taint_graph.py",
-        "src/analysis/taint/taint_analyzer.py",
-        "src/analysis/taint/cross_file_analyzer.py",
-        "src/core/models.py",
-        "src/scanner/report_generator.py",
-        "src/scanner/taint_enhancer.py",
-        "src/scanner/cli.py",
-        "src/scanner/smart_remediation.py",
-        "src/scanner/rag_enhancer.py",
-    ],
+    "ci": ["src/"],
 }
 
 

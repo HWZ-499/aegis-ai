@@ -26,7 +26,7 @@ JavaScript/TypeScript NoSQL 注入 AST 规则（优化版 + 数据流分析）�
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from ...base import (
     AnalysisContext,
@@ -656,7 +656,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
         if value_node.type == "member_expression" and context is not None:
             if self._looks_like_user_input(value_node, context):
                 return False
-        return value_node.type == "identifier"
+        return bool(value_node.type == "identifier")
 
     def _has_dangerous_key_or_value(self, node: Node, context: AnalysisContext) -> bool:
         """
@@ -949,7 +949,7 @@ class JavaScriptNoSQLInjectionAstRule(SecurityRule):
     def _get_node_text(node: Node) -> str | None:
         """提取节点的文本内容。"""
         if hasattr(node, "text"):
-            return node.text.decode("utf-8")
+            return cast(bytes, node.text).decode("utf-8")
         return None
 
 

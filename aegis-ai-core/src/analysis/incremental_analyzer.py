@@ -105,7 +105,13 @@ class IncrementalAnalyzer:
                 parser = Parser()
                 parser.set_language(get_language(ts_lang))
                 self._parsers[language] = parser
-            except (RuntimeError, ValueError, OSError):
+            except (RuntimeError, ValueError, OSError) as error:
+                logger.debug(
+                    "incremental_analysis_degraded language=%s stage=parser_init error=%s: %s",
+                    language,
+                    type(error).__name__,
+                    error,
+                )
                 return None
         return self._parsers.get(language)
 
@@ -366,7 +372,13 @@ class IncrementalAnalyzer:
         """Extract function info from source code using tree-sitter."""
         try:
             tree = parser.parse(code.encode())
-        except (RuntimeError, ValueError):
+        except (RuntimeError, ValueError) as error:
+            logger.debug(
+                "incremental_analysis_degraded language=%s stage=parse error=%s: %s",
+                language,
+                type(error).__name__,
+                error,
+            )
             return None
 
         func_types = _FUNC_NODE_TYPES.get(language, set())

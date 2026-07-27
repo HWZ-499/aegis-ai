@@ -4,7 +4,7 @@ test_python_analyzer_demo.py
 目的：
 - 演示新规则架构（AnalysisContext + SecurityRule + PythonAnalyzer）是否工作正常；
 - 使用两条规则：
-  - SQLInjectionRegexRule（行级正则）
+  - PythonSQLInjectionAstRule（AST 版 SQLi）
   - PythonRCEAstRule（AST 版 RCE 检测）
 
 使用方法（在 aegis-ai-core 目录）：
@@ -16,7 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.analysis.analyzers.python_analyzer import PythonAnalyzer
-from src.analysis.rules import PythonRCEAstRule, SQLInjectionRegexRule
+from src.analysis.rules import PythonRCEAstRule, PythonSQLInjectionAstRule
 
 
 def main() -> None:
@@ -40,7 +40,7 @@ def dangerous_sql(user_input, conn):
 
     rules = [
         PythonRCEAstRule(),
-        SQLInjectionRegexRule(),
+        PythonSQLInjectionAstRule(),
     ]
     analyzer = PythonAnalyzer(rules)
 

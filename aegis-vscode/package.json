@@ -5,7 +5,7 @@
   "version": "0.6.7",
   "publisher": "wen-zai",
   "license": "MIT",
-  "preview": true,
+  "preview": false,
   "repository": {
     "type": "git",
     "url": "https://github.com/HWZ-499/aegis-ai.git"
@@ -20,7 +20,7 @@
     "theme": "dark"
   },
   "engines": {
-    "vscode": "^1.75.0"
+    "vscode": "^1.91.0"
   },
   "categories": [
     "Linters",
@@ -220,7 +220,7 @@
           "type": "string",
           "default": "python",
           "scope": "application",
-          "description": "Path to Python 3.10+ used to create and run the Aegis backend environment. Examples: python, python3, /usr/bin/python3, C:\\\\Python311\\\\python.exe"
+          "description": "Path to Python 3.10-3.12 used to create and run the Aegis backend environment. Examples: python, python3, /usr/bin/python3, C:\\\\Python311\\\\python.exe"
         },
         "aegisAI.serverModule": {
           "type": "string",
@@ -261,7 +261,7 @@
           "type": "array",
           "default": [],
           "items": { "type": "string" },
-          "description": "List of rule IDs to disable (e.g. [\"HARDCODED_CREDENTIALS\", \"SQL_INJECTION_REGEX\"])."
+          "description": "List of finding types or rule IDs to disable (e.g. [\"HARDCODED_CREDENTIALS\", \"RCE_COMMAND_EXEC\"])."
         },
         "aegisAI.ai.enabled": {
           "type": "boolean",
@@ -316,21 +316,27 @@
     "watch": "tsc -watch -p ./",
     "watch:esbuild": "node esbuild.js --watch",
     "test": "npm run compile && node ./out/test/runTest.js",
-    "package": "vsce package",
-    "publish:patch": "vsce publish patch",
-    "publish:minor": "vsce publish minor"
+    "package": "vsce package --no-dependencies"
   },
   "dependencies": {
-    "vscode-languageclient": "^9.0.1"
+    "vscode-languageclient": "^10.1.0"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.0",
-    "@types/node": "^25.2.2",
-    "@types/vscode": "^1.75.0",
+    "@types/node": "^20.19.43",
+    "@types/vscode": "1.91.0",
     "@vscode/test-electron": "^2.4.0",
-    "@vscode/vsce": "^3.2.1",
-    "esbuild": "^0.20.0",
-    "mocha": "^10.2.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.1",
+    "mocha": "^11.7.6",
     "typescript": "^5.3.0"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.8",
+    "fast-uri": "4.1.1",
+    "mocha": {
+      "diff": "8.0.3",
+      "serialize-javascript": "7.0.5"
+    }
   }
 }

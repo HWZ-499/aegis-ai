@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+import yaml
 
 from src.analysis.dsl.rule_schema import DslRule
 from src.scanner.rules_cli import run_embedded_rule_tests, run_rules_command
@@ -32,6 +33,37 @@ def test_rules_init_type_lang_writes_testable_template(tmp_path: Path, monkeypat
     assert "vuln_type: SQL_INJECTION" in text
     assert "Created DSL rule skeleton" in capsys.readouterr().out
     assert run_rules_command(["test", str(rule_path), "--quiet"]) == 0
+
+
+def test_rules_init_normalizes_language_alias(tmp_path: Path) -> None:
+    rule_path = tmp_path / "javascript-xss.yaml"
+
+    exit_code = run_rules_command(["init", str(rule_path), "--type", "xss", "--lang", "js"])
+
+    assert exit_code == 0
+    assert "language: javascript" in rule_path.read_text(encoding="utf-8")
+
+
+def test_rules_init_rejects_semantically_invalid_template_language(tmp_path: Path, capsys) -> None:
+    rule_path = tmp_path / "php-xss.yaml"
+
+    exit_code = run_rules_command(["init", str(rule_path), "--type", "xss", "--lang", "php"])
+
+    assert exit_code == 2
+    assert not rule_path.exists()
+    output = capsys.readouterr().out
+    assert "does not provide a php skeleton" in output
+    assert "--type custom" in output
+
+
+def test_rules_init_rejects_unknown_language(tmp_path: Path, capsys) -> None:
+    rule_path = tmp_path / "ruby-custom.yaml"
+
+    exit_code = run_rules_command(["init", str(rule_path), "--lang", "ruby"])
+
+    assert exit_code == 2
+    assert not rule_path.exists()
+    assert "Unsupported rule language" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize(
@@ -126,6 +158,82 @@ tests:
     assert "Rule tests: 0 passed, 1 failed, 1 rule file(s)" in output
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "error_marker"),
+    [
+        ("language", "ruby", "unsupported DSL language"),
+        ("severity", "urgent", "unsupported severity"),
+    ],
+)
+def test_rules_test_rejects_unsupported_schema_values(
+    tmp_path: Path,
+    capsys,
+    field: str,
+    value: str,
+    error_marker: str,
+) -> None:
+    rule_path = tmp_path / "invalid.yaml"
+    payload = {
+        "id": "dsl.test.invalid",
+        "language": "python",
+        "severity": "MEDIUM",
+        "message": "Invalid rule",
+        "vuln_type": "CUSTOM",
+        "patterns": [{"pattern": "dangerous_call($ARG)"}],
+    }
+    payload[field] = value
+    rule_path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+
+    exit_code = run_rules_command(["test", str(rule_path)])
+
+    assert exit_code == 1
+    assert error_marker in capsys.readouterr().out
+
+
+def test_rules_test_rejects_invalid_constraint_regex(tmp_path: Path, capsys) -> None:
+    rule_path = tmp_path / "invalid-regex.yaml"
+    rule_path.write_text(
+        """
+id: dsl.test.invalid-regex
+language: python
+severity: MEDIUM
+message: "Invalid regex"
+vuln_type: CUSTOM
+patterns:
+  - pattern: dangerous_call($ARG)
+    metavariables:
+      ARG:
+        regex: "["
+""",
+        encoding="utf-8",
+    )
+
+    exit_code = run_rules_command(["test", str(rule_path)])
+
+    assert exit_code == 1
+    assert "invalid regular expression" in capsys.readouterr().out
+
+
+def test_rules_test_rejects_empty_pattern_list(tmp_path: Path, capsys) -> None:
+    rule_path = tmp_path / "empty-patterns.yaml"
+    rule_path.write_text(
+        """
+id: dsl.test.empty
+language: python
+severity: MEDIUM
+message: "Empty rule"
+vuln_type: CUSTOM
+patterns: []
+""",
+        encoding="utf-8",
+    )
+
+    exit_code = run_rules_command(["test", str(rule_path)])
+
+    assert exit_code == 1
+    assert "patterns" in capsys.readouterr().out
+
+
 def test_run_embedded_rule_tests_uses_boolean_expectations(tmp_path: Path) -> None:
     rule = DslRule.model_validate(
         {
@@ -158,3 +266,12 @@ def test_builtin_dsl_rules_have_passing_embedded_tests(capsys) -> None:
     assert rule_count >= 5
     assert "0 failed" in output
     assert f"{rule_count} rule file(s)" in output
+
+
+def test_community_rule_template_has_passing_embedded_tests(capsys) -> None:
+    template = Path("templates/rules/community-rule.yaml")
+
+    exit_code = run_rules_command(["test", str(template), "--quiet"])
+
+    assert exit_code == 0
+    assert "3 passed, 0 failed, 1 rule file(s)" in capsys.readouterr().out

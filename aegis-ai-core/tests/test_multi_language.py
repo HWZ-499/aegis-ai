@@ -64,7 +64,7 @@ user_id = input("Enter ID: ")
 query = "SELECT * FROM users WHERE id = " + user_id
 cursor.execute(query)
 """,
-            "expected_types": ["SQL_INJECTION", "SQL Injection Risk"],  # AST 和正则可能返回不同名称
+            "expected_types": ["SQL_INJECTION"],
         },
         {
             "name": "命令执行",
@@ -73,7 +73,7 @@ import os
 user_input = input("Enter command: ")
 os.system(user_input)
 """,
-            "expected_types": ["RCE_COMMAND_EXEC", "Command Injection"],  # AST 和正则可能返回不同名称
+            "expected_types": ["RCE_COMMAND_EXEC"],
         },
         {
             "name": "硬编码凭证",
@@ -89,7 +89,7 @@ api_key = "sk-1234567890abcdef"
 user_code = input("Enter code: ")
 result = eval(user_code)
 """,
-            "expected_types": ["RCE_COMMAND_EXEC", "Code Injection"],  # AST 和正则可能返回不同名称
+            "expected_types": ["RCE_COMMAND_EXEC"],
         },
     ]
 
@@ -167,8 +167,7 @@ eval(userCode);
     assert failed == 0
 
 
-def test_javascript_sql_injection_is_known_legacy_multi_language_gap():
-    """legacy multi_language_ast JS path does not cover SQLi; the new rule engine owns that path."""
+def test_javascript_sql_injection_uses_canonical_rule_engine():
     code = """
 const userId = req.query.id;
 const query = "SELECT * FROM users WHERE id = " + userId;
@@ -178,8 +177,6 @@ db.query(query);
     found_types = [f.get("type", "") for f in findings]
     detected = "SQL_INJECTION" in found_types
 
-    if not detected:
-        pytest.xfail("SQLi is covered by rule_engine.analyze_javascript, not legacy multi_language_ast.")
     assert detected
 
 
@@ -211,7 +208,7 @@ Runtime.getRuntime().exec(command);
         {
             "name": "反序列化",
             "code": """
-ObjectInputStream ois = new ObjectInputStream(inputStream);
+ObjectInputStream ois = new ObjectInputStream(request.getInputStream());
 Object obj = ois.readObject();
 """,
             "expected_types": ["DESERIALIZATION"],

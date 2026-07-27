@@ -11,4 +11,3 @@ def safe_query(request: Any, cursor: Any) -> None:
     sql = "SELECT * FROM users WHERE name = %s"
     # 参数化传入用户输入
     cursor.execute(sql, (user,))
-
