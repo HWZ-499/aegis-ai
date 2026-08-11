@@ -58,6 +58,10 @@ _STREAM_EXTRACT_RE = re.compile(r">>\s*(?P<name>[A-Za-z_]\w*)")
 _THREAD_CONTROL_RE = re.compile(r"\b(?P<api>TerminateThread|SuspendThread)\s*\(", re.IGNORECASE)
 _CONDITION_RE = re.compile(r"\b(?:if|while)\s*\((?P<condition>.*)\)")
 _ASSIGNMENT_OPERATOR_RE = re.compile(r"(?<![=!<>+\-*/%&|^])=(?!=)")
+_INTENTIONAL_ASSIGNMENT_SENTINEL_COMPARE_RE = re.compile(
+    r"^\s*\(\s*.+?(?<![=!<>+\-*/%&|^])=(?!=).+?\)\s*"
+    r"(?:==|!=|<=|>=|<|>)\s*(?:EOF|NULL|nullptr|-?0)\s*$"
+)
 _NESTED_POINTER_RE = re.compile(r"\b(?P<base>[A-Za-z_]\w*)\s*->\s*(?P<field>[A-Za-z_]\w*)\s*->")
 _SHALLOW_GUARD_RE = re.compile(
     r"\bif\s*\(\s*(?P<base>[A-Za-z_]\w*)\s*(?:!=\s*(?:NULL|nullptr|0))?\s*\)",
@@ -220,7 +224,11 @@ def _scan_assignments_in_conditions(code: str) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     for line_number, line in enumerate(code.splitlines(), 1):
         match = _CONDITION_RE.search(_strip_cpp_line(line))
-        if match and _ASSIGNMENT_OPERATOR_RE.search(match.group("condition")):
+        if (
+            match
+            and _ASSIGNMENT_OPERATOR_RE.search(match.group("condition"))
+            and not _INTENTIONAL_ASSIGNMENT_SENTINEL_COMPARE_RE.search(match.group("condition"))
+        ):
             findings.append(
                 _finding(
                     line_number,

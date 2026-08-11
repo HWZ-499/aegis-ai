@@ -213,14 +213,15 @@ class JavaNoSQLInjectionAstRule(SecurityRule):
 
     def _iter_nosql_call_matches(self, source: str, request_vars: set[str]) -> list[re.Match[str]]:
         matches: list[re.Match[str]] = []
-        for match in self._JAVA_NOSQL_CALL_START_RE.finditer(source):
-            open_paren = source.find("(", match.start(), match.end())
+        sanitized_source = self._mask_comments_and_strings(source)
+        for match in self._JAVA_NOSQL_CALL_START_RE.finditer(sanitized_source):
+            open_paren = sanitized_source.find("(", match.start(), match.end())
             if open_paren < 0:
                 continue
-            close_paren = self._find_matching_paren(source, open_paren)
+            close_paren = self._find_matching_paren(sanitized_source, open_paren)
             if close_paren is None:
                 continue
-            call_text = source[match.start() : close_paren + 1]
+            call_text = sanitized_source[match.start() : close_paren + 1]
             if self._call_text_has_request_input(call_text, request_vars):
                 matches.append(match)
         return matches
@@ -268,6 +269,80 @@ class JavaNoSQLInjectionAstRule(SecurityRule):
                 if depth == 0:
                     return index
         return None
+
+    @staticmethod
+    def _mask_comments_and_strings(source: str) -> str:
+        """Blank comments and literals while preserving offsets and newlines."""
+        chars = list(source)
+        index = 0
+        in_line_comment = False
+        in_block_comment = False
+        quote: str | None = None
+        escaped = False
+
+        while index < len(chars):
+            char = chars[index]
+            next_char = chars[index + 1] if index + 1 < len(chars) else ""
+
+            if in_line_comment:
+                if char != "\n":
+                    chars[index] = " "
+                else:
+                    in_line_comment = False
+                index += 1
+                continue
+
+            if in_block_comment:
+                if char == "*" and next_char == "/":
+                    chars[index] = " "
+                    chars[index + 1] = " "
+                    in_block_comment = False
+                    index += 2
+                else:
+                    if char != "\n":
+                        chars[index] = " "
+                    index += 1
+                continue
+
+            if quote is not None:
+                if char != "\n":
+                    chars[index] = " "
+                if escaped:
+                    escaped = False
+                    index += 1
+                    continue
+                if char == "\\":
+                    escaped = True
+                    index += 1
+                    continue
+                if char == quote:
+                    quote = None
+                index += 1
+                continue
+
+            if char == "/" and next_char == "/":
+                chars[index] = " "
+                chars[index + 1] = " "
+                in_line_comment = True
+                index += 2
+                continue
+
+            if char == "/" and next_char == "*":
+                chars[index] = " "
+                chars[index + 1] = " "
+                in_block_comment = True
+                index += 2
+                continue
+
+            if char in ('"', "'"):
+                chars[index] = " "
+                quote = char
+                index += 1
+                continue
+
+            index += 1
+
+        return "".join(chars)
 
     def _report(self, line_no: int, context: AnalysisContext) -> None:
         if line_no in self._reported_lines:

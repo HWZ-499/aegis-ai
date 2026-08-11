@@ -395,7 +395,7 @@ class PhpSQLInjectionAstRule(SecurityRule):
         if source_expr and source_expr != f"${var_name}":
             guarded_exprs.add(source_expr)
 
-        return self._has_numeric_guard_for_exprs(guarded_exprs, assignment_line, sink_line, context)
+        return self._has_numeric_guard_for_exprs(guarded_exprs, assignment_line, sink_line, context, assignment_expr)
 
     @staticmethod
     def _is_numeric_cast_expr(expr: str) -> bool:
@@ -407,6 +407,7 @@ class PhpSQLInjectionAstRule(SecurityRule):
         assignment_line: int,
         sink_line: int,
         context: AnalysisContext,
+        assignment_expr: str | None = None,
     ) -> bool:
         source = context.extras.get("source")
         if not isinstance(source, str) or not source:
@@ -435,8 +436,13 @@ class PhpSQLInjectionAstRule(SecurityRule):
                     return True
                 if self._guard_failure_block_exits(lines, guard_idx) and guard_idx < assignment_idx <= sink_idx:
                     return True
-            elif self._block_contains_lines(lines, guard_idx, {assignment_idx, sink_idx}):
-                return True
+            else:
+                if not self._block_contains_lines(lines, guard_idx, {sink_idx}):
+                    continue
+                if assignment_idx <= guard_idx:
+                    return True
+                if assignment_expr and self._normalize_php_expr(assignment_expr) in matching_guard_exprs:
+                    return True
 
         return False
 
