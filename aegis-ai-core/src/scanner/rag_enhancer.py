@@ -267,10 +267,10 @@ BUILTIN_REMEDIATION = {
             "// ── Node.js/Express 服务端输出 ──\n"
             "const he = require('he');\n"
             "res.send(`<p>${he.encode(userInput)}</p>`);\n\n"
-            "// ── Angular（DomSanitizer）──\n"
-            "// 在模板中使用 {{ userInput }}（自动转义），\n"
-            "// 避免 [innerHTML]，若必须使用则:\n"
-            "// this.sanitizer.bypassSecurityTrustHtml(content)"
+            "// ── Angular ──\n"
+            "// 在模板中使用 {{ userInput }}（自动转义）。\n"
+            "// 避免 [innerHTML]；必须渲染 HTML 时使用:\n"
+            "// this.sanitizer.sanitize(SecurityContext.HTML, content)"
         ),
         "framework_suggested_code": {
             "dompurify": ("// DOMPurify 净化后插入\nelement.innerHTML = DOMPurify.sanitize(userInput);"),
@@ -284,6 +284,71 @@ BUILTIN_REMEDIATION = {
             "html_escape": ("# Python: html.escape\nimport html\nsafe = html.escape(user_input)"),
             "markupsafe": ("# Jinja2 / MarkupSafe\nfrom markupsafe import escape\nsafe = escape(user_input)"),
             "htmlspecialchars": ("// PHP: 输出前转义\necho htmlspecialchars($var, ENT_QUOTES, 'UTF-8');"),
+        },
+    },
+    "SSRF": {
+        "description": "服务器端请求伪造（SSRF）允许攻击者诱导服务器访问内网、云元数据或其他受保护服务。",
+        "remediation": [
+            "不要直接请求用户提供的完整 URL；优先让用户选择业务定义的目的地并只提供相对路径",
+            "使用严格的 HTTPS 主机 allowlist，并在网络层限制服务的出站访问",
+            "如果必须解析外部主机，应校验全部解析地址，并确保 HTTP 客户端连接到已校验的地址",
+            "禁用自动跳转，或对每个跳转目标重新执行协议、主机和地址校验",
+        ],
+        "references": [
+            "https://owasp.org/www-community/attacks/Server_Side_Request_Forgery",
+            "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html",
+        ],
+        "cwe": "CWE-918",
+        "suggested_code": (
+            "// SSRF guidance: expose a destination key and relative path, not an arbitrary URL.\n"
+            "const APPROVED_DESTINATIONS = new Map([['billing', 'https://api.example.com/']]);\n"
+            "const ALLOWED_HOSTS = new Set(['api.example.com']);\n\n"
+            "function buildAllowedUrl(destination, relativePath) {\n"
+            "  const approvedBase = APPROVED_DESTINATIONS.get(destination);\n"
+            "  if (!approvedBase) throw new Error('Unknown destination');\n"
+            "  const base = new URL(approvedBase);\n"
+            "  const url = new URL(relativePath, base);\n"
+            "  if (url.protocol !== 'https:' || url.origin !== base.origin || !ALLOWED_HOSTS.has(url.hostname)) {\n"
+            "    throw new Error('Blocked SSRF destination');\n"
+            "  }\n"
+            "  return url;\n"
+            "}\n\n"
+            "// Also enforce an outbound network policy and reject redirects.\n"
+            "const response = await fetch(buildAllowedUrl('billing', req.query.path), { redirect: 'error' });"
+        ),
+        "framework_suggested_code": {
+            "express": (
+                "// Express: map a server-owned destination key to a fixed origin.\n"
+                "const APPROVED_DESTINATIONS = new Map([['billing', 'https://api.example.com/']]);\n"
+                "const ALLOWED_HOSTS = new Set(['api.example.com']);\n\n"
+                "function buildAllowedUrl(destination, relativePath) {\n"
+                "  const approvedBase = APPROVED_DESTINATIONS.get(destination);\n"
+                "  if (!approvedBase) throw new Error('Unknown destination');\n"
+                "  const base = new URL(approvedBase);\n"
+                "  const url = new URL(relativePath, base);\n"
+                "  if (url.protocol !== 'https:' || url.origin !== base.origin || !ALLOWED_HOSTS.has(url.hostname)) {\n"
+                "    throw new Error('Blocked SSRF destination');\n"
+                "  }\n"
+                "  return url;\n"
+                "}\n\n"
+                "const response = await fetch(buildAllowedUrl('billing', req.query.path), { redirect: 'error' });"
+            ),
+            "requests": (
+                "# Python requests: use a server-owned destination map and relative paths.\n"
+                "from urllib.parse import urljoin, urlparse\n"
+                "import requests\n\n"
+                "APPROVED_DESTINATIONS = {'billing': 'https://api.example.com/'}\n"
+                "ALLOWED_HOSTS = {'api.example.com'}\n\n"
+                "def fetch_allowed(destination, relative_path):\n"
+                "    base = APPROVED_DESTINATIONS.get(destination)\n"
+                "    if base is None:\n"
+                "        raise ValueError('unknown destination')\n"
+                "    url = urljoin(base, relative_path)\n"
+                "    parsed = urlparse(url)\n"
+                "    if parsed.scheme != 'https' or parsed.hostname not in ALLOWED_HOSTS:\n"
+                "        raise ValueError('blocked SSRF destination')\n"
+                "    return requests.get(url, allow_redirects=False, timeout=5)"
+            ),
         },
     },
     "PATH_TRAVERSAL": {
